@@ -14,7 +14,114 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      aws_configurations: {
+        Row: {
+          access_key_id: string | null
+          alert_thresholds: Json | null
+          aws_region: string
+          configuration_name: string
+          created_at: string
+          id: string
+          is_active: boolean | null
+          projects: Json | null
+          role_arn: string | null
+          secret_access_key: string | null
+          session_token: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_key_id?: string | null
+          alert_thresholds?: Json | null
+          aws_region?: string
+          configuration_name?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          projects?: Json | null
+          role_arn?: string | null
+          secret_access_key?: string | null
+          session_token?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_key_id?: string | null
+          alert_thresholds?: Json | null
+          aws_region?: string
+          configuration_name?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          projects?: Json | null
+          role_arn?: string | null
+          secret_access_key?: string | null
+          session_token?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          aws_default_region: string | null
+          company: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          aws_default_region?: string | null
+          company?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          aws_default_region?: string | null
+          company?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_setup: {
+        Row: {
+          aws_connected: boolean | null
+          created_at: string
+          id: string
+          initial_configuration_completed: boolean | null
+          profile_completed: boolean | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          aws_connected?: boolean | null
+          created_at?: string
+          id?: string
+          initial_configuration_completed?: boolean | null
+          profile_completed?: boolean | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          aws_connected?: boolean | null
+          created_at?: string
+          id?: string
+          initial_configuration_completed?: boolean | null
+          profile_completed?: boolean | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
