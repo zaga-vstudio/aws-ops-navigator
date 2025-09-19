@@ -8,6 +8,9 @@ import Homepage from "./pages/Homepage";
 import Auth from "./pages/Auth";
 import Setup from "./pages/Setup";
 import Dashboard from "./pages/Dashboard";
+import EC2Instances from "./pages/EC2Instances";
+import RDSDatabases from "./pages/RDSDatabases";
+import VPCNetworking from "./pages/VPCNetworking";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,6 +27,9 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/setup" element={<Setup />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/ec2" element={<EC2Instances />} />
+            <Route path="/rds" element={<RDSDatabases />} />
+            <Route path="/vpc" element={<VPCNetworking />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
