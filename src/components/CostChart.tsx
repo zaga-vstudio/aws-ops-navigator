@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, TrendingUp } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useAWSData } from "@/hooks/useAWSData";
 
 const mockCostData = [
   { month: 'Jan', cost: 120 },
@@ -12,7 +13,9 @@ const mockCostData = [
 ];
 
 export const CostChart = () => {
-  const currentCost = mockCostData[mockCostData.length - 1].cost;
+  const { data, loading } = useAWSData();
+  
+  const currentCost = data?.metrics.estimatedCost || mockCostData[mockCostData.length - 1].cost;
   const previousCost = mockCostData[mockCostData.length - 2].cost;
   const changePercent = ((currentCost - previousCost) / previousCost * 100).toFixed(1);
 
@@ -32,12 +35,21 @@ export const CostChart = () => {
       </CardHeader>
       <CardContent>
         <div className="mb-4">
-          <div className="text-3xl font-bold text-foreground">
-            ${currentCost}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Current month estimate
-          </p>
+          {loading ? (
+            <div className="space-y-2">
+              <div className="w-24 h-8 bg-muted animate-pulse rounded" />
+              <div className="w-32 h-4 bg-muted animate-pulse rounded" />
+            </div>
+          ) : (
+            <>
+              <div className="text-3xl font-bold text-foreground">
+                ${currentCost}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Current month estimate
+              </p>
+            </>
+          )}
         </div>
         
         <div className="h-[200px]">

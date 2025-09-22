@@ -8,6 +8,7 @@ import { ActivityLog } from "@/components/ActivityLog";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
+import { useAWSData } from "@/hooks/useAWSData";
 import { 
   Server, 
   Database, 
@@ -15,11 +16,14 @@ import {
   Activity,
   Cpu,
   HardDrive,
-  Wifi
+  Wifi,
+  RefreshCw
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const Dashboard = () => {
   const { user, loading } = useAuth();
+  const { data: awsData, loading: awsLoading, refetch } = useAWSData();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -60,52 +64,68 @@ const Dashboard = () => {
           <main className="flex-1 p-4 lg:p-6 overflow-auto">
             <div className="max-w-7xl mx-auto space-y-6">
               {/* Header Section */}
-              <div className="mb-8">
-                <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">
-                  Infrastructure Dashboard
-                </h1>
-                <p className="text-muted-foreground">
-                  Monitor and manage your AWS resources from a central hub
-                </p>
+              <div className="mb-8 flex justify-between items-start">
+                <div>
+                  <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">
+                    Infrastructure Dashboard
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Monitor and manage your AWS resources from a central hub
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refetch}
+                  disabled={awsLoading}
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${awsLoading ? 'animate-spin' : ''}`} />
+                  Refresh Data
+                </Button>
               </div>
 
               {/* Metrics Grid - Responsive */}
               <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <MetricCard
-                  title="Active Instances"
-                  value="12"
+                  title="Total Instances"
+                  value={awsData?.metrics.totalInstances || 0}
                   unit="EC2"
                   change={8.2}
                   changeType="increase"
                   status="healthy"
+                  loading={awsLoading}
                   icon={<Server className="h-4 w-4 text-primary" />}
                 />
                 <MetricCard
-                  title="CPU Utilization"
-                  value="68"
-                  unit="%"
+                  title="Running Instances"
+                  value={awsData?.metrics.runningInstances || 0}
+                  unit="Active"
                   change={-2.1}
                   changeType="decrease"
                   status="healthy"
+                  loading={awsLoading}
                   icon={<Cpu className="h-4 w-4 text-cloud-cyan" />}
                 />
                 <MetricCard
-                  title="Storage Used"
-                  value="847"
-                  unit="GB"
+                  title="RDS Databases"
+                  value={awsData?.metrics.totalDatabases || 0}
+                  unit="DB"
                   change={12.5}
                   changeType="increase"
-                  status="warning"
-                  icon={<HardDrive className="h-4 w-4 text-warning" />}
+                  status="healthy"
+                  loading={awsLoading}
+                  icon={<Database className="h-4 w-4 text-cloud-purple" />}
                 />
                 <MetricCard
-                  title="Network I/O"
-                  value="2.4"
-                  unit="Gbps"
+                  title="Monthly Cost"
+                  value={awsData?.metrics.estimatedCost ? `$${awsData.metrics.estimatedCost}` : "$0"}
+                  unit=""
                   change={5.3}
                   changeType="increase"
-                  status="healthy"
-                  icon={<Wifi className="h-4 w-4 text-cloud-green" />}
+                  status="warning"
+                  loading={awsLoading}
+                  icon={<DollarSign className="h-4 w-4 text-warning" />}
                 />
               </div>
 

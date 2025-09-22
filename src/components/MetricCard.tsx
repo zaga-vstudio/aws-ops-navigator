@@ -4,12 +4,13 @@ import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 interface MetricCardProps {
   title: string;
-  value: string;
+  value: string | number;
   unit?: string;
   change?: number;
   changeType?: 'increase' | 'decrease' | 'neutral';
   status?: 'healthy' | 'warning' | 'critical';
   icon?: React.ReactNode;
+  loading?: boolean;
 }
 
 export const MetricCard = ({ 
@@ -19,7 +20,8 @@ export const MetricCard = ({
   change, 
   changeType = 'neutral',
   status = 'healthy',
-  icon 
+  icon,
+  loading = false 
 }: MetricCardProps) => {
   const getStatusColor = () => {
     switch (status) {
@@ -61,10 +63,14 @@ export const MetricCard = ({
       <CardContent>
         <div className="flex items-baseline justify-between">
           <div className="flex items-baseline gap-1">
-            <div className="text-2xl font-bold text-foreground">
-              {value}
-            </div>
-            {unit && (
+            {loading ? (
+              <div className="w-16 h-8 bg-muted animate-pulse rounded" />
+            ) : (
+              <div className="text-2xl font-bold text-foreground">
+                {value}
+              </div>
+            )}
+            {unit && !loading && (
               <span className="text-sm text-muted-foreground">{unit}</span>
             )}
           </div>

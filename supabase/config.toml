@@ -1,1 +1,4 @@
 project_id = "xafzdcrgbcudztfukggt"
+
+[functions.aws-dashboard-data]
+verify_jwt = true
