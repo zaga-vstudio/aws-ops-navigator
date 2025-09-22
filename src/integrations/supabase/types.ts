@@ -16,7 +16,7 @@ export type Database = {
     Tables: {
       aws_configurations: {
         Row: {
-          access_key_id: string | null
+          access_key_id: string
           alert_thresholds: Json | null
           aws_region: string
           configuration_name: string
@@ -25,13 +25,13 @@ export type Database = {
           is_active: boolean | null
           projects: Json | null
           role_arn: string | null
-          secret_access_key: string | null
+          secret_access_key: string
           session_token: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
-          access_key_id?: string | null
+          access_key_id: string
           alert_thresholds?: Json | null
           aws_region?: string
           configuration_name?: string
@@ -40,13 +40,13 @@ export type Database = {
           is_active?: boolean | null
           projects?: Json | null
           role_arn?: string | null
-          secret_access_key?: string | null
+          secret_access_key: string
           session_token?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
-          access_key_id?: string | null
+          access_key_id?: string
           alert_thresholds?: Json | null
           aws_region?: string
           configuration_name?: string
@@ -55,7 +55,7 @@ export type Database = {
           is_active?: boolean | null
           projects?: Json | null
           role_arn?: string | null
-          secret_access_key?: string | null
+          secret_access_key?: string
           session_token?: string | null
           updated_at?: string
           user_id?: string
@@ -95,6 +95,7 @@ export type Database = {
       user_setup: {
         Row: {
           aws_connected: boolean | null
+          aws_setup_completed: boolean | null
           created_at: string
           id: string
           initial_configuration_completed: boolean | null
@@ -104,6 +105,7 @@ export type Database = {
         }
         Insert: {
           aws_connected?: boolean | null
+          aws_setup_completed?: boolean | null
           created_at?: string
           id?: string
           initial_configuration_completed?: boolean | null
@@ -113,6 +115,7 @@ export type Database = {
         }
         Update: {
           aws_connected?: boolean | null
+          aws_setup_completed?: boolean | null
           created_at?: string
           id?: string
           initial_configuration_completed?: boolean | null

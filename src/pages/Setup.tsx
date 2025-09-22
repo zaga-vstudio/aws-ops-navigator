@@ -102,6 +102,8 @@ const Setup = () => {
         .insert({
           user_id: user.id,
           aws_region: formData.awsRegion,
+          access_key_id: 'temp', // Will be updated when user connects AWS
+          secret_access_key: 'temp', // Will be updated when user connects AWS
           projects: projects,
           alert_thresholds: {
             cpu_threshold: parseInt(formData.cpuThreshold),

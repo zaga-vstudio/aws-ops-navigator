@@ -18,6 +18,7 @@ import Monitoring from "./pages/Monitoring";
 import Alerts from "./pages/Alerts";
 import ActivityLog from "./pages/ActivityLog";
 import Settings from "./pages/Settings";
+import AWSSetup from "./pages/AWSSetup";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -44,6 +45,7 @@ const App = () => (
               <Route path="/alerts" element={<Alerts />} />
               <Route path="/logs" element={<ActivityLog />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/aws-setup" element={<AWSSetup />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

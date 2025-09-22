@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Cloud, Loader2, ArrowLeft } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -19,7 +20,21 @@ const Auth = () => {
 
   useEffect(() => {
     if (user) {
-      navigate('/dashboard');
+      // Check if user has completed AWS setup
+      const checkAWSSetup = async () => {
+        const { data: setupData } = await supabase.from('user_setup')
+          .select('aws_setup_completed')
+          .eq('user_id', user.id)
+          .maybeSingle();
+        
+        if (setupData?.aws_setup_completed) {
+          navigate('/dashboard');
+        } else {
+          navigate('/aws-setup');
+        }
+      };
+      
+      checkAWSSetup();
     }
   }, [user, navigate]);
 

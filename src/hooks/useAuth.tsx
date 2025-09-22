@@ -29,10 +29,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+        
+        // Check if user just signed up and needs AWS setup
+        if (event === 'SIGNED_IN' && session?.user) {
+          // Small delay to ensure navigation works properly
+          setTimeout(async () => {
+            // Check if user already has AWS setup completed
+            const { data: setupData } = await supabase
+              .from('user_setup')
+              .select('aws_setup_completed')
+              .eq('user_id', session.user.id)
+              .maybeSingle();
+            
+            if (!setupData?.aws_setup_completed) {
+              window.location.href = '/aws-setup';
+            }
+          }, 100);
+        }
       }
     );
 

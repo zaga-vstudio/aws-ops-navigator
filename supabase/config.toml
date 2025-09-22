@@ -2,3 +2,6 @@ project_id = "xafzdcrgbcudztfukggt"
 
 [functions.aws-dashboard-data]
 verify_jwt = true
+
+[functions.save-aws-credentials]
+verify_jwt = true
