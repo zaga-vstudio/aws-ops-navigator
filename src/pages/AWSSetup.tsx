@@ -18,9 +18,21 @@ import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
+interface AWSSetupError {
+  message: string;
+  code?: string;
+  type: 'validation' | 'api' | 'network' | 'unknown';
+}
+
+interface ValidationErrors {
+  accessKeyId?: string;
+  secretAccessKey?: string;
+}
+
 const AWSSetup = () => {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AWSSetupError | null>(null);
+  const [validationErrors, setValidationErrors] = useState<ValidationErrors>({});
   const [isValidating, setIsValidating] = useState(false);
   const [formData, setFormData] = useState({
     accessKeyId: '',
@@ -30,25 +42,87 @@ const AWSSetup = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
 
+  // AWS Access Key ID validation
+  const validateAccessKeyId = (keyId: string): string | undefined => {
+    if (!keyId) return 'Access Key ID is required';
+    if (!keyId.startsWith('AKIA')) return 'Access Key ID must start with "AKIA"';
+    if (keyId.length !== 20) return 'Access Key ID must be exactly 20 characters long';
+    if (!/^[A-Z0-9]+$/.test(keyId)) return 'Access Key ID must contain only uppercase letters and numbers';
+    return undefined;
+  };
+
+  // AWS Secret Access Key validation
+  const validateSecretAccessKey = (secretKey: string): string | undefined => {
+    if (!secretKey) return 'Secret Access Key is required';
+    if (secretKey.length !== 40) return 'Secret Access Key must be exactly 40 characters long';
+    if (!/^[A-Za-z0-9+/]+$/.test(secretKey)) return 'Secret Access Key contains invalid characters';
+    return undefined;
+  };
+
+  // Real-time validation
+  const handleInputChange = (field: 'accessKeyId' | 'secretAccessKey', value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Clear previous validation error
+    setValidationErrors(prev => ({ ...prev, [field]: undefined }));
+    
+    // Validate on blur or if field has content
+    if (value.trim()) {
+      const error = field === 'accessKeyId' 
+        ? validateAccessKeyId(value.trim())
+        : validateSecretAccessKey(value.trim());
+      
+      if (error) {
+        setValidationErrors(prev => ({ ...prev, [field]: error }));
+      }
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     
+    // Final validation before submission
+    const accessKeyError = validateAccessKeyId(formData.accessKeyId.trim());
+    const secretKeyError = validateSecretAccessKey(formData.secretAccessKey.trim());
+    
+    if (accessKeyError || secretKeyError) {
+      setValidationErrors({
+        accessKeyId: accessKeyError,
+        secretAccessKey: secretKeyError
+      });
+      return;
+    }
+    
     setIsLoading(true);
     setIsValidating(true);
     setError(null);
+    setValidationErrors({});
 
     try {
       // Call the edge function to save and validate AWS credentials
       const { data, error: apiError } = await supabase.functions.invoke('save-aws-credentials', {
         body: {
-          accessKeyId: formData.accessKeyId,
-          secretAccessKey: formData.secretAccessKey
+          accessKeyId: formData.accessKeyId.trim(),
+          secretAccessKey: formData.secretAccessKey.trim()
         }
       });
 
-      if (apiError) throw apiError;
-      if (data.error) throw new Error(data.error);
+      if (apiError) {
+        throw {
+          message: apiError.message || 'Network error occurred',
+          code: apiError.name,
+          type: 'network'
+        } as AWSSetupError;
+      }
+      
+      if (data?.error) {
+        throw {
+          message: data.error,
+          code: data.errorCode,
+          type: 'api'
+        } as AWSSetupError;
+      }
 
       // Update setup completion status
       const { error: setupError } = await supabase
@@ -59,19 +133,32 @@ const AWSSetup = () => {
         })
         .eq('user_id', user.id);
 
-      if (setupError) throw setupError;
+      if (setupError) {
+        throw {
+          message: 'Failed to update setup status',
+          type: 'api'
+        } as AWSSetupError;
+      }
 
       // Redirect to dashboard
       navigate('/dashboard');
-    } catch (error: any) {
-      setError(error.message || 'Failed to connect to AWS. Please verify your credentials.');
+    } catch (err) {
+      const setupError: AWSSetupError = err as AWSSetupError || {
+        message: 'An unexpected error occurred',
+        type: 'unknown'
+      };
+      
+      setError(setupError);
     } finally {
       setIsLoading(false);
       setIsValidating(false);
     }
   };
 
-  const isFormValid = formData.accessKeyId.trim() && formData.secretAccessKey.trim();
+  const isFormValid = formData.accessKeyId.trim() && 
+    formData.secretAccessKey.trim() && 
+    !validationErrors.accessKeyId && 
+    !validationErrors.secretAccessKey;
 
   return (
     <div className="min-h-screen bg-background">
@@ -123,9 +210,13 @@ const AWSSetup = () => {
                       id="accessKeyId"
                       placeholder="AKIA..."
                       value={formData.accessKeyId}
-                      onChange={(e) => setFormData({ ...formData, accessKeyId: e.target.value })}
+                      onChange={(e) => handleInputChange('accessKeyId', e.target.value)}
+                      className={validationErrors.accessKeyId ? 'border-destructive' : ''}
                       required
                     />
+                    {validationErrors.accessKeyId && (
+                      <p className="text-sm text-destructive">{validationErrors.accessKeyId}</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="secretAccessKey">AWS Secret Access Key</Label>
@@ -134,9 +225,13 @@ const AWSSetup = () => {
                       type="password"
                       placeholder="Enter your secret access key"
                       value={formData.secretAccessKey}
-                      onChange={(e) => setFormData({ ...formData, secretAccessKey: e.target.value })}
+                      onChange={(e) => handleInputChange('secretAccessKey', e.target.value)}
+                      className={validationErrors.secretAccessKey ? 'border-destructive' : ''}
                       required
                     />
+                    {validationErrors.secretAccessKey && (
+                      <p className="text-sm text-destructive">{validationErrors.secretAccessKey}</p>
+                    )}
                   </div>
                 </div>
 
@@ -168,7 +263,18 @@ const AWSSetup = () => {
                   <Alert className="border-destructive/50">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription className="text-destructive">
-                      {error}
+                      <div className="font-medium mb-1">
+                        {error.type === 'validation' && 'Validation Error'}
+                        {error.type === 'api' && 'AWS Connection Error'}
+                        {error.type === 'network' && 'Network Error'}
+                        {error.type === 'unknown' && 'Connection Error'}
+                      </div>
+                      {error.message}
+                      {error.code && (
+                        <div className="text-xs mt-1 opacity-75">
+                          Error Code: {error.code}
+                        </div>
+                      )}
                     </AlertDescription>
                   </Alert>
                 )}

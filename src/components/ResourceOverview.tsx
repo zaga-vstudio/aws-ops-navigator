@@ -135,7 +135,7 @@ export const ResourceOverview = () => {
         <CardContent>
           <div className="text-center py-8">
             <p className="text-muted-foreground mb-4">Failed to load AWS resources</p>
-            <p className="text-sm text-destructive">{error}</p>
+            <p className="text-sm text-destructive">{error.message}</p>
           </div>
         </CardContent>
       </Card>
