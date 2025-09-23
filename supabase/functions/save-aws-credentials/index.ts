@@ -37,24 +37,48 @@ serve(async (req) => {
     // Validate AWS credentials by making a simple API call
     console.log('Validating AWS credentials...');
     
-    // Import AWS SDK components
-    const { S3Client, ListBucketsCommand } = await import('https://esm.sh/@aws-sdk/client-s3@3.451.0');
+    // Debug: Log partial credentials (masked for security)
+    console.log('Access Key ID:', accessKeyId ? `${accessKeyId.substring(0, 4)}***${accessKeyId.substring(accessKeyId.length - 4)}` : 'undefined');
+    console.log('Secret Access Key:', secretAccessKey ? `${secretAccessKey.substring(0, 4)}***` : 'undefined');
     
-    const s3Client = new S3Client({
-      region: 'us-east-1', // Use a default region for validation
+    // Import AWS STS SDK components (more reliable than S3 for credential validation)
+    const { STSClient, GetCallerIdentityCommand } = await import('https://esm.sh/@aws-sdk/client-sts@3.451.0');
+    
+    const stsClient = new STSClient({
+      region: 'us-east-1',
       credentials: {
-        accessKeyId,
-        secretAccessKey,
+        accessKeyId: accessKeyId,
+        secretAccessKey: secretAccessKey,
+      },
+      // Disable automatic credential provider chain to avoid file system access
+      credentialDefaultProvider: () => {
+        return Promise.resolve({
+          accessKeyId: accessKeyId,
+          secretAccessKey: secretAccessKey,
+        });
       },
     });
 
     try {
-      // Test the credentials with a simple API call
-      await s3Client.send(new ListBucketsCommand({}));
-      console.log('AWS credentials validated successfully');
-    } catch (awsError) {
+      // Test the credentials with STS GetCallerIdentity (lowest cost, most reliable test)
+      const result = await stsClient.send(new GetCallerIdentityCommand({}));
+      console.log('AWS credentials validated successfully. Account:', result.Account, 'User:', result.Arn);
+    } catch (awsError: any) {
       console.error('AWS credential validation failed:', awsError);
-      throw new Error('Invalid AWS credentials. Please check your Access Key ID and Secret Access Key.');
+      console.error('AWS Error Code:', awsError.name || awsError.code);
+      console.error('AWS Error Message:', awsError.message);
+      
+      // Return specific AWS error codes for better frontend handling
+      const errorCode = awsError.name || awsError.code || 'UnknownError';
+      const errorMessage = awsError.message || 'Invalid AWS credentials. Please check your Access Key ID and Secret Access Key.';
+      
+      return new Response(JSON.stringify({ 
+        error: errorMessage,
+        errorCode: errorCode 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // If validation successful, encrypt and store the credentials
