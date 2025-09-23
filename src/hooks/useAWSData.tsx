@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -54,7 +54,7 @@ export const useAWSData = () => {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const fetchAWSData = async () => {
+  const fetchAWSData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -103,7 +103,7 @@ export const useAWSData = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
 
   const refetch = () => {
     fetchAWSData();
@@ -111,7 +111,7 @@ export const useAWSData = () => {
 
   useEffect(() => {
     fetchAWSData();
-  }, []);
+  }, [fetchAWSData]);
 
   return {
     data,
