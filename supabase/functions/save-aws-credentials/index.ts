@@ -50,13 +50,14 @@ serve(async (req) => {
         accessKeyId: accessKeyId,
         secretAccessKey: secretAccessKey,
       },
-      // Disable automatic credential provider chain to avoid file system access
+      // Completely disable all credential providers to avoid file system access
       credentialDefaultProvider: () => {
-        return Promise.resolve({
-          accessKeyId: accessKeyId,
-          secretAccessKey: secretAccessKey,
-        });
+        throw new Error('No default credential provider');
       },
+      // Force explicit credentials only
+      forcePathStyle: true,
+      // Disable all automatic credential detection
+      maxAttempts: 1,
     });
 
     try {
@@ -85,9 +86,9 @@ serve(async (req) => {
     // Note: In a production environment, you would want to use proper encryption
     // For this demo, we'll store them directly (Supabase handles basic encryption at rest)
     
-    // Check if user already has AWS configuration
+    // Check if user already has AWS credentials
     const { data: existingConfig, error: selectError } = await supabase
-      .from('aws_configurations')
+      .from('user_aws_credentials')
       .select('id')
       .eq('user_id', user.id)
       .maybeSingle();
@@ -98,9 +99,9 @@ serve(async (req) => {
     }
 
     if (existingConfig) {
-      // Update existing configuration
+      // Update existing credentials
       const { error: updateError } = await supabase
-        .from('aws_configurations')
+        .from('user_aws_credentials')
         .update({
           access_key_id: accessKeyId,
           secret_access_key: secretAccessKey,
@@ -109,23 +110,22 @@ serve(async (req) => {
         .eq('user_id', user.id);
 
       if (updateError) {
-        console.error('Error updating AWS config:', updateError);
+        console.error('Error updating AWS credentials:', updateError);
         throw updateError;
       }
     } else {
-      // Create new configuration
+      // Create new credentials
       const { error: insertError } = await supabase
-        .from('aws_configurations')
+        .from('user_aws_credentials')
         .insert({
           user_id: user.id,
           access_key_id: accessKeyId,
           secret_access_key: secretAccessKey,
-          aws_region: 'us-east-1',
-          configuration_name: 'Default',
+          region: 'us-east-1',
         });
 
       if (insertError) {
-        console.error('Error inserting AWS config:', insertError);
+        console.error('Error inserting AWS credentials:', insertError);
         throw insertError;
       }
     }

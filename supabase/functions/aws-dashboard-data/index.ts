@@ -60,8 +60,8 @@ interface DashboardData {
 async function getAWSCredentials(supabase: any, userId: string): Promise<AWSConfig | null> {
   try {
     const { data, error } = await supabase
-      .from('aws_configurations')
-      .select('access_key_id, secret_access_key, aws_region, session_token')
+      .from('user_aws_credentials')
+      .select('access_key_id, secret_access_key, region')
       .eq('user_id', userId)
       .eq('is_active', true)
       .single();
@@ -74,8 +74,7 @@ async function getAWSCredentials(supabase: any, userId: string): Promise<AWSConf
     return {
       access_key_id: data.access_key_id,
       secret_access_key: data.secret_access_key,
-      aws_region: data.aws_region,
-      session_token: data.session_token
+      aws_region: data.region || 'us-east-1',
     };
   } catch (error) {
     console.error('Error in getAWSCredentials:', error);

@@ -91,30 +91,6 @@ const Setup = () => {
 
       if (profileError) throw profileError;
 
-      // Create initial AWS configuration
-      const projects = formData.projects
-        .split(',')
-        .map(p => p.trim())
-        .filter(p => p.length > 0);
-
-      const { error: configError } = await supabase
-        .from('aws_configurations')
-        .insert({
-          user_id: user.id,
-          aws_region: formData.awsRegion,
-          access_key_id: 'temp', // Will be updated when user connects AWS
-          secret_access_key: 'temp', // Will be updated when user connects AWS
-          projects: projects,
-          alert_thresholds: {
-            cpu_threshold: parseInt(formData.cpuThreshold),
-            memory_threshold: parseInt(formData.memoryThreshold),
-            disk_threshold: parseInt(formData.diskThreshold),
-            network_threshold: parseInt(formData.networkThreshold),
-          },
-        });
-
-      if (configError) throw configError;
-
       // Update setup completion status
       const { error: setupError } = await supabase
         .from('user_setup')
@@ -123,6 +99,8 @@ const Setup = () => {
           initial_configuration_completed: true,
         })
         .eq('user_id', user.id);
+
+      if (setupError) throw setupError;
 
       if (setupError) throw setupError;
 
