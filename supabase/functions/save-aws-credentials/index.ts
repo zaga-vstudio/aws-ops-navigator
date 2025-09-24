@@ -41,8 +41,8 @@ serve(async (req) => {
     console.log('Access Key ID:', accessKeyId ? `${accessKeyId.substring(0, 4)}***${accessKeyId.substring(accessKeyId.length - 4)}` : 'undefined');
     console.log('Secret Access Key:', secretAccessKey ? `${secretAccessKey.substring(0, 4)}***` : 'undefined');
     
-    // Import AWS STS SDK components (more reliable than S3 for credential validation)
-    const { STSClient, GetCallerIdentityCommand } = await import('https://esm.sh/@aws-sdk/client-sts@3.451.0');
+    // Import AWS STS SDK components using npm: prefix for Deno compatibility
+    const { STSClient, GetCallerIdentityCommand } = await import('npm:@aws-sdk/client-sts');
     
     const stsClient = new STSClient({
       region: 'us-east-1',
@@ -50,14 +50,6 @@ serve(async (req) => {
         accessKeyId: accessKeyId,
         secretAccessKey: secretAccessKey,
       },
-      // Completely disable all credential providers to avoid file system access
-      credentialDefaultProvider: () => {
-        throw new Error('No default credential provider');
-      },
-      // Force explicit credentials only
-      forcePathStyle: true,
-      // Disable all automatic credential detection
-      maxAttempts: 1,
     });
 
     try {
