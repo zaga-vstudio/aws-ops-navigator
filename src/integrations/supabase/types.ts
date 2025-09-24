@@ -92,6 +92,39 @@ export type Database = {
         }
         Relationships: []
       }
+      user_aws_credentials: {
+        Row: {
+          access_key_id: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          region: string | null
+          secret_access_key: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          access_key_id: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          region?: string | null
+          secret_access_key: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          access_key_id?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          region?: string | null
+          secret_access_key?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_setup: {
         Row: {
           aws_connected: boolean | null
@@ -99,6 +132,7 @@ export type Database = {
           created_at: string
           id: string
           initial_configuration_completed: boolean | null
+          onboarding_completed: boolean | null
           profile_completed: boolean | null
           updated_at: string
           user_id: string
@@ -109,6 +143,7 @@ export type Database = {
           created_at?: string
           id?: string
           initial_configuration_completed?: boolean | null
+          onboarding_completed?: boolean | null
           profile_completed?: boolean | null
           updated_at?: string
           user_id: string
@@ -119,6 +154,7 @@ export type Database = {
           created_at?: string
           id?: string
           initial_configuration_completed?: boolean | null
+          onboarding_completed?: boolean | null
           profile_completed?: boolean | null
           updated_at?: string
           user_id?: string
