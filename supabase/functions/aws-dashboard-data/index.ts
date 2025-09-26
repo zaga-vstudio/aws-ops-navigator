@@ -1,5 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { EC2Client, DescribeInstancesCommand } from "https://esm.sh/@aws-sdk/client-ec2@3.451.0";
+import { RDSClient, DescribeDBInstancesCommand } from "https://esm.sh/@aws-sdk/client-rds@3.451.0";
+import { S3Client, ListBucketsCommand } from "https://esm.sh/@aws-sdk/client-s3@3.451.0";
+import { CloudWatchClient, GetMetricStatisticsCommand } from "https://esm.sh/@aws-sdk/client-cloudwatch@3.451.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -85,105 +89,170 @@ async function getAWSCredentials(supabase: any, userId: string): Promise<AWSConf
 async function getEC2Instances(config: AWSConfig): Promise<EC2Instance[]> {
   console.log(`Fetching EC2 instances for region: ${config.aws_region}`);
   
-  // For now, return realistic demo data that shows we have connected credentials
-  // In the future, we can implement actual AWS API calls
-  const instances: EC2Instance[] = [
-    {
-      id: 'i-' + Math.random().toString(36).substring(7),
-      name: `Web Server (${config.aws_region})`,
-      type: 't3.medium',
-      state: 'running',
+  try {
+    const ec2Client = new EC2Client({
       region: config.aws_region,
-      availabilityZone: `${config.aws_region}a`,
-      launchTime: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-      publicIp: '54.123.456.789',
-      privateIp: '10.0.1.123'
-    },
-    {
-      id: 'i-' + Math.random().toString(36).substring(7),
-      name: `API Server (${config.aws_region})`,
-      type: 't3.large',
-      state: 'running',
-      region: config.aws_region,
-      availabilityZone: `${config.aws_region}b`,
-      launchTime: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-      publicIp: '54.987.654.321',
-      privateIp: '10.0.2.456'
-    },
-    {
-      id: 'i-' + Math.random().toString(36).substring(7),
-      name: `Database Server (${config.aws_region})`,
-      type: 't3.small',
-      state: 'stopped',
-      region: config.aws_region,
-      availabilityZone: `${config.aws_region}c`,
-      launchTime: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
-      publicIp: undefined,
-      privateIp: '10.0.3.789'
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+    });
+
+    const command = new DescribeInstancesCommand({});
+    const response = await ec2Client.send(command);
+    
+    const instances: EC2Instance[] = [];
+    
+    if (response.Reservations) {
+      for (const reservation of response.Reservations) {
+        if (reservation.Instances) {
+          for (const instance of reservation.Instances) {
+            const nameTag = instance.Tags?.find(tag => tag.Key === 'Name');
+            instances.push({
+              id: instance.InstanceId || '',
+              name: nameTag?.Value || instance.InstanceId || 'Unnamed Instance',
+              type: instance.InstanceType || 'unknown',
+              state: instance.State?.Name || 'unknown',
+              region: config.aws_region,
+              availabilityZone: instance.Placement?.AvailabilityZone || '',
+              launchTime: instance.LaunchTime?.toISOString() || '',
+              publicIp: instance.PublicIpAddress,
+              privateIp: instance.PrivateIpAddress,
+            });
+          }
+        }
+      }
     }
-  ];
-  
-  console.log(`Found ${instances.length} EC2 instances`);
-  return instances;
+    
+    console.log(`Found ${instances.length} EC2 instances`);
+    return instances;
+  } catch (error) {
+    console.error('Error fetching EC2 instances:', error);
+    return [];
+  }
 }
 
 async function getRDSDatabases(config: AWSConfig): Promise<RDSDatabase[]> {
   console.log(`Fetching RDS databases for region: ${config.aws_region}`);
   
-  // For now, return realistic demo data that shows we have connected credentials
-  const databases: RDSDatabase[] = [
-    {
-      id: 'db-' + Math.random().toString(36).substring(7),
-      name: `production-db-${config.aws_region}`,
-      engine: 'postgres',
-      engineVersion: '14.9',
-      state: 'available',
+  try {
+    const rdsClient = new RDSClient({
       region: config.aws_region,
-      instanceClass: 'db.t3.micro',
-      allocatedStorage: 20,
-      endpoint: `production-db.${Math.random().toString(36).substring(7)}.${config.aws_region}.rds.amazonaws.com`
-    },
-    {
-      id: 'db-' + Math.random().toString(36).substring(7),
-      name: `staging-db-${config.aws_region}`,
-      engine: 'mysql',
-      engineVersion: '8.0.35',
-      state: 'available',
-      region: config.aws_region,
-      instanceClass: 'db.t3.small',
-      allocatedStorage: 50,
-      endpoint: `staging-db.${Math.random().toString(36).substring(7)}.${config.aws_region}.rds.amazonaws.com`
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+    });
+
+    const command = new DescribeDBInstancesCommand({});
+    const response = await rdsClient.send(command);
+    
+    const databases: RDSDatabase[] = [];
+    
+    if (response.DBInstances) {
+      for (const dbInstance of response.DBInstances) {
+        databases.push({
+          id: dbInstance.DBInstanceIdentifier || '',
+          name: dbInstance.DBName || dbInstance.DBInstanceIdentifier || 'Unnamed Database',
+          engine: dbInstance.Engine || 'unknown',
+          engineVersion: dbInstance.EngineVersion || 'unknown',
+          state: dbInstance.DBInstanceStatus || 'unknown',
+          region: config.aws_region,
+          instanceClass: dbInstance.DBInstanceClass || 'unknown',
+          allocatedStorage: dbInstance.AllocatedStorage || 0,
+          endpoint: dbInstance.Endpoint?.Address,
+        });
+      }
     }
-  ];
-  
-  console.log(`Found ${databases.length} RDS databases`);
-  return databases;
+    
+    console.log(`Found ${databases.length} RDS databases`);
+    return databases;
+  } catch (error) {
+    console.error('Error fetching RDS databases:', error);
+    return [];
+  }
 }
 
 async function getS3Buckets(config: AWSConfig): Promise<S3Bucket[]> {
   console.log(`Fetching S3 buckets for region: ${config.aws_region}`);
   
-  // For now, return realistic demo data that shows we have connected credentials
-  const buckets: S3Bucket[] = [
-    {
-      name: `my-app-assets-${config.aws_region}`,
+  try {
+    const s3Client = new S3Client({
       region: config.aws_region,
-      creationDate: new Date(Date.now() - 2592000000).toISOString() // 30 days ago
-    },
-    {
-      name: `my-app-backups-${config.aws_region}`,
-      region: config.aws_region,
-      creationDate: new Date(Date.now() - 1296000000).toISOString() // 15 days ago
-    },
-    {
-      name: `logs-bucket-${config.aws_region}`,
-      region: config.aws_region,
-      creationDate: new Date(Date.now() - 604800000).toISOString() // 7 days ago
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+    });
+
+    const command = new ListBucketsCommand({});
+    const response = await s3Client.send(command);
+    
+    const buckets: S3Bucket[] = [];
+    
+    if (response.Buckets) {
+      for (const bucket of response.Buckets) {
+        buckets.push({
+          name: bucket.Name || '',
+          region: config.aws_region, // Note: S3 bucket region needs separate call to get exact region
+          creationDate: bucket.CreationDate?.toISOString() || '',
+        });
+      }
     }
-  ];
+    
+    console.log(`Found ${buckets.length} S3 buckets`);
+    return buckets;
+  } catch (error) {
+    console.error('Error fetching S3 buckets:', error);
+    return [];
+  }
+}
+
+function calculateEstimatedCost(ec2Instances: EC2Instance[], rdsDatabases: RDSDatabase[], s3Buckets: S3Bucket[]): number {
+  // Basic cost estimation - in a real app you'd want to call AWS Cost Explorer API
+  let totalCost = 0;
   
-  console.log(`Found ${buckets.length} S3 buckets`);
-  return buckets;
+  // EC2 cost estimation (rough hourly rates in USD per hour)
+  for (const instance of ec2Instances) {
+    if (instance.state === 'running') {
+      const hourlyRates: { [key: string]: number } = {
+        't2.nano': 0.0058,
+        't2.micro': 0.0116,
+        't2.small': 0.023,
+        't2.medium': 0.0464,
+        't3.nano': 0.0052,
+        't3.micro': 0.0104,
+        't3.small': 0.0208,
+        't3.medium': 0.0416,
+        't3.large': 0.0832,
+        't3.xlarge': 0.1664,
+      };
+      
+      const hourlyRate = hourlyRates[instance.type] || 0.05; // default rate
+      totalCost += hourlyRate * 24 * 30; // monthly cost
+    }
+  }
+  
+  // RDS cost estimation
+  for (const db of rdsDatabases) {
+    if (db.state === 'available') {
+      const hourlyRates: { [key: string]: number } = {
+        'db.t3.micro': 0.017,
+        'db.t3.small': 0.034,
+        'db.t3.medium': 0.068,
+        'db.t3.large': 0.136,
+      };
+      
+      const hourlyRate = hourlyRates[db.instanceClass] || 0.05;
+      totalCost += hourlyRate * 24 * 30; // monthly cost
+      totalCost += db.allocatedStorage * 0.10; // storage cost per GB
+    }
+  }
+  
+  // S3 cost estimation (minimal for typical usage)
+  totalCost += s3Buckets.length * 0.50; // roughly $0.50 per bucket per month for minimal usage
+  
+  return Math.round(totalCost * 100) / 100;
 }
 
 serve(async (req) => {
@@ -240,14 +309,14 @@ serve(async (req) => {
       getS3Buckets(awsConfig)
     ]);
 
-    // Calculate metrics
+    // Calculate metrics with real cost calculation
     const metrics = {
       totalInstances: ec2Instances.length,
       runningInstances: ec2Instances.filter(i => i.state === 'running').length,
       stoppedInstances: ec2Instances.filter(i => i.state === 'stopped').length,
       totalDatabases: rdsDatabases.length,
       totalBuckets: s3Buckets.length,
-      estimatedCost: Math.round((ec2Instances.length * 50 + rdsDatabases.length * 25 + s3Buckets.length * 5) * 100) / 100
+      estimatedCost: calculateEstimatedCost(ec2Instances, rdsDatabases, s3Buckets)
     };
 
     const dashboardData: DashboardData = {
