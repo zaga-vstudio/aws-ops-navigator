@@ -41,8 +41,8 @@ serve(async (req) => {
     console.log('Access Key ID:', accessKeyId ? `${accessKeyId.substring(0, 4)}***${accessKeyId.substring(accessKeyId.length - 4)}` : 'undefined');
     console.log('Secret Access Key:', secretAccessKey ? `${secretAccessKey.substring(0, 4)}***` : 'undefined');
     
-    // Import AWS STS SDK components using npm: prefix for Deno compatibility
-    const { STSClient, GetCallerIdentityCommand } = await import('npm:@aws-sdk/client-sts');
+    // Import AWS STS SDK components using esm.sh
+    const { STSClient, GetCallerIdentityCommand } = await import('https://esm.sh/@aws-sdk/client-sts@3.451.0');
     
     const stsClient = new STSClient({
       region: 'us-east-1',
