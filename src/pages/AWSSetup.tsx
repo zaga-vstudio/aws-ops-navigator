@@ -243,19 +243,28 @@ const AWSSetup = () => {
                   </AlertDescription>
                 </Alert>
 
-                <Alert>
-                  <ExternalLink className="h-4 w-4" />
+                <Alert className="border-primary/30 bg-primary/5">
+                  <ExternalLink className="h-4 w-4 text-primary" />
                   <AlertDescription>
-                    <strong>Need help?</strong> Visit the{" "}
-                    <a 
-                      href="https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_access-keys.html" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-primary underline"
-                    >
-                      AWS documentation
-                    </a>{" "}
-                    to learn how to create access keys.
+                    <div className="space-y-2">
+                      <p className="font-semibold text-foreground">Cómo crear credenciales de AWS (IAM)</p>
+                      <ol className="text-sm space-y-1 list-decimal list-inside text-muted-foreground">
+                        <li>Ingresa a la <a href="https://console.aws.amazon.com/iam" target="_blank" rel="noopener noreferrer" className="text-primary underline">Consola de IAM</a></li>
+                        <li>Ve a "Users" y crea un nuevo usuario</li>
+                        <li>Selecciona "Programmatic access"</li>
+                        <li>En permisos, adjunta las siguientes políticas:
+                          <ul className="ml-6 mt-1 space-y-0.5 list-disc">
+                            <li><code className="text-xs bg-muted px-1 rounded">AmazonEC2ReadOnlyAccess</code></li>
+                            <li><code className="text-xs bg-muted px-1 rounded">AmazonRDSReadOnlyAccess</code></li>
+                            <li><code className="text-xs bg-muted px-1 rounded">AmazonS3ReadOnlyAccess</code></li>
+                          </ul>
+                        </li>
+                        <li>Guarda el Access Key ID y Secret Access Key</li>
+                      </ol>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        <strong>Importante:</strong> Solo se requiere acceso de lectura. CloudHub nunca modifica tu infraestructura.
+                      </p>
+                    </div>
                   </AlertDescription>
                 </Alert>
 

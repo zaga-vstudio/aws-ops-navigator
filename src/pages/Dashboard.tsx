@@ -91,8 +91,8 @@ const Dashboard = () => {
                   title="Total Instances"
                   value={awsData?.metrics.totalInstances || 0}
                   unit="EC2"
-                  change={8.2}
-                  changeType="increase"
+                  change={0}
+                  changeType={awsData?.metrics.totalInstances ? "increase" : "neutral"}
                   status="healthy"
                   loading={awsLoading}
                   icon={<Server className="h-4 w-4 text-primary" />}
@@ -101,8 +101,8 @@ const Dashboard = () => {
                   title="Running Instances"
                   value={awsData?.metrics.runningInstances || 0}
                   unit="Active"
-                  change={-2.1}
-                  changeType="decrease"
+                  change={0}
+                  changeType={awsData?.metrics.runningInstances ? "increase" : "neutral"}
                   status="healthy"
                   loading={awsLoading}
                   icon={<Cpu className="h-4 w-4 text-cloud-cyan" />}
@@ -111,8 +111,8 @@ const Dashboard = () => {
                   title="RDS Databases"
                   value={awsData?.metrics.totalDatabases || 0}
                   unit="DB"
-                  change={12.5}
-                  changeType="increase"
+                  change={0}
+                  changeType={awsData?.metrics.totalDatabases ? "increase" : "neutral"}
                   status="healthy"
                   loading={awsLoading}
                   icon={<Database className="h-4 w-4 text-cloud-purple" />}
@@ -121,9 +121,9 @@ const Dashboard = () => {
                   title="Monthly Cost"
                   value={awsData?.metrics.estimatedCost ? `$${awsData.metrics.estimatedCost}` : "$0"}
                   unit=""
-                  change={5.3}
-                  changeType="increase"
-                  status="warning"
+                  change={0}
+                  changeType={awsData?.metrics.estimatedCost && awsData.metrics.estimatedCost > 0 ? "increase" : "neutral"}
+                  status={awsData?.metrics.estimatedCost && awsData.metrics.estimatedCost > 0 ? "warning" : "healthy"}
                   loading={awsLoading}
                   icon={<DollarSign className="h-4 w-4 text-warning" />}
                 />

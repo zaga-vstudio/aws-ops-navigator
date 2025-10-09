@@ -142,7 +142,11 @@ export const useAWSData = () => {
       );
 
       if (functionError) {
-        throw functionError;
+        // Mejorar el mensaje de error para usuarios
+        const userFriendlyMessage = functionError.message?.includes('2xx status code') 
+          ? 'No se pudo conectar con AWS. Por favor verifica tus credenciales en Configuración.'
+          : functionError.message || 'Error al obtener datos de AWS';
+        throw new Error(userFriendlyMessage);
       }
 
       if (response?.error) {

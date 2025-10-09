@@ -36,6 +36,16 @@ export const Header = () => {
       </div>
 
       <div className="flex items-center gap-2">
+        <Button 
+          size="sm" 
+          variant="outline"
+          onClick={() => navigate("/dashboard")}
+          className="hidden md:flex"
+        >
+          <Cloud className="h-4 w-4 mr-2" />
+          Dashboard
+        </Button>
+        
         <LaunchResourceDropdown>
           <Button size="sm" className="bg-gradient-to-r from-primary to-primary-glow hover:opacity-90 hidden sm:flex">
             <Plus className="h-4 w-4 mr-2" />
