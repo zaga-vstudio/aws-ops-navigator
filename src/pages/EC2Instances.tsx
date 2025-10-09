@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
+import { useAWSData } from "@/hooks/useAWSData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,8 @@ import {
   RotateCcw, 
   MoreVertical,
   Plus,
-  Filter
+  Filter,
+  RefreshCw
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,53 +25,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-interface EC2Instance {
-  id: string;
-  name: string;
-  type: string;
-  state: 'running' | 'stopped' | 'pending' | 'stopping' | 'terminated';
-  region: string;
-  availabilityZone: string;
-  launchTime: string;
-  publicIp?: string;
-  privateIp: string;
-}
-
-const mockInstances: EC2Instance[] = [
-  {
-    id: "i-0123456789abcdef0",
-    name: "web-server-prod",
-    type: "t3.medium",
-    state: "running",
-    region: "us-east-1",
-    availabilityZone: "us-east-1a",
-    launchTime: "2024-01-15T10:30:00Z",
-    publicIp: "54.123.456.789",
-    privateIp: "172.31.32.45"
-  },
-  {
-    id: "i-0987654321fedcba0",
-    name: "api-server-dev",
-    type: "t3.small",
-    state: "running",
-    region: "us-east-1",
-    availabilityZone: "us-east-1b",
-    launchTime: "2024-01-10T08:15:00Z",
-    publicIp: "34.567.890.123",
-    privateIp: "172.31.45.67"
-  },
-  {
-    id: "i-0abcdef123456789",
-    name: "database-backup",
-    type: "t3.large",
-    state: "stopped",
-    region: "us-east-1",
-    availabilityZone: "us-east-1c",
-    launchTime: "2024-01-05T14:20:00Z",
-    privateIp: "172.31.78.90"
-  }
-];
 
 const getStateColor = (state: string) => {
   switch (state) {
@@ -93,8 +48,10 @@ const getStateIcon = (state: string) => {
 
 const EC2Instances = () => {
   const { user, loading } = useAuth();
+  const { data: awsData, loading: awsLoading, refetch } = useAWSData();
   const navigate = useNavigate();
-  const [instances, setInstances] = useState<EC2Instance[]>(mockInstances);
+
+  const instances = awsData?.ec2Instances || [];
 
   useEffect(() => {
     if (!loading && !user) {
@@ -143,6 +100,15 @@ const EC2Instances = () => {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={refetch}
+                    disabled={awsLoading}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${awsLoading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
                   <Button variant="outline" size="sm">
                     <Filter className="h-4 w-4 mr-2" />
                     Filter
@@ -162,7 +128,11 @@ const EC2Instances = () => {
                     <Server className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{instances.length}</div>
+                    {awsLoading ? (
+                      <div className="w-16 h-8 bg-muted animate-pulse rounded" />
+                    ) : (
+                      <div className="text-2xl font-bold">{instances.length}</div>
+                    )}
                   </CardContent>
                 </Card>
                 <Card>
@@ -171,9 +141,13 @@ const EC2Instances = () => {
                     <Play className="h-4 w-4 text-green-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-green-600">
-                      {instances.filter(i => i.state === 'running').length}
-                    </div>
+                    {awsLoading ? (
+                      <div className="w-16 h-8 bg-muted animate-pulse rounded" />
+                    ) : (
+                      <div className="text-2xl font-bold text-green-600">
+                        {instances.filter(i => i.state === 'running').length}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
                 <Card>
@@ -182,9 +156,13 @@ const EC2Instances = () => {
                     <Square className="h-4 w-4 text-red-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-red-600">
-                      {instances.filter(i => i.state === 'stopped').length}
-                    </div>
+                    {awsLoading ? (
+                      <div className="w-16 h-8 bg-muted animate-pulse rounded" />
+                    ) : (
+                      <div className="text-2xl font-bold text-red-600">
+                        {instances.filter(i => i.state === 'stopped').length}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
                 <Card>
@@ -193,9 +171,13 @@ const EC2Instances = () => {
                     <RotateCcw className="h-4 w-4 text-yellow-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-yellow-600">
-                      {instances.filter(i => !['running', 'stopped'].includes(i.state)).length}
-                    </div>
+                    {awsLoading ? (
+                      <div className="w-16 h-8 bg-muted animate-pulse rounded" />
+                    ) : (
+                      <div className="text-2xl font-bold text-yellow-600">
+                        {instances.filter(i => !['running', 'stopped'].includes(i.state)).length}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -206,63 +188,83 @@ const EC2Instances = () => {
                   <CardTitle>Instance Details</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Instance ID</TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>State</TableHead>
-                          <TableHead>Availability Zone</TableHead>
-                          <TableHead>Public IP</TableHead>
-                          <TableHead>Private IP</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {instances.map((instance) => (
-                          <TableRow key={instance.id}>
-                            <TableCell className="font-mono text-sm">{instance.id}</TableCell>
-                            <TableCell className="font-medium">{instance.name}</TableCell>
-                            <TableCell>{instance.type}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {getStateIcon(instance.state)}
-                                <Badge variant={getStateColor(instance.state) as any}>
-                                  {instance.state}
-                                </Badge>
-                              </div>
-                            </TableCell>
-                            <TableCell>{instance.availabilityZone}</TableCell>
-                            <TableCell className="font-mono text-sm">
-                              {instance.publicIp || '-'}
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">{instance.privateIp}</TableCell>
-                            <TableCell className="text-right">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem>Connect</DropdownMenuItem>
-                                  <DropdownMenuItem>
-                                    {instance.state === 'running' ? 'Stop' : 'Start'}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem>Reboot</DropdownMenuItem>
-                                  <DropdownMenuItem className="text-destructive">
-                                    Terminate
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </TableCell>
+                  {awsLoading ? (
+                    <div className="space-y-2">
+                      <div className="w-full h-10 bg-muted animate-pulse rounded" />
+                      <div className="w-full h-10 bg-muted animate-pulse rounded" />
+                      <div className="w-full h-10 bg-muted animate-pulse rounded" />
+                    </div>
+                  ) : instances.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Server className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                      <h3 className="text-lg font-semibold mb-2">No hay instancias EC2</h3>
+                      <p className="text-muted-foreground mb-4">
+                        No se encontraron instancias en tu cuenta de AWS
+                      </p>
+                      <Button className="bg-gradient-to-r from-primary to-primary-glow">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Launch Instance
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Instance ID</TableHead>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>State</TableHead>
+                            <TableHead>Availability Zone</TableHead>
+                            <TableHead>Public IP</TableHead>
+                            <TableHead>Private IP</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {instances.map((instance) => (
+                            <TableRow key={instance.id}>
+                              <TableCell className="font-mono text-sm">{instance.id}</TableCell>
+                              <TableCell className="font-medium">{instance.name}</TableCell>
+                              <TableCell>{instance.type}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {getStateIcon(instance.state)}
+                                  <Badge variant={getStateColor(instance.state) as any}>
+                                    {instance.state}
+                                  </Badge>
+                                </div>
+                              </TableCell>
+                              <TableCell>{instance.availabilityZone}</TableCell>
+                              <TableCell className="font-mono text-sm">
+                                {instance.publicIp || '-'}
+                              </TableCell>
+                              <TableCell className="font-mono text-sm">{instance.privateIp}</TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem>Connect</DropdownMenuItem>
+                                    <DropdownMenuItem>
+                                      {instance.state === 'running' ? 'Stop' : 'Start'}
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem>Reboot</DropdownMenuItem>
+                                    <DropdownMenuItem className="text-destructive">
+                                      Terminate
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
