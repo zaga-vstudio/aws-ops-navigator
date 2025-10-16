@@ -72,13 +72,28 @@ export const useAWSData = () => {
       return { message, type: 'network', code: 'NETWORK_ERROR' };
     }
     
-    // Authentication errors
-    if (message.includes('No active session') || message.includes('unauthorized') || message.includes('InvalidAccessKeyId')) {
-      return { message, type: 'auth', code: 'AUTH_ERROR' };
+    // Authentication/Session errors
+    if (message.includes('No active session') || message.includes('unauthorized')) {
+      return { message: 'Session expired. Please log in again.', type: 'auth', code: 'AUTH_ERROR' };
     }
     
-    // AWS specific errors
-    if (message.includes('AWS') || message.includes('credentials not configured')) {
+    // AWS credential errors
+    if (message.includes('Invalid AWS credentials') || message.includes('InvalidAccessKeyId') || message.includes('SignatureDoesNotMatch')) {
+      return { message: 'Invalid AWS credentials. Please verify and update your credentials in Settings.', type: 'aws', code: 'INVALID_CREDENTIALS' };
+    }
+    
+    // AWS permission errors
+    if (message.includes('lack necessary permissions') || message.includes('UnauthorizedOperation') || message.includes('AccessDenied')) {
+      return { message: 'Your AWS credentials lack necessary permissions. Please check the IAM permissions guide in Settings.', type: 'aws', code: 'INSUFFICIENT_PERMISSIONS' };
+    }
+    
+    // AWS not configured
+    if (message.includes('credentials not configured')) {
+      return { message: 'AWS credentials not configured. Please add your credentials in Settings to view your AWS resources.', type: 'aws', code: 'NOT_CONFIGURED' };
+    }
+    
+    // Generic AWS errors
+    if (message.includes('AWS') || message.includes('Unable to connect to AWS')) {
       return { message, type: 'aws', code: 'AWS_ERROR' };
     }
     
@@ -96,7 +111,7 @@ export const useAWSData = () => {
     switch (error.type) {
       case 'auth':
         toastConfig.title = "Authentication Error";
-        toastConfig.description = "Please configure your AWS credentials in Settings to view real data.";
+        toastConfig.description = error.message;
         break;
       case 'network':
         toastConfig.title = "Network Error";
@@ -105,10 +120,11 @@ export const useAWSData = () => {
           : "Connection failed. Please check your network connection.";
         break;
       case 'aws':
-        toastConfig.title = "AWS Configuration Error";
-        toastConfig.description = error.message.includes('credentials not configured')
-          ? "Please configure your AWS credentials in Settings to view real data."
-          : error.message;
+        toastConfig.title = error.code === 'NOT_CONFIGURED' ? "AWS Not Configured" : 
+                           error.code === 'INVALID_CREDENTIALS' ? "Invalid Credentials" :
+                           error.code === 'INSUFFICIENT_PERMISSIONS' ? "Insufficient Permissions" :
+                           "AWS Configuration Error";
+        toastConfig.description = error.message;
         break;
       default:
         toastConfig.title = "Error";
@@ -142,11 +158,7 @@ export const useAWSData = () => {
       );
 
       if (functionError) {
-        // Mejorar el mensaje de error para usuarios
-        const userFriendlyMessage = functionError.message?.includes('2xx status code') 
-          ? 'No se pudo conectar con AWS. Por favor verifica tus credenciales en Configuración.'
-          : functionError.message || 'Error al obtener datos de AWS';
-        throw new Error(userFriendlyMessage);
+        throw new Error(functionError.message || 'Error al obtener datos de AWS');
       }
 
       if (response?.error) {

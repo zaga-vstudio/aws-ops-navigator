@@ -1,9 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { EC2Client, DescribeInstancesCommand } from "https://esm.sh/@aws-sdk/client-ec2@3.451.0";
-import { RDSClient, DescribeDBInstancesCommand } from "https://esm.sh/@aws-sdk/client-rds@3.451.0";
-import { S3Client, ListBucketsCommand } from "https://esm.sh/@aws-sdk/client-s3@3.451.0";
-import { CloudWatchClient, GetMetricStatisticsCommand } from "https://esm.sh/@aws-sdk/client-cloudwatch@3.451.0";
+import { EC2Client, DescribeInstancesCommand } from "npm:@aws-sdk/client-ec2@3.451.0";
+import { RDSClient, DescribeDBInstancesCommand } from "npm:@aws-sdk/client-rds@3.451.0";
+import { S3Client, ListBucketsCommand } from "npm:@aws-sdk/client-s3@3.451.0";
+import { CloudWatchClient, GetMetricStatisticsCommand } from "npm:@aws-sdk/client-cloudwatch@3.451.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -96,6 +96,11 @@ async function getEC2Instances(config: AWSConfig): Promise<EC2Instance[]> {
         accessKeyId: config.access_key_id,
         secretAccessKey: config.secret_access_key,
       },
+      // Force explicit credentials, disable file-based credential lookup
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
     });
 
     const command = new DescribeInstancesCommand({});
@@ -126,9 +131,14 @@ async function getEC2Instances(config: AWSConfig): Promise<EC2Instance[]> {
     
     console.log(`Found ${instances.length} EC2 instances`);
     return instances;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching EC2 instances:', error);
-    return [];
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.Code || error.$metadata?.httpStatusCode
+    });
+    throw new Error(`Failed to fetch EC2 instances: ${error.message}`);
   }
 }
 
@@ -142,6 +152,11 @@ async function getRDSDatabases(config: AWSConfig): Promise<RDSDatabase[]> {
         accessKeyId: config.access_key_id,
         secretAccessKey: config.secret_access_key,
       },
+      // Force explicit credentials, disable file-based credential lookup
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
     });
 
     const command = new DescribeDBInstancesCommand({});
@@ -167,9 +182,14 @@ async function getRDSDatabases(config: AWSConfig): Promise<RDSDatabase[]> {
     
     console.log(`Found ${databases.length} RDS databases`);
     return databases;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching RDS databases:', error);
-    return [];
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.Code || error.$metadata?.httpStatusCode
+    });
+    throw new Error(`Failed to fetch RDS databases: ${error.message}`);
   }
 }
 
@@ -183,6 +203,11 @@ async function getS3Buckets(config: AWSConfig): Promise<S3Bucket[]> {
         accessKeyId: config.access_key_id,
         secretAccessKey: config.secret_access_key,
       },
+      // Force explicit credentials, disable file-based credential lookup
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
     });
 
     const command = new ListBucketsCommand({});
@@ -202,9 +227,14 @@ async function getS3Buckets(config: AWSConfig): Promise<S3Bucket[]> {
     
     console.log(`Found ${buckets.length} S3 buckets`);
     return buckets;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching S3 buckets:', error);
-    return [];
+    console.error('Error details:', {
+      name: error.name,
+      message: error.message,
+      code: error.Code || error.$metadata?.httpStatusCode
+    });
+    throw new Error(`Failed to fetch S3 buckets: ${error.message}`);
   }
 }
 
@@ -302,12 +332,42 @@ serve(async (req) => {
 
     console.log(`Using AWS region: ${awsConfig.aws_region}`);
 
-    // Fetch data from AWS
-    const [ec2Instances, rdsDatabases, s3Buckets] = await Promise.all([
-      getEC2Instances(awsConfig),
-      getRDSDatabases(awsConfig),
-      getS3Buckets(awsConfig)
-    ]);
+    // Fetch data from AWS with better error handling
+    let ec2Instances: EC2Instance[] = [];
+    let rdsDatabases: RDSDatabase[] = [];
+    let s3Buckets: S3Bucket[] = [];
+    
+    try {
+      [ec2Instances, rdsDatabases, s3Buckets] = await Promise.all([
+        getEC2Instances(awsConfig),
+        getRDSDatabases(awsConfig),
+        getS3Buckets(awsConfig)
+      ]);
+    } catch (awsError: any) {
+      console.error('AWS API Error:', awsError);
+      
+      // Provide specific error messages
+      let errorMessage = 'Unable to connect to AWS';
+      
+      if (awsError.message?.includes('InvalidAccessKeyId') || awsError.message?.includes('SignatureDoesNotMatch')) {
+        errorMessage = 'Invalid AWS credentials. Please verify your Access Key ID and Secret Access Key in Settings.';
+      } else if (awsError.message?.includes('UnauthorizedOperation') || awsError.message?.includes('AccessDenied')) {
+        errorMessage = 'AWS credentials lack necessary permissions. Please ensure your IAM user has EC2, RDS, and S3 read permissions.';
+      } else if (awsError.message?.includes('credentials')) {
+        errorMessage = 'AWS credentials error. Please reconfigure your credentials in Settings.';
+      }
+      
+      return new Response(
+        JSON.stringify({ 
+          error: errorMessage,
+          details: awsError.message 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Calculate metrics with real cost calculation
     const metrics = {
