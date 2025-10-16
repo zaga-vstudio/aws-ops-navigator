@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Shield, 
   AlertTriangle, 
@@ -15,7 +15,8 @@ import {
   Users,
   Key,
   Activity,
-  RefreshCw
+  RefreshCw,
+  Info
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -68,6 +69,14 @@ export default function Security() {
                   Refresh
                 </Button>
               </div>
+
+              {/* Info Banner */}
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Security monitoring integration coming soon. Currently displaying sample data for demonstration purposes.
+                </AlertDescription>
+              </Alert>
 
               {/* Security Overview Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -130,10 +139,14 @@ export default function Security() {
                     {securityAlerts.map((alert, index) => (
                       <Alert key={index} variant={alert.type === "critical" ? "destructive" : "default"}>
                         <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle className="capitalize">{alert.type}</AlertTitle>
-                        <AlertDescription className="flex justify-between items-center">
-                          <span>{alert.message}</span>
-                          <span className="text-xs text-muted-foreground">{alert.timestamp}</span>
+                        <AlertDescription>
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-medium capitalize mb-1">{alert.type}</p>
+                              <p>{alert.message}</p>
+                            </div>
+                            <span className="text-xs text-muted-foreground whitespace-nowrap ml-4">{alert.timestamp}</span>
+                          </div>
                         </AlertDescription>
                       </Alert>
                     ))}

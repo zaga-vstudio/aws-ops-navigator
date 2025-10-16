@@ -9,13 +9,15 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Network, 
   Shield, 
   Globe,
   Plus,
   Filter,
-  MoreVertical
+  MoreVertical,
+  Info
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -195,6 +197,14 @@ const VPCNetworking = () => {
                   </Button>
                 </div>
               </div>
+
+              {/* Info Banner */}
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  VPC data integration coming soon. Currently displaying sample data for demonstration purposes.
+                </AlertDescription>
+              </Alert>
 
               {/* Overview Cards */}
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">

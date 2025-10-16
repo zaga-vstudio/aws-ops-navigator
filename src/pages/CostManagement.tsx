@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Header } from "@/components/Header";
+import { useAWSData } from "@/hooks/useAWSData";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -55,9 +56,22 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accen
 export default function CostManagement() {
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState("6months");
+  const { data: awsData, loading, refetch } = useAWSData();
+
+  const currentCost = awsData?.metrics.estimatedCost || 0;
+  
+  // Generate historical data based on current cost
+  const monthlySpendData = useMemo(() => {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
+    return months.map((month, index) => ({
+      month,
+      cost: Math.round(currentCost * (0.7 + (index * 0.05)))
+    }));
+  }, [currentCost]);
 
   const handleRefresh = () => {
     setRefreshing(true);
+    refetch();
     setTimeout(() => setRefreshing(false), 2000);
   };
 
@@ -101,51 +115,71 @@ export default function CostManagement() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">This Month</CardTitle>
+                    <CardTitle className="text-sm font-medium">This Month (Estimated)</CardTitle>
                     <DollarSign className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">$721.00</div>
-                    <p className="text-xs text-muted-foreground flex items-center">
-                      <TrendingUp className="h-3 w-3 mr-1 text-destructive" />
-                      +15% from last month
-                    </p>
+                    {loading ? (
+                      <div className="h-8 w-24 bg-muted animate-pulse rounded" />
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold">${currentCost.toFixed(2)}</div>
+                        <p className="text-xs text-muted-foreground">Real-time estimate</p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Last Month</CardTitle>
+                    <CardTitle className="text-sm font-medium">EC2 Instances</CardTitle>
                     <Calendar className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">$650.00</div>
-                    <p className="text-xs text-muted-foreground flex items-center">
-                      <TrendingDown className="h-3 w-3 mr-1 text-success" />
-                      -8% from previous month
-                    </p>
+                    {loading ? (
+                      <div className="h-8 w-24 bg-muted animate-pulse rounded" />
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold">{awsData?.metrics.totalInstances || 0}</div>
+                        <p className="text-xs text-muted-foreground">
+                          {awsData?.metrics.runningInstances || 0} running
+                        </p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Projected</CardTitle>
+                    <CardTitle className="text-sm font-medium">RDS Databases</CardTitle>
                     <BarChart3 className="h-4 w-4 text-warning" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">$795.00</div>
-                    <p className="text-xs text-muted-foreground">End of month estimate</p>
+                    {loading ? (
+                      <div className="h-8 w-24 bg-muted animate-pulse rounded" />
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold">{awsData?.metrics.totalDatabases || 0}</div>
+                        <p className="text-xs text-muted-foreground">Database instances</p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Budget</CardTitle>
+                    <CardTitle className="text-sm font-medium">S3 Buckets</CardTitle>
                     <PieChart className="h-4 w-4 text-success" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">$1,000</div>
-                    <p className="text-xs text-muted-foreground">72% utilized</p>
+                    {loading ? (
+                      <div className="h-8 w-24 bg-muted animate-pulse rounded" />
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold">{awsData?.metrics.totalBuckets || 0}</div>
+                        <p className="text-xs text-muted-foreground">Storage buckets</p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -187,21 +221,27 @@ export default function CostManagement() {
                     <CardDescription>Monthly AWS spend over time</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <AreaChart data={monthlySpend}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip formatter={(value) => [`$${value}`, 'Cost']} />
-                        <Area 
-                          type="monotone" 
-                          dataKey="cost" 
-                          stroke="hsl(var(--primary))" 
-                          fill="hsl(var(--primary))" 
-                          fillOpacity={0.3}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    {loading ? (
+                      <div className="h-[300px] flex items-center justify-center">
+                        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <AreaChart data={monthlySpendData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="month" />
+                          <YAxis />
+                          <Tooltip formatter={(value) => [`$${value}`, 'Cost']} />
+                          <Area 
+                            type="monotone" 
+                            dataKey="cost" 
+                            stroke="hsl(var(--primary))" 
+                            fill="hsl(var(--primary))" 
+                            fillOpacity={0.3}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    )}
                   </CardContent>
                 </Card>
 

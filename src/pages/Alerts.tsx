@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Bell, 
   AlertTriangle, 
@@ -19,7 +20,8 @@ import {
   X,
   Volume2,
   Mail,
-  Smartphone
+  Smartphone,
+  Info
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -167,6 +169,14 @@ export default function Alerts() {
                   </Button>
                 </div>
               </div>
+
+              {/* Info Banner */}
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  Alert system integration coming soon. Currently displaying sample data for demonstration purposes.
+                </AlertDescription>
+              </Alert>
 
               {/* Alert Statistics */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   Activity, 
   Search,
@@ -16,7 +17,8 @@ import {
   Shield,
   RefreshCw,
   Download,
-  Eye
+  Eye,
+  Info
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -165,6 +167,14 @@ export default function ActivityLog() {
                   </Button>
                 </div>
               </div>
+
+              {/* Info Banner */}
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  CloudTrail activity log integration coming soon. Currently displaying sample data for demonstration purposes.
+                </AlertDescription>
+              </Alert>
 
               {/* Activity Statistics */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { 
   BarChart3, 
   Activity, 
@@ -14,7 +15,8 @@ import {
   RefreshCw,
   TrendingUp,
   AlertCircle,
-  CheckCircle
+  CheckCircle,
+  Info
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -120,6 +122,14 @@ export default function Monitoring() {
                   </Button>
                 </div>
               </div>
+
+              {/* Info Banner */}
+              <Alert>
+                <Info className="h-4 w-4" />
+                <AlertDescription>
+                  CloudWatch metrics integration coming soon. Currently displaying sample data for demonstration purposes.
+                </AlertDescription>
+              </Alert>
 
               {/* Metrics Overview Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

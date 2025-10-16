@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -15,7 +15,8 @@ import {
   Clock,
   MoreVertical,
   Plus,
-  Filter
+  Filter,
+  RefreshCw
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -23,73 +24,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-interface RDSDatabase {
-  id: string;
-  name: string;
-  engine: string;
-  engineVersion: string;
-  instanceClass: string;
-  status: 'available' | 'creating' | 'modifying' | 'maintenance' | 'backing-up' | 'stopped';
-  region: string;
-  availabilityZone: string;
-  endpoint?: string;
-  port: number;
-  storage: number;
-  multiAZ: boolean;
-  createdAt: string;
-}
-
-const mockDatabases: RDSDatabase[] = [
-  {
-    id: "myapp-prod-db",
-    name: "production-database",
-    engine: "MySQL",
-    engineVersion: "8.0.35",
-    instanceClass: "db.t3.medium",
-    status: "available",
-    region: "us-east-1",
-    availabilityZone: "us-east-1a",
-    endpoint: "myapp-prod-db.cluster-xyz123.us-east-1.rds.amazonaws.com",
-    port: 3306,
-    storage: 100,
-    multiAZ: true,
-    createdAt: "2024-01-10T12:00:00Z"
-  },
-  {
-    id: "myapp-dev-db",
-    name: "development-database",
-    engine: "PostgreSQL",
-    engineVersion: "15.4",
-    instanceClass: "db.t3.small",
-    status: "available",
-    region: "us-east-1",
-    availabilityZone: "us-east-1b",
-    endpoint: "myapp-dev-db.xyz456.us-east-1.rds.amazonaws.com",
-    port: 5432,
-    storage: 20,
-    multiAZ: false,
-    createdAt: "2024-01-08T09:30:00Z"
-  },
-  {
-    id: "analytics-db",
-    name: "analytics-warehouse",
-    engine: "Aurora MySQL",
-    engineVersion: "8.0.mysql_aurora.3.04.0",
-    instanceClass: "db.r6g.large",
-    status: "backing-up",
-    region: "us-east-1",
-    availabilityZone: "us-east-1c",
-    endpoint: "analytics-db.cluster-abc789.us-east-1.rds.amazonaws.com",
-    port: 3306,
-    storage: 500,
-    multiAZ: true,
-    createdAt: "2024-01-05T16:45:00Z"
-  }
-];
+import { useAWSData } from "@/hooks/useAWSData";
 
 const getStatusColor = (status: string) => {
-  switch (status) {
+  switch (status.toLowerCase()) {
     case 'available': return 'default';
     case 'creating': return 'outline';
     case 'modifying': return 'outline';
@@ -101,7 +39,7 @@ const getStatusColor = (status: string) => {
 };
 
 const getStatusIcon = (status: string) => {
-  switch (status) {
+  switch (status.toLowerCase()) {
     case 'available': return <Circle className="h-3 w-3 text-green-500 fill-current" />;
     case 'creating': return <Clock className="h-3 w-3 text-blue-500 animate-pulse" />;
     case 'modifying': return <Clock className="h-3 w-3 text-yellow-500 animate-pulse" />;
@@ -115,7 +53,9 @@ const getStatusIcon = (status: string) => {
 const RDSDatabases = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [databases, setDatabases] = useState<RDSDatabase[]>(mockDatabases);
+  const { data: awsData, loading: awsLoading, error: awsError, refetch } = useAWSData();
+
+  const databases = awsData?.rdsDatabases || [];
 
   useEffect(() => {
     if (!loading && !user) {
@@ -123,12 +63,12 @@ const RDSDatabases = () => {
     }
   }, [user, loading, navigate]);
 
-  if (loading) {
+  if (loading || awsLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
+          <p className="text-muted-foreground">Loading AWS data...</p>
         </div>
       </div>
     );
@@ -138,7 +78,8 @@ const RDSDatabases = () => {
     return null;
   }
 
-  const totalStorage = databases.reduce((sum, db) => sum + db.storage, 0);
+  const totalStorage = databases.reduce((sum, db) => sum + db.allocatedStorage, 0);
+  const multiAZCount = databases.length; // All RDS instances shown in the API
 
   return (
     <SidebarProvider>
@@ -166,9 +107,9 @@ const RDSDatabases = () => {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm">
-                    <Filter className="h-4 w-4 mr-2" />
-                    Filter
+                  <Button variant="outline" size="sm" onClick={refetch}>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Refresh
                   </Button>
                   <Button size="sm" className="bg-gradient-to-r from-primary to-primary-glow">
                     <Plus className="h-4 w-4 mr-2" />
@@ -195,7 +136,7 @@ const RDSDatabases = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-green-600">
-                      {databases.filter(db => db.status === 'available').length}
+                      {databases.filter(db => db.state === 'available').length}
                     </div>
                   </CardContent>
                 </Card>
@@ -212,12 +153,12 @@ const RDSDatabases = () => {
                 </Card>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Multi-AZ</CardTitle>
+                    <CardTitle className="text-sm font-medium">Total Databases</CardTitle>
                     <AlertCircle className="h-4 w-4 text-orange-500" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-orange-600">
-                      {databases.filter(db => db.multiAZ).length}
+                      {databases.length}
                     </div>
                   </CardContent>
                 </Card>
@@ -229,68 +170,83 @@ const RDSDatabases = () => {
                   <CardTitle>Database Instances</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>DB Identifier</TableHead>
-                          <TableHead>Engine</TableHead>
-                          <TableHead>Version</TableHead>
-                          <TableHead>Instance Class</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Storage</TableHead>
-                          <TableHead>Multi-AZ</TableHead>
-                          <TableHead>Endpoint</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {databases.map((database) => (
-                          <TableRow key={database.id}>
-                            <TableCell className="font-medium">{database.name}</TableCell>
-                            <TableCell>{database.engine}</TableCell>
-                            <TableCell className="font-mono text-sm">{database.engineVersion}</TableCell>
-                            <TableCell>{database.instanceClass}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                {getStatusIcon(database.status)}
-                                <Badge variant={getStatusColor(database.status) as any}>
-                                  {database.status}
-                                </Badge>
-                              </div>
-                            </TableCell>
-                            <TableCell>{database.storage} GB</TableCell>
-                            <TableCell>
-                              <Badge variant={database.multiAZ ? "default" : "secondary"}>
-                                {database.multiAZ ? "Yes" : "No"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="font-mono text-xs max-w-[200px] truncate">
-                              {database.endpoint || '-'}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" className="h-8 w-8 p-0">
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem>Connect</DropdownMenuItem>
-                                  <DropdownMenuItem>Modify</DropdownMenuItem>
-                                  <DropdownMenuItem>Create Snapshot</DropdownMenuItem>
-                                  <DropdownMenuItem>View Monitoring</DropdownMenuItem>
-                                  <DropdownMenuItem className="text-destructive">
-                                    Delete
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </TableCell>
+                  {awsError ? (
+                    <div className="text-center py-8">
+                      <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+                      <p className="text-muted-foreground">Failed to load RDS databases</p>
+                      <Button variant="outline" className="mt-4" onClick={refetch}>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Try Again
+                      </Button>
+                    </div>
+                  ) : databases.length === 0 ? (
+                    <div className="text-center py-8">
+                      <Database className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">No RDS databases found</p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        Create a new database or check your AWS credentials
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>DB Identifier</TableHead>
+                            <TableHead>Engine</TableHead>
+                            <TableHead>Version</TableHead>
+                            <TableHead>Instance Class</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Storage</TableHead>
+                            <TableHead>Region</TableHead>
+                            <TableHead>Endpoint</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {databases.map((database) => (
+                            <TableRow key={database.id}>
+                              <TableCell className="font-medium">{database.name}</TableCell>
+                              <TableCell>{database.engine}</TableCell>
+                              <TableCell className="font-mono text-sm">{database.engineVersion}</TableCell>
+                              <TableCell>{database.instanceClass}</TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  {getStatusIcon(database.state)}
+                                  <Badge variant={getStatusColor(database.state) as any}>
+                                    {database.state}
+                                  </Badge>
+                                </div>
+                              </TableCell>
+                              <TableCell>{database.allocatedStorage} GB</TableCell>
+                              <TableCell>{database.region}</TableCell>
+                              <TableCell className="font-mono text-xs max-w-[200px] truncate">
+                                {database.endpoint || '-'}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                      <MoreVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem>Connect</DropdownMenuItem>
+                                    <DropdownMenuItem>Modify</DropdownMenuItem>
+                                    <DropdownMenuItem>Create Snapshot</DropdownMenuItem>
+                                    <DropdownMenuItem>View Monitoring</DropdownMenuItem>
+                                    <DropdownMenuItem className="text-destructive">
+                                      Delete
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
