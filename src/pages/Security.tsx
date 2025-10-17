@@ -1,11 +1,12 @@
-import { useState } from "react";
 import { Header } from "@/components/Header";
+import { useAWSData } from "@/hooks/useAWSData";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Shield, 
   AlertTriangle, 
@@ -14,18 +15,11 @@ import {
   Lock, 
   Users,
   Key,
-  Activity,
   RefreshCw,
   Info
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-
-const securityGroups = [
-  { id: "sg-0123456789abcdef0", name: "web-servers", vpc: "vpc-12345", inbound: "3", outbound: "1" },
-  { id: "sg-0987654321fedcba0", name: "database-tier", vpc: "vpc-12345", inbound: "1", outbound: "2" },
-  { id: "sg-0456789012345678", name: "load-balancers", vpc: "vpc-67890", inbound: "2", outbound: "1" }
-];
 
 const iamUsers = [
   { name: "admin-user", lastActivity: "2 hours ago", status: "active", policies: "5" },
@@ -40,12 +34,9 @@ const securityAlerts = [
 ];
 
 export default function Security() {
-  const [refreshing, setRefreshing] = useState(false);
-
-  const handleRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 2000);
-  };
+  const { data: awsData, loading, error, refetch } = useAWSData();
+  
+  const securityGroups = awsData?.securityGroups || [];
 
   return (
     <SidebarProvider>
@@ -64,19 +55,29 @@ export default function Security() {
                   <h1 className="text-3xl font-bold text-foreground">Security Center</h1>
                   <p className="text-muted-foreground">Monitor and manage your AWS security posture</p>
                 </div>
-                <Button onClick={handleRefresh} disabled={refreshing}>
-                  <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                <Button onClick={refetch} disabled={loading}>
+                  <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
               </div>
 
-              {/* Info Banner */}
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  Security monitoring integration coming soon. Currently displaying sample data for demonstration purposes.
-                </AlertDescription>
-              </Alert>
+              {/* Error/Info Banner */}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    {error.message}
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {!error && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    IAM and compliance monitoring coming soon. Currently showing Security Groups from your AWS account.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Security Overview Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -108,8 +109,14 @@ export default function Security() {
                     <Users className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">12</div>
-                    <p className="text-xs text-muted-foreground">3 inactive users</p>
+                    {loading ? (
+                      <Skeleton className="h-8 w-12" />
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold">12</div>
+                        <p className="text-xs text-muted-foreground">3 inactive users</p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -119,8 +126,14 @@ export default function Security() {
                     <Lock className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">8</div>
-                    <p className="text-xs text-muted-foreground">2 with open rules</p>
+                    {loading ? (
+                      <Skeleton className="h-8 w-12" />
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold">{securityGroups.length}</div>
+                        <p className="text-xs text-muted-foreground">From AWS account</p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -181,24 +194,43 @@ export default function Security() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {securityGroups.map((group) => (
-                            <TableRow key={group.id}>
-                              <TableCell className="font-medium">{group.id}</TableCell>
-                              <TableCell>{group.name}</TableCell>
-                              <TableCell>{group.vpc}</TableCell>
-                              <TableCell>
-                                <Badge variant="secondary">{group.inbound}</Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="secondary">{group.outbound}</Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Button variant="ghost" size="sm">
-                                  <Eye className="h-4 w-4" />
-                                </Button>
+                          {loading ? (
+                            Array(3).fill(0).map((_, i) => (
+                              <TableRow key={i}>
+                                <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                              </TableRow>
+                            ))
+                          ) : securityGroups.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                                No security groups found
                               </TableCell>
                             </TableRow>
-                          ))}
+                          ) : (
+                            securityGroups.map((group) => (
+                              <TableRow key={group.id}>
+                                <TableCell className="font-mono text-sm">{group.id}</TableCell>
+                                <TableCell className="font-medium">{group.name}</TableCell>
+                                <TableCell className="font-mono text-sm">{group.vpcId}</TableCell>
+                                <TableCell>
+                                  <Badge variant="secondary">{group.inboundRules}</Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="secondary">{group.outboundRules}</Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Button variant="ghost" size="sm">
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                            ))
+                          )}
                         </TableBody>
                       </Table>
                     </CardContent>

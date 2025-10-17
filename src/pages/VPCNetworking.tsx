@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
+import { useAWSData } from "@/hooks/useAWSData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Network, 
   Shield, 
@@ -17,7 +19,7 @@ import {
   Plus,
   Filter,
   MoreVertical,
-  Info
+  RefreshCw
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -26,127 +28,23 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-interface VPC {
-  id: string;
-  name: string;
-  cidrBlock: string;
-  state: 'available' | 'pending';
-  isDefault: boolean;
-  subnets: number;
-  region: string;
-}
-
-interface Subnet {
-  id: string;
-  name: string;
-  vpcId: string;
-  cidrBlock: string;
-  availabilityZone: string;
-  type: 'public' | 'private';
-  availableIps: number;
-}
-
-interface SecurityGroup {
-  id: string;
-  name: string;
-  description: string;
-  vpcId: string;
-  inboundRules: number;
-  outboundRules: number;
-}
-
-const mockVPCs: VPC[] = [
-  {
-    id: "vpc-0123456789abcdef0",
-    name: "main-vpc",
-    cidrBlock: "10.0.0.0/16",
-    state: "available",
-    isDefault: false,
-    subnets: 4,
-    region: "us-east-1"
-  },
-  {
-    id: "vpc-0987654321fedcba0",
-    name: "default",
-    cidrBlock: "172.31.0.0/16",
-    state: "available",
-    isDefault: true,
-    subnets: 6,
-    region: "us-east-1"
-  }
-];
-
-const mockSubnets: Subnet[] = [
-  {
-    id: "subnet-0123456789abcdef0",
-    name: "public-subnet-1",
-    vpcId: "vpc-0123456789abcdef0",
-    cidrBlock: "10.0.1.0/24",
-    availabilityZone: "us-east-1a",
-    type: "public",
-    availableIps: 251
-  },
-  {
-    id: "subnet-0123456789abcdef1",
-    name: "private-subnet-1",
-    vpcId: "vpc-0123456789abcdef0",
-    cidrBlock: "10.0.2.0/24",
-    availabilityZone: "us-east-1a",
-    type: "private",
-    availableIps: 254
-  },
-  {
-    id: "subnet-0123456789abcdef2",
-    name: "public-subnet-2",
-    vpcId: "vpc-0123456789abcdef0",
-    cidrBlock: "10.0.3.0/24",
-    availabilityZone: "us-east-1b",
-    type: "public",
-    availableIps: 248
-  }
-];
-
-const mockSecurityGroups: SecurityGroup[] = [
-  {
-    id: "sg-0123456789abcdef0",
-    name: "web-servers-sg",
-    description: "Security group for web servers",
-    vpcId: "vpc-0123456789abcdef0",
-    inboundRules: 3,
-    outboundRules: 1
-  },
-  {
-    id: "sg-0987654321fedcba0",
-    name: "database-sg",
-    description: "Security group for database servers",
-    vpcId: "vpc-0123456789abcdef0",
-    inboundRules: 2,
-    outboundRules: 1
-  },
-  {
-    id: "sg-0abcdef123456789",
-    name: "default",
-    description: "Default security group",
-    vpcId: "vpc-0987654321fedcba0",
-    inboundRules: 1,
-    outboundRules: 1
-  }
-];
-
 const VPCNetworking = () => {
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [vpcs, setVpcs] = useState<VPC[]>(mockVPCs);
-  const [subnets, setSubnets] = useState<Subnet[]>(mockSubnets);
-  const [securityGroups, setSecurityGroups] = useState<SecurityGroup[]>(mockSecurityGroups);
+  const { data: awsData, loading: dataLoading, error, refetch } = useAWSData();
+  
+  const vpcs = awsData?.vpcs || [];
+  const subnets = awsData?.subnets || [];
+  const securityGroups = awsData?.securityGroups || [];
+  const loading = authLoading || dataLoading;
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!authLoading && !user) {
       navigate('/auth');
     }
-  }, [user, loading, navigate]);
+  }, [user, authLoading, navigate]);
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
@@ -160,6 +58,8 @@ const VPCNetworking = () => {
   if (!user) {
     return null;
   }
+
+  const hasData = vpcs.length > 0 || subnets.length > 0 || securityGroups.length > 0;
 
   return (
     <SidebarProvider>
@@ -187,9 +87,14 @@ const VPCNetworking = () => {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm">
-                    <Filter className="h-4 w-4 mr-2" />
-                    Filter
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={refetch}
+                    disabled={loading}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                    Refresh
                   </Button>
                   <Button size="sm" className="bg-gradient-to-r from-primary to-primary-glow">
                     <Plus className="h-4 w-4 mr-2" />
@@ -198,13 +103,22 @@ const VPCNetworking = () => {
                 </div>
               </div>
 
-              {/* Info Banner */}
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  VPC data integration coming soon. Currently displaying sample data for demonstration purposes.
-                </AlertDescription>
-              </Alert>
+              {/* Error/Empty State Banner */}
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>
+                    {error.message}
+                  </AlertDescription>
+                </Alert>
+              )}
+              
+              {!error && !hasData && !loading && (
+                <Alert>
+                  <AlertDescription>
+                    No VPC resources found. Make sure your AWS credentials are configured correctly.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Overview Cards */}
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
@@ -214,36 +128,52 @@ const VPCNetworking = () => {
                     <Network className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{vpcs.length}</div>
+                    {loading ? (
+                      <Skeleton className="h-8 w-12" />
+                    ) : (
+                      <div className="text-2xl font-bold">{vpcs.length}</div>
+                    )}
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Subnets</CardTitle>
-                    <Globe className="h-4 w-4 text-blue-500" />
+                    <Globe className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-blue-600">{subnets.length}</div>
+                    {loading ? (
+                      <Skeleton className="h-8 w-12" />
+                    ) : (
+                      <div className="text-2xl font-bold">{subnets.length}</div>
+                    )}
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Security Groups</CardTitle>
-                    <Shield className="h-4 w-4 text-green-500" />
+                    <Shield className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-green-600">{securityGroups.length}</div>
+                    {loading ? (
+                      <Skeleton className="h-8 w-12" />
+                    ) : (
+                      <div className="text-2xl font-bold">{securityGroups.length}</div>
+                    )}
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Available IPs</CardTitle>
-                    <Network className="h-4 w-4 text-purple-500" />
+                    <Network className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-purple-600">
-                      {subnets.reduce((sum, subnet) => sum + subnet.availableIps, 0)}
-                    </div>
+                    {loading ? (
+                      <Skeleton className="h-8 w-16" />
+                    ) : (
+                      <div className="text-2xl font-bold">
+                        {subnets.reduce((sum, subnet) => sum + subnet.availableIps, 0).toLocaleString()}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -276,41 +206,64 @@ const VPCNetworking = () => {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {vpcs.map((vpc) => (
-                              <TableRow key={vpc.id}>
-                                <TableCell className="font-mono text-sm">{vpc.id}</TableCell>
-                                <TableCell className="font-medium">{vpc.name}</TableCell>
-                                <TableCell className="font-mono">{vpc.cidrBlock}</TableCell>
-                                <TableCell>
-                                  <Badge variant={vpc.state === 'available' ? 'default' : 'secondary'}>
-                                    {vpc.state}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  <Badge variant={vpc.isDefault ? 'default' : 'outline'}>
-                                    {vpc.isDefault ? 'Yes' : 'No'}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>{vpc.subnets}</TableCell>
-                                <TableCell className="text-right">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" className="h-8 w-8 p-0">
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem>View Details</DropdownMenuItem>
-                                      <DropdownMenuItem>Create Subnet</DropdownMenuItem>
-                                      <DropdownMenuItem>Manage Route Tables</DropdownMenuItem>
-                                      <DropdownMenuItem className="text-destructive">
-                                        Delete VPC
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                            {loading ? (
+                              Array(3).fill(0).map((_, i) => (
+                                <TableRow key={i}>
+                                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                </TableRow>
+                              ))
+                            ) : vpcs.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                                  No VPCs found
                                 </TableCell>
                               </TableRow>
-                            ))}
+                            ) : (
+                              vpcs.map((vpc) => {
+                                const vpcSubnetCount = subnets.filter(s => s.vpcId === vpc.id).length;
+                                return (
+                                  <TableRow key={vpc.id}>
+                                    <TableCell className="font-mono text-sm">{vpc.id}</TableCell>
+                                    <TableCell className="font-medium">{vpc.name}</TableCell>
+                                    <TableCell className="font-mono">{vpc.cidrBlock}</TableCell>
+                                    <TableCell>
+                                      <Badge variant={vpc.state === 'available' ? 'default' : 'secondary'}>
+                                        {vpc.state}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge variant={vpc.isDefault ? 'default' : 'outline'}>
+                                        {vpc.isDefault ? 'Yes' : 'No'}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>{vpcSubnetCount}</TableCell>
+                                    <TableCell className="text-right">
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" className="h-8 w-8 p-0">
+                                            <MoreVertical className="h-4 w-4" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem>View Details</DropdownMenuItem>
+                                          <DropdownMenuItem>Create Subnet</DropdownMenuItem>
+                                          <DropdownMenuItem>Manage Route Tables</DropdownMenuItem>
+                                          <DropdownMenuItem className="text-destructive">
+                                            Delete VPC
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })
+                            )}
                           </TableBody>
                         </Table>
                       </div>
@@ -339,38 +292,56 @@ const VPCNetworking = () => {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {subnets.map((subnet) => (
-                              <TableRow key={subnet.id}>
-                                <TableCell className="font-mono text-sm">{subnet.id}</TableCell>
-                                <TableCell className="font-medium">{subnet.name}</TableCell>
-                                <TableCell className="font-mono text-sm">{subnet.vpcId}</TableCell>
-                                <TableCell className="font-mono">{subnet.cidrBlock}</TableCell>
-                                <TableCell>{subnet.availabilityZone}</TableCell>
-                                <TableCell>
-                                  <Badge variant={subnet.type === 'public' ? 'default' : 'secondary'}>
-                                    {subnet.type}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>{subnet.availableIps}</TableCell>
-                                <TableCell className="text-right">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" className="h-8 w-8 p-0">
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem>View Details</DropdownMenuItem>
-                                      <DropdownMenuItem>Manage Route Table</DropdownMenuItem>
-                                      <DropdownMenuItem>Network ACLs</DropdownMenuItem>
-                                      <DropdownMenuItem className="text-destructive">
-                                        Delete Subnet
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                            {loading ? (
+                              Array(3).fill(0).map((_, i) => (
+                                <TableRow key={i}>
+                                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-12" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                </TableRow>
+                              ))
+                            ) : subnets.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                                  No subnets found
                                 </TableCell>
                               </TableRow>
-                            ))}
+                            ) : (
+                              subnets.map((subnet) => (
+                                <TableRow key={subnet.id}>
+                                  <TableCell className="font-mono text-sm">{subnet.id}</TableCell>
+                                  <TableCell className="font-medium">{subnet.name}</TableCell>
+                                  <TableCell className="font-mono text-sm">{subnet.vpcId}</TableCell>
+                                  <TableCell className="font-mono">{subnet.cidrBlock}</TableCell>
+                                  <TableCell>{subnet.availabilityZone}</TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline">N/A</Badge>
+                                  </TableCell>
+                                  <TableCell>{subnet.availableIps.toLocaleString()}</TableCell>
+                                  <TableCell className="text-right">
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" className="h-8 w-8 p-0">
+                                          <MoreVertical className="h-4 w-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem>View Details</DropdownMenuItem>
+                                        <DropdownMenuItem>Manage Route Table</DropdownMenuItem>
+                                        <DropdownMenuItem>Network ACLs</DropdownMenuItem>
+                                        <DropdownMenuItem className="text-destructive">
+                                          Delete Subnet
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
                           </TableBody>
                         </Table>
                       </div>
@@ -398,33 +369,53 @@ const VPCNetworking = () => {
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {securityGroups.map((sg) => (
-                              <TableRow key={sg.id}>
-                                <TableCell className="font-mono text-sm">{sg.id}</TableCell>
-                                <TableCell className="font-medium">{sg.name}</TableCell>
-                                <TableCell>{sg.description}</TableCell>
-                                <TableCell className="font-mono text-sm">{sg.vpcId}</TableCell>
-                                <TableCell>{sg.inboundRules}</TableCell>
-                                <TableCell>{sg.outboundRules}</TableCell>
-                                <TableCell className="text-right">
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" className="h-8 w-8 p-0">
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem>Edit Rules</DropdownMenuItem>
-                                      <DropdownMenuItem>Copy Security Group</DropdownMenuItem>
-                                      <DropdownMenuItem>View References</DropdownMenuItem>
-                                      <DropdownMenuItem className="text-destructive">
-                                        Delete
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                            {loading ? (
+                              Array(3).fill(0).map((_, i) => (
+                                <TableRow key={i}>
+                                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                </TableRow>
+                              ))
+                            ) : securityGroups.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                                  No security groups found
                                 </TableCell>
                               </TableRow>
-                            ))}
+                            ) : (
+                              securityGroups.map((sg) => (
+                                <TableRow key={sg.id}>
+                                  <TableCell className="font-mono text-sm">{sg.id}</TableCell>
+                                  <TableCell className="font-medium">{sg.name}</TableCell>
+                                  <TableCell>{sg.description}</TableCell>
+                                  <TableCell className="font-mono text-sm">{sg.vpcId}</TableCell>
+                                  <TableCell>{sg.inboundRules}</TableCell>
+                                  <TableCell>{sg.outboundRules}</TableCell>
+                                  <TableCell className="text-right">
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" className="h-8 w-8 p-0">
+                                          <MoreVertical className="h-4 w-4" />
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem>Edit Rules</DropdownMenuItem>
+                                        <DropdownMenuItem>Copy Security Group</DropdownMenuItem>
+                                        <DropdownMenuItem>View References</DropdownMenuItem>
+                                        <DropdownMenuItem className="text-destructive">
+                                          Delete
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </TableCell>
+                                </TableRow>
+                              ))
+                            )}
                           </TableBody>
                         </Table>
                       </div>

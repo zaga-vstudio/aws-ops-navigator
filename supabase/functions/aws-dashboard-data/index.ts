@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { EC2Client, DescribeInstancesCommand } from "npm:@aws-sdk/client-ec2@3.451.0";
+import { EC2Client, DescribeInstancesCommand, DescribeVpcsCommand, DescribeSubnetsCommand, DescribeSecurityGroupsCommand } from "npm:@aws-sdk/client-ec2@3.451.0";
 import { RDSClient, DescribeDBInstancesCommand } from "npm:@aws-sdk/client-rds@3.451.0";
 import { S3Client, ListBucketsCommand } from "npm:@aws-sdk/client-s3@3.451.0";
 import { CloudWatchClient, GetMetricStatisticsCommand } from "npm:@aws-sdk/client-cloudwatch@3.451.0";
@@ -47,10 +47,40 @@ interface S3Bucket {
   creationDate: string;
 }
 
+interface VPC {
+  id: string;
+  name: string;
+  cidrBlock: string;
+  state: string;
+  isDefault: boolean;
+  region: string;
+}
+
+interface Subnet {
+  id: string;
+  name: string;
+  vpcId: string;
+  cidrBlock: string;
+  availabilityZone: string;
+  availableIps: number;
+}
+
+interface SecurityGroup {
+  id: string;
+  name: string;
+  description: string;
+  vpcId: string;
+  inboundRules: number;
+  outboundRules: number;
+}
+
 interface DashboardData {
   ec2Instances: EC2Instance[];
   rdsDatabases: RDSDatabase[];
   s3Buckets: S3Bucket[];
+  vpcs: VPC[];
+  subnets: Subnet[];
+  securityGroups: SecurityGroup[];
   metrics: {
     totalInstances: number;
     runningInstances: number;
@@ -285,6 +315,134 @@ function calculateEstimatedCost(ec2Instances: EC2Instance[], rdsDatabases: RDSDa
   return Math.round(totalCost * 100) / 100;
 }
 
+async function getVPCs(config: AWSConfig): Promise<VPC[]> {
+  console.log(`Fetching VPCs for region: ${config.aws_region}`);
+  
+  try {
+    const ec2Client = new EC2Client({
+      region: config.aws_region,
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
+    });
+
+    const command = new DescribeVpcsCommand({});
+    const response = await ec2Client.send(command);
+    
+    const vpcs: VPC[] = [];
+    
+    if (response.Vpcs) {
+      for (const vpc of response.Vpcs) {
+        const nameTag = vpc.Tags?.find(tag => tag.Key === 'Name');
+        vpcs.push({
+          id: vpc.VpcId || '',
+          name: nameTag?.Value || vpc.VpcId || 'Unnamed VPC',
+          cidrBlock: vpc.CidrBlock || '',
+          state: vpc.State || 'unknown',
+          isDefault: vpc.IsDefault || false,
+          region: config.aws_region,
+        });
+      }
+    }
+    
+    console.log(`Found ${vpcs.length} VPCs`);
+    return vpcs;
+  } catch (error: any) {
+    console.error('Error fetching VPCs:', error);
+    throw new Error(`Failed to fetch VPCs: ${error.message}`);
+  }
+}
+
+async function getSubnets(config: AWSConfig): Promise<Subnet[]> {
+  console.log(`Fetching Subnets for region: ${config.aws_region}`);
+  
+  try {
+    const ec2Client = new EC2Client({
+      region: config.aws_region,
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
+    });
+
+    const command = new DescribeSubnetsCommand({});
+    const response = await ec2Client.send(command);
+    
+    const subnets: Subnet[] = [];
+    
+    if (response.Subnets) {
+      for (const subnet of response.Subnets) {
+        const nameTag = subnet.Tags?.find(tag => tag.Key === 'Name');
+        subnets.push({
+          id: subnet.SubnetId || '',
+          name: nameTag?.Value || subnet.SubnetId || 'Unnamed Subnet',
+          vpcId: subnet.VpcId || '',
+          cidrBlock: subnet.CidrBlock || '',
+          availabilityZone: subnet.AvailabilityZone || '',
+          availableIps: subnet.AvailableIpAddressCount || 0,
+        });
+      }
+    }
+    
+    console.log(`Found ${subnets.length} Subnets`);
+    return subnets;
+  } catch (error: any) {
+    console.error('Error fetching Subnets:', error);
+    throw new Error(`Failed to fetch Subnets: ${error.message}`);
+  }
+}
+
+async function getSecurityGroups(config: AWSConfig): Promise<SecurityGroup[]> {
+  console.log(`Fetching Security Groups for region: ${config.aws_region}`);
+  
+  try {
+    const ec2Client = new EC2Client({
+      region: config.aws_region,
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
+    });
+
+    const command = new DescribeSecurityGroupsCommand({});
+    const response = await ec2Client.send(command);
+    
+    const securityGroups: SecurityGroup[] = [];
+    
+    if (response.SecurityGroups) {
+      for (const sg of response.SecurityGroups) {
+        securityGroups.push({
+          id: sg.GroupId || '',
+          name: sg.GroupName || '',
+          description: sg.Description || '',
+          vpcId: sg.VpcId || '',
+          inboundRules: sg.IpPermissions?.length || 0,
+          outboundRules: sg.IpPermissionsEgress?.length || 0,
+        });
+      }
+    }
+    
+    console.log(`Found ${securityGroups.length} Security Groups`);
+    return securityGroups;
+  } catch (error: any) {
+    console.error('Error fetching Security Groups:', error);
+    throw new Error(`Failed to fetch Security Groups: ${error.message}`);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -336,12 +494,18 @@ serve(async (req) => {
     let ec2Instances: EC2Instance[] = [];
     let rdsDatabases: RDSDatabase[] = [];
     let s3Buckets: S3Bucket[] = [];
+    let vpcs: VPC[] = [];
+    let subnets: Subnet[] = [];
+    let securityGroups: SecurityGroup[] = [];
     
     try {
-      [ec2Instances, rdsDatabases, s3Buckets] = await Promise.all([
+      [ec2Instances, rdsDatabases, s3Buckets, vpcs, subnets, securityGroups] = await Promise.all([
         getEC2Instances(awsConfig),
         getRDSDatabases(awsConfig),
-        getS3Buckets(awsConfig)
+        getS3Buckets(awsConfig),
+        getVPCs(awsConfig),
+        getSubnets(awsConfig),
+        getSecurityGroups(awsConfig)
       ]);
     } catch (awsError: any) {
       console.error('AWS API Error:', awsError);
@@ -383,10 +547,13 @@ serve(async (req) => {
       ec2Instances,
       rdsDatabases,
       s3Buckets,
+      vpcs,
+      subnets,
+      securityGroups,
       metrics
     };
 
-    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets`);
+    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets, ${vpcs.length} VPCs, ${subnets.length} subnets, ${securityGroups.length} security groups`);
 
     return new Response(
       JSON.stringify(dashboardData),

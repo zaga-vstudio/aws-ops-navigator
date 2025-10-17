@@ -38,6 +38,33 @@ export interface S3Bucket {
   creationDate: string;
 }
 
+export interface VPC {
+  id: string;
+  name: string;
+  cidrBlock: string;
+  state: string;
+  isDefault: boolean;
+  region: string;
+}
+
+export interface Subnet {
+  id: string;
+  name: string;
+  vpcId: string;
+  cidrBlock: string;
+  availabilityZone: string;
+  availableIps: number;
+}
+
+export interface SecurityGroup {
+  id: string;
+  name: string;
+  description: string;
+  vpcId: string;
+  inboundRules: number;
+  outboundRules: number;
+}
+
 export interface AWSMetrics {
   totalInstances: number;
   runningInstances: number;
@@ -51,6 +78,9 @@ export interface AWSData {
   ec2Instances: EC2Instance[];
   rdsDatabases: RDSDatabase[];
   s3Buckets: S3Bucket[];
+  vpcs: VPC[];
+  subnets: Subnet[];
+  securityGroups: SecurityGroup[];
   metrics: AWSMetrics;
 }
 
