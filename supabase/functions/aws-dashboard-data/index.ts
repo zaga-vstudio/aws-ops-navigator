@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { EC2Client, DescribeInstancesCommand, DescribeVpcsCommand, DescribeSubnetsCommand, DescribeSecurityGroupsCommand } from "npm:@aws-sdk/client-ec2@3.451.0";
 import { RDSClient, DescribeDBInstancesCommand } from "npm:@aws-sdk/client-rds@3.451.0";
 import { S3Client, ListBucketsCommand } from "npm:@aws-sdk/client-s3@3.451.0";
-import { CloudWatchClient, GetMetricStatisticsCommand } from "npm:@aws-sdk/client-cloudwatch@3.451.0";
+import { CloudWatchClient, GetMetricStatisticsCommand, DescribeAlarmsCommand } from "npm:@aws-sdk/client-cloudwatch@3.451.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -74,6 +74,18 @@ interface SecurityGroup {
   outboundRules: number;
 }
 
+interface CloudWatchAlarm {
+  id: string;
+  name: string;
+  description?: string;
+  state: string;
+  severity: string;
+  metric: string;
+  threshold: number;
+  timestamp: string;
+  resourceId?: string;
+}
+
 interface DashboardData {
   ec2Instances: EC2Instance[];
   rdsDatabases: RDSDatabase[];
@@ -81,6 +93,7 @@ interface DashboardData {
   vpcs: VPC[];
   subnets: Subnet[];
   securityGroups: SecurityGroup[];
+  alarms: CloudWatchAlarm[];
   metrics: {
     totalInstances: number;
     runningInstances: number;
@@ -443,6 +456,54 @@ async function getSecurityGroups(config: AWSConfig): Promise<SecurityGroup[]> {
   }
 }
 
+async function getCloudWatchAlarms(config: AWSConfig): Promise<CloudWatchAlarm[]> {
+  console.log(`Fetching CloudWatch Alarms for region: ${config.aws_region}`);
+  
+  try {
+    const cloudWatchClient = new CloudWatchClient({
+      region: config.aws_region,
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
+    });
+
+    const command = new DescribeAlarmsCommand({});
+    const response = await cloudWatchClient.send(command);
+    
+    const alarms: CloudWatchAlarm[] = [];
+    
+    if (response.MetricAlarms) {
+      for (const alarm of response.MetricAlarms) {
+        const severity = alarm.StateValue === 'ALARM' ? 'critical' : 
+                        alarm.StateValue === 'INSUFFICIENT_DATA' ? 'warning' : 'info';
+        
+        alarms.push({
+          id: alarm.AlarmArn || alarm.AlarmName || '',
+          name: alarm.AlarmName || 'Unnamed Alarm',
+          description: alarm.AlarmDescription,
+          state: alarm.StateValue || 'UNKNOWN',
+          severity,
+          metric: alarm.MetricName || 'Unknown',
+          threshold: alarm.Threshold || 0,
+          timestamp: alarm.StateUpdatedTimestamp?.toISOString() || new Date().toISOString(),
+          resourceId: alarm.Dimensions?.find(d => d.Name === 'InstanceId')?.Value,
+        });
+      }
+    }
+    
+    console.log(`Found ${alarms.length} CloudWatch Alarms`);
+    return alarms;
+  } catch (error: any) {
+    console.error('Error fetching CloudWatch Alarms:', error);
+    throw new Error(`Failed to fetch CloudWatch Alarms: ${error.message}`);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -497,15 +558,17 @@ serve(async (req) => {
     let vpcs: VPC[] = [];
     let subnets: Subnet[] = [];
     let securityGroups: SecurityGroup[] = [];
+    let alarms: CloudWatchAlarm[] = [];
     
     try {
-      [ec2Instances, rdsDatabases, s3Buckets, vpcs, subnets, securityGroups] = await Promise.all([
+      [ec2Instances, rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, alarms] = await Promise.all([
         getEC2Instances(awsConfig),
         getRDSDatabases(awsConfig),
         getS3Buckets(awsConfig),
         getVPCs(awsConfig),
         getSubnets(awsConfig),
-        getSecurityGroups(awsConfig)
+        getSecurityGroups(awsConfig),
+        getCloudWatchAlarms(awsConfig)
       ]);
     } catch (awsError: any) {
       console.error('AWS API Error:', awsError);
@@ -550,10 +613,11 @@ serve(async (req) => {
       vpcs,
       subnets,
       securityGroups,
+      alarms,
       metrics
     };
 
-    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets, ${vpcs.length} VPCs, ${subnets.length} subnets, ${securityGroups.length} security groups`);
+    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets, ${vpcs.length} VPCs, ${subnets.length} subnets, ${securityGroups.length} security groups, ${alarms.length} alarms`);
 
     return new Response(
       JSON.stringify(dashboardData),

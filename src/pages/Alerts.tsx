@@ -6,9 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { 
   Bell, 
   AlertTriangle, 
@@ -20,71 +19,13 @@ import {
   X,
   Volume2,
   Mail,
-  Smartphone,
-  Info
+  Smartphone
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-
-const activeAlerts = [
-  { 
-    id: "ALT-001", 
-    type: "critical", 
-    title: "High CPU Usage", 
-    description: "EC2 instance i-0123456789 CPU usage above 90%",
-    resource: "i-0123456789abcdef0",
-    timestamp: "2 minutes ago",
-    status: "active"
-  },
-  { 
-    id: "ALT-002", 
-    type: "warning", 
-    title: "Disk Space Low", 
-    description: "RDS instance disk usage above 85%",
-    resource: "db-prod-mysql",
-    timestamp: "15 minutes ago",
-    status: "active"
-  },
-  { 
-    id: "ALT-003", 
-    type: "info", 
-    title: "Scheduled Maintenance", 
-    description: "AWS scheduled maintenance for your region",
-    resource: "us-east-1",
-    timestamp: "1 hour ago",
-    status: "acknowledged"
-  }
-];
-
-const alertRules = [
-  {
-    id: "RULE-001",
-    name: "High CPU Usage",
-    metric: "CPU Utilization",
-    threshold: "90%",
-    duration: "5 minutes",
-    enabled: true,
-    severity: "critical"
-  },
-  {
-    id: "RULE-002", 
-    name: "Memory Usage Alert",
-    metric: "Memory Utilization",
-    threshold: "85%",
-    duration: "10 minutes",
-    enabled: true,
-    severity: "warning"
-  },
-  {
-    id: "RULE-003",
-    name: "Disk Space Alert",
-    metric: "Disk Utilization", 
-    threshold: "80%",
-    duration: "15 minutes",
-    enabled: false,
-    severity: "warning"
-  }
-];
+import { useAWSData } from "@/hooks/useAWSData";
+import { NewAlertRuleDialog } from "@/components/NewAlertRuleDialog";
+import { formatDistanceToNow } from "date-fns";
 
 const notificationChannels = [
   { id: "1", type: "email", name: "Email Notifications", enabled: true, config: "admin@company.com" },
@@ -94,27 +35,28 @@ const notificationChannels = [
 ];
 
 export default function Alerts() {
-  const [refreshing, setRefreshing] = useState(false);
-  const [alerts, setAlerts] = useState(activeAlerts);
-  const [rules, setRules] = useState(alertRules);
+  const { data, loading, error, refetch } = useAWSData();
+  const [newRuleDialogOpen, setNewRuleDialogOpen] = useState(false);
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
 
   const handleRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 2000);
+    refetch();
   };
 
   const handleDismissAlert = (alertId: string) => {
-    setAlerts(alerts.filter(alert => alert.id !== alertId));
+    setDismissedAlerts(prev => new Set(prev).add(alertId));
   };
 
-  const handleToggleRule = (ruleId: string) => {
-    setRules(rules.map(rule => 
-      rule.id === ruleId ? { ...rule, enabled: !rule.enabled } : rule
-    ));
-  };
+  const alarms = data?.alarms || [];
+  const activeAlarms = alarms.filter(alarm => 
+    alarm.state === 'ALARM' && !dismissedAlerts.has(alarm.id)
+  );
+  
+  const criticalCount = activeAlarms.filter(a => a.severity === 'critical').length;
+  const warningCount = activeAlarms.filter(a => a.severity === 'warning').length;
 
-  const getAlertIcon = (type: string) => {
-    switch (type) {
+  const getAlertIcon = (severity: string) => {
+    switch (severity) {
       case "critical": return <AlertTriangle className="h-4 w-4 text-destructive" />;
       case "warning": return <AlertCircle className="h-4 w-4 text-warning" />;
       case "info": return <Bell className="h-4 w-4 text-primary" />;
@@ -122,8 +64,8 @@ export default function Alerts() {
     }
   };
 
-  const getAlertVariant = (type: string) => {
-    switch (type) {
+  const getAlertVariant = (severity: string): "destructive" | "outline" | "secondary" | "default" => {
+    switch (severity) {
       case "critical": return "destructive";
       case "warning": return "outline";
       case "info": return "secondary";
@@ -159,24 +101,23 @@ export default function Alerts() {
                   <p className="text-muted-foreground">Manage alerts, rules and notification settings</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Button size="sm">
+                  <Button size="sm" onClick={() => setNewRuleDialogOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" />
                     New Rule
                   </Button>
-                  <Button onClick={handleRefresh} disabled={refreshing} variant="outline">
-                    <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                  <Button onClick={handleRefresh} disabled={loading} variant="outline">
+                    <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
                 </div>
               </div>
 
-              {/* Info Banner */}
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  Alert system integration coming soon. Currently displaying sample data for demonstration purposes.
-                </AlertDescription>
-              </Alert>
+              {error && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{error.message}</AlertDescription>
+                </Alert>
+              )}
 
               {/* Alert Statistics */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -186,8 +127,16 @@ export default function Alerts() {
                     <AlertTriangle className="h-4 w-4 text-destructive" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-destructive">3</div>
-                    <p className="text-xs text-muted-foreground">2 critical, 1 warning</p>
+                    {loading ? (
+                      <Skeleton className="h-8 w-16" />
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold text-destructive">{activeAlarms.length}</div>
+                        <p className="text-xs text-muted-foreground">
+                          {criticalCount} critical, {warningCount} warning
+                        </p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -197,8 +146,16 @@ export default function Alerts() {
                     <Settings className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">12</div>
-                    <p className="text-xs text-muted-foreground">10 enabled, 2 disabled</p>
+                    {loading ? (
+                      <Skeleton className="h-8 w-16" />
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold">{alarms.length}</div>
+                        <p className="text-xs text-muted-foreground">
+                          {alarms.filter(a => a.state !== 'INSUFFICIENT_DATA').length} active
+                        </p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -243,38 +200,50 @@ export default function Alerts() {
                       <CardDescription>Current alerts requiring attention</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        {alerts.map((alert) => (
-                          <div key={alert.id} className="flex items-center justify-between p-4 border rounded-lg">
-                            <div className="flex items-center gap-4">
-                              {getAlertIcon(alert.type)}
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h4 className="font-medium">{alert.title}</h4>
-                                  <Badge variant={getAlertVariant(alert.type)}>{alert.type}</Badge>
-                                </div>
-                                <p className="text-sm text-muted-foreground mb-1">{alert.description}</p>
-                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                                  <span>Resource: {alert.resource}</span>
-                                  <span>{alert.timestamp}</span>
+                      {loading ? (
+                        <div className="space-y-4">
+                          {[1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-24 w-full" />
+                          ))}
+                        </div>
+                      ) : activeAlarms.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <CheckCircle className="h-12 w-12 mx-auto mb-2 text-success" />
+                          <p>No active alerts. All systems operating normally.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {activeAlarms.map((alarm) => (
+                            <div key={alarm.id} className="flex items-center justify-between p-4 border rounded-lg">
+                              <div className="flex items-center gap-4">
+                                {getAlertIcon(alarm.severity)}
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="font-medium">{alarm.name}</h4>
+                                    <Badge variant={getAlertVariant(alarm.severity)}>{alarm.severity}</Badge>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground mb-1">
+                                    {alarm.description || `${alarm.metric} exceeded threshold of ${alarm.threshold}`}
+                                  </p>
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    {alarm.resourceId && <span>Resource: {alarm.resourceId}</span>}
+                                    <span>{formatDistanceToNow(new Date(alarm.timestamp), { addSuffix: true })}</span>
+                                  </div>
                                 </div>
                               </div>
+                              <div className="flex items-center gap-2">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => handleDismissAlert(alarm.id)}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <Button variant="outline" size="sm">
-                                Acknowledge
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm"
-                                onClick={() => handleDismissAlert(alert.id)}
-                              >
-                                <X className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -283,48 +252,53 @@ export default function Alerts() {
                   <Card>
                     <CardHeader>
                       <CardTitle>Alert Rules</CardTitle>
-                      <CardDescription>Configure when and how alerts are triggered</CardDescription>
+                      <CardDescription>Configure when and how alerts are triggered based on CloudWatch alarms</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Rule Name</TableHead>
-                            <TableHead>Metric</TableHead>
-                            <TableHead>Threshold</TableHead>
-                            <TableHead>Duration</TableHead>
-                            <TableHead>Severity</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {rules.map((rule) => (
-                            <TableRow key={rule.id}>
-                              <TableCell className="font-medium">{rule.name}</TableCell>
-                              <TableCell>{rule.metric}</TableCell>
-                              <TableCell>{rule.threshold}</TableCell>
-                              <TableCell>{rule.duration}</TableCell>
-                              <TableCell>
-                                <Badge variant={rule.severity === "critical" ? "destructive" : "outline"}>
-                                  {rule.severity}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Switch 
-                                  checked={rule.enabled}
-                                  onCheckedChange={() => handleToggleRule(rule.id)}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Button variant="ghost" size="sm">
-                                  <Settings className="h-4 w-4" />
-                                </Button>
-                              </TableCell>
-                            </TableRow>
+                      {loading ? (
+                        <div className="space-y-4">
+                          {[1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-16 w-full" />
                           ))}
-                        </TableBody>
-                      </Table>
+                        </div>
+                      ) : alarms.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <Settings className="h-12 w-12 mx-auto mb-2" />
+                          <p>No alert rules configured yet.</p>
+                          <p className="text-sm">Create a new rule to start monitoring your resources.</p>
+                        </div>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Rule Name</TableHead>
+                              <TableHead>Metric</TableHead>
+                              <TableHead>Threshold</TableHead>
+                              <TableHead>State</TableHead>
+                              <TableHead>Severity</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {alarms.map((alarm) => (
+                              <TableRow key={alarm.id}>
+                                <TableCell className="font-medium">{alarm.name}</TableCell>
+                                <TableCell>{alarm.metric}</TableCell>
+                                <TableCell>{alarm.threshold}</TableCell>
+                                <TableCell>
+                                  <Badge variant={alarm.state === 'OK' ? 'secondary' : alarm.state === 'ALARM' ? 'destructive' : 'outline'}>
+                                    {alarm.state}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={alarm.severity === "critical" ? "destructive" : "outline"}>
+                                    {alarm.severity}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -370,6 +344,7 @@ export default function Alerts() {
           </main>
         </div>
       </div>
+      <NewAlertRuleDialog open={newRuleDialogOpen} onOpenChange={setNewRuleDialogOpen} />
     </SidebarProvider>
   );
 }

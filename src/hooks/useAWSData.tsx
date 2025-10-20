@@ -65,6 +65,18 @@ export interface SecurityGroup {
   outboundRules: number;
 }
 
+export interface CloudWatchAlarm {
+  id: string;
+  name: string;
+  description?: string;
+  state: string;
+  severity: string;
+  metric: string;
+  threshold: number;
+  timestamp: string;
+  resourceId?: string;
+}
+
 export interface AWSMetrics {
   totalInstances: number;
   runningInstances: number;
@@ -81,6 +93,7 @@ export interface AWSData {
   vpcs: VPC[];
   subnets: Subnet[];
   securityGroups: SecurityGroup[];
+  alarms: CloudWatchAlarm[];
   metrics: AWSMetrics;
 }
 
