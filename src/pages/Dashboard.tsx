@@ -137,7 +137,7 @@ const Dashboard = () => {
                 </div>
                 
                 <div className="space-y-6">
-                  <ActivityLog />
+                  <ActivityLog awsData={awsData} />
                   
                   {/* Quick Actions - Responsive */}
                   <div className="bg-gradient-to-br from-primary/5 to-primary-glow/5 border border-primary/20 rounded-lg p-4 lg:p-6">

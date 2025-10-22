@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
+import { RegionSelector } from "./RegionSelector";
+import { useToast } from "@/hooks/use-toast";
 
 const menuItems = [
   {
@@ -98,7 +100,9 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
   const { signOut } = useAuth();
+  const { toast } = useToast();
   const [awsRegion, setAwsRegion] = useState("us-east-1");
+  const [regionDialogOpen, setRegionDialogOpen] = useState(false);
   
   const currentPath = location.pathname;
   const isActive = (path: string) => currentPath === path;
@@ -106,6 +110,28 @@ export function AppSidebar() {
 
   const handleSignOut = async () => {
     await signOut();
+  };
+
+  const handleRegionChange = (newRegion: string) => {
+    setAwsRegion(newRegion);
+    toast({
+      title: "Region Changed",
+      description: `AWS region updated to ${newRegion}`,
+    });
+  };
+
+  const getRegionName = (code: string) => {
+    const regionMap: Record<string, string> = {
+      "us-east-1": "N. Virginia",
+      "us-east-2": "Ohio",
+      "us-west-1": "N. California",
+      "us-west-2": "Oregon",
+      "eu-west-1": "Ireland",
+      "eu-central-1": "Frankfurt",
+      "ap-southeast-1": "Singapore",
+      "ap-northeast-1": "Tokyo",
+    };
+    return regionMap[code] || code;
   };
 
   return (
@@ -167,9 +193,14 @@ export function AppSidebar() {
                 </h4>
               </div>
               <p className="text-xs text-muted-foreground mb-2">
-                {awsRegion} (N. Virginia)
+                {awsRegion} ({getRegionName(awsRegion)})
               </p>
-              <Button size="sm" variant="outline" className="w-full text-xs">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="w-full text-xs"
+                onClick={() => setRegionDialogOpen(true)}
+              >
                 Change Region
               </Button>
             </div>
@@ -189,9 +220,16 @@ export function AppSidebar() {
         {/* Collapsed state region indicator */}
         {collapsed && (
           <div className="mt-auto p-2">
-            <div className="rounded-lg bg-gradient-to-br from-primary/10 to-primary-glow/10 border border-primary/20 p-2">
-              <Globe className="h-4 w-4 text-primary mx-auto" />
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full p-2"
+              onClick={() => setRegionDialogOpen(true)}
+            >
+              <div className="rounded-lg bg-gradient-to-br from-primary/10 to-primary-glow/10 border border-primary/20 p-2">
+                <Globe className="h-4 w-4 text-primary mx-auto" />
+              </div>
+            </Button>
             <Button 
               variant="ghost" 
               size="sm" 
@@ -203,6 +241,13 @@ export function AppSidebar() {
           </div>
         )}
       </SidebarContent>
+      
+      <RegionSelector
+        currentRegion={awsRegion}
+        onRegionChange={handleRegionChange}
+        open={regionDialogOpen}
+        onOpenChange={setRegionDialogOpen}
+      />
     </Sidebar>
   );
 }

@@ -55,9 +55,11 @@ export const MetricCard = ({
         </CardTitle>
         <div className="flex items-center gap-2">
           {icon}
-          <Badge className={`text-xs ${getStatusColor()}`}>
-            {status}
-          </Badge>
+          {(typeof value === 'number' ? value > 0 : value !== "$0") && (
+            <Badge className={`text-xs ${getStatusColor()}`}>
+              {status}
+            </Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent>
