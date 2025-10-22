@@ -106,22 +106,26 @@ interface DashboardData {
 
 async function getAWSCredentials(supabase: any, userId: string): Promise<AWSConfig | null> {
   try {
+    // Use the secure database function to get decrypted credentials
     const { data, error } = await supabase
-      .from('user_aws_credentials')
-      .select('access_key_id, secret_access_key, region')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .single();
+      .rpc('get_user_aws_credentials', { user_id_param: userId });
 
-    if (error || !data) {
+    if (error) {
       console.error('Error fetching AWS credentials:', error);
       return null;
     }
 
+    if (!data || data.length === 0) {
+      console.error('No AWS credentials found for user');
+      return null;
+    }
+
+    const credentials = data[0];
+
     return {
-      access_key_id: data.access_key_id,
-      secret_access_key: data.secret_access_key,
-      aws_region: data.region || 'us-east-1',
+      access_key_id: credentials.access_key_id,
+      secret_access_key: credentials.secret_access_key,
+      aws_region: credentials.region || 'us-east-1',
     };
   } catch (error) {
     console.error('Error in getAWSCredentials:', error);

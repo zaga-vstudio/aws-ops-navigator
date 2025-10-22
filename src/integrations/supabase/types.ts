@@ -21,8 +21,12 @@ export type Database = {
           aws_region: string
           configuration_name: string
           created_at: string
+          encrypted_access_key: string | null
+          encrypted_secret_key: string | null
+          encrypted_session_token: string | null
           id: string
           is_active: boolean | null
+          key_nonce: string | null
           projects: Json | null
           role_arn: string | null
           secret_access_key: string
@@ -36,8 +40,12 @@ export type Database = {
           aws_region?: string
           configuration_name?: string
           created_at?: string
+          encrypted_access_key?: string | null
+          encrypted_secret_key?: string | null
+          encrypted_session_token?: string | null
           id?: string
           is_active?: boolean | null
+          key_nonce?: string | null
           projects?: Json | null
           role_arn?: string | null
           secret_access_key: string
@@ -51,8 +59,12 @@ export type Database = {
           aws_region?: string
           configuration_name?: string
           created_at?: string
+          encrypted_access_key?: string | null
+          encrypted_secret_key?: string | null
+          encrypted_session_token?: string | null
           id?: string
           is_active?: boolean | null
+          key_nonce?: string | null
           projects?: Json | null
           role_arn?: string | null
           secret_access_key?: string
@@ -96,8 +108,11 @@ export type Database = {
         Row: {
           access_key_id: string
           created_at: string | null
+          encrypted_access_key: string | null
+          encrypted_secret_key: string | null
           id: string
           is_active: boolean | null
+          key_nonce: string | null
           region: string | null
           secret_access_key: string
           updated_at: string | null
@@ -106,8 +121,11 @@ export type Database = {
         Insert: {
           access_key_id: string
           created_at?: string | null
+          encrypted_access_key?: string | null
+          encrypted_secret_key?: string | null
           id?: string
           is_active?: boolean | null
+          key_nonce?: string | null
           region?: string | null
           secret_access_key: string
           updated_at?: string | null
@@ -116,8 +134,11 @@ export type Database = {
         Update: {
           access_key_id?: string
           created_at?: string | null
+          encrypted_access_key?: string | null
+          encrypted_secret_key?: string | null
           id?: string
           is_active?: boolean | null
+          key_nonce?: string | null
           region?: string | null
           secret_access_key?: string
           updated_at?: string | null
@@ -166,7 +187,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      decrypt_secret: {
+        Args: { encrypted_data: string; nonce: string }
+        Returns: string
+      }
+      encrypt_secret: {
+        Args: { secret: string }
+        Returns: string
+      }
+      get_user_aws_credentials: {
+        Args: { user_id_param: string }
+        Returns: {
+          access_key_id: string
+          region: string
+          secret_access_key: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

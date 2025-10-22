@@ -74,9 +74,8 @@ serve(async (req) => {
       });
     }
 
-    // If validation successful, encrypt and store the credentials
-    // Note: In a production environment, you would want to use proper encryption
-    // For this demo, we'll store them directly (Supabase handles basic encryption at rest)
+    // Encrypt and store the credentials using database encryption
+    console.log('Encrypting and storing AWS credentials...');
     
     // Check if user already has AWS credentials
     const { data: existingConfig, error: selectError } = await supabase
@@ -90,14 +89,34 @@ serve(async (req) => {
       throw selectError;
     }
 
+    // Encrypt the credentials using the database function
+    const { data: encryptedAccessKey, error: encryptAccessKeyError } = await supabase
+      .rpc('encrypt_secret', { secret: accessKeyId });
+    
+    if (encryptAccessKeyError) {
+      console.error('Error encrypting access key:', encryptAccessKeyError);
+      throw new Error('Failed to encrypt credentials');
+    }
+
+    const { data: encryptedSecretKey, error: encryptSecretKeyError } = await supabase
+      .rpc('encrypt_secret', { secret: secretAccessKey });
+    
+    if (encryptSecretKeyError) {
+      console.error('Error encrypting secret key:', encryptSecretKeyError);
+      throw new Error('Failed to encrypt credentials');
+    }
+
     if (existingConfig) {
-      // Update existing credentials
+      // Update existing credentials with encrypted values
       const { error: updateError } = await supabase
         .from('user_aws_credentials')
         .update({
+          encrypted_access_key: encryptedAccessKey,
+          encrypted_secret_key: encryptedSecretKey,
+          updated_at: new Date().toISOString(),
+          // Keep plain text temporarily for migration period
           access_key_id: accessKeyId,
           secret_access_key: secretAccessKey,
-          updated_at: new Date().toISOString(),
         })
         .eq('user_id', user.id);
 
@@ -106,14 +125,17 @@ serve(async (req) => {
         throw updateError;
       }
     } else {
-      // Create new credentials
+      // Create new credentials with encrypted values
       const { error: insertError } = await supabase
         .from('user_aws_credentials')
         .insert({
           user_id: user.id,
+          encrypted_access_key: encryptedAccessKey,
+          encrypted_secret_key: encryptedSecretKey,
+          region: 'us-east-1',
+          // Keep plain text temporarily for migration period
           access_key_id: accessKeyId,
           secret_access_key: secretAccessKey,
-          region: 'us-east-1',
         });
 
       if (insertError) {
@@ -121,6 +143,8 @@ serve(async (req) => {
         throw insertError;
       }
     }
+    
+    console.log('AWS credentials encrypted and stored successfully');
 
     console.log('AWS credentials saved successfully for user:', user.id);
 
