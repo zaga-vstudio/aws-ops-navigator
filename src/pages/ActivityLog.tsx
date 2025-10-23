@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Header } from "@/components/Header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { 
   Activity, 
   Search,
@@ -18,86 +19,198 @@ import {
   RefreshCw,
   Download,
   Eye,
-  Info
+  Info,
+  Network,
+  DollarSign
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { useAWSData } from "@/hooks/useAWSData";
+import { format, subHours, subDays, isAfter } from "date-fns";
+import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
 
-const activityLogs = [
-  {
-    id: "LOG-001",
-    timestamp: "2024-01-15 14:30:25",
-    user: "admin@company.com",
-    action: "EC2 Instance Started",
-    resource: "i-0123456789abcdef0",
-    resourceType: "EC2",
-    status: "success",
-    details: "Started EC2 instance in us-east-1",
-    ip: "192.168.1.100"
-  },
-  {
-    id: "LOG-002", 
-    timestamp: "2024-01-15 14:25:12",
-    user: "developer@company.com",
-    action: "RDS Snapshot Created",
-    resource: "db-prod-mysql",
-    resourceType: "RDS",
-    status: "success", 
-    details: "Manual snapshot created for production database",
-    ip: "192.168.1.105"
-  },
-  {
-    id: "LOG-003",
-    timestamp: "2024-01-15 14:20:45",
-    user: "admin@company.com", 
-    action: "Security Group Modified",
-    resource: "sg-0987654321fedcba0",
-    resourceType: "Security",
-    status: "success",
-    details: "Added inbound rule for port 443",
-    ip: "192.168.1.100"
-  },
-  {
-    id: "LOG-004",
-    timestamp: "2024-01-15 14:15:33",
-    user: "system",
-    action: "Auto Scaling Triggered",
-    resource: "asg-web-servers",
-    resourceType: "Auto Scaling",
-    status: "success",
-    details: "Scaled out due to high CPU utilization",
-    ip: "N/A"
-  },
-  {
-    id: "LOG-005",
-    timestamp: "2024-01-15 14:10:18",
-    user: "developer@company.com",
-    action: "EC2 Instance Stopped",
-    resource: "i-0456789012345678",
-    resourceType: "EC2", 
-    status: "failed",
-    details: "Failed to stop instance due to pending tasks",
-    ip: "192.168.1.105"
-  }
-];
-
-const activityStats = [
-  { label: "Total Actions", value: "1,247", change: "+12%" },
-  { label: "Success Rate", value: "98.5%", change: "+0.3%" },
-  { label: "Active Users", value: "23", change: "+2" },
-  { label: "Failed Actions", value: "18", change: "-5" }
-];
+interface ActivityLog {
+  id: string;
+  timestamp: string;
+  user: string;
+  action: string;
+  resource: string;
+  resourceType: string;
+  status: 'success' | 'warning' | 'error';
+  details: string;
+  ip: string;
+}
 
 export default function ActivityLog() {
-  const [refreshing, setRefreshing] = useState(false);
+  const { data: awsData, loading, refetch } = useAWSData();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterUser, setFilterUser] = useState("all");
   const [filterAction, setFilterAction] = useState("all");
   const [timeRange, setTimeRange] = useState("24h");
+  const [selectedLog, setSelectedLog] = useState<ActivityLog | null>(null);
+
+  // Generate activity logs from AWS data
+  const activityLogs = useMemo(() => {
+    const logs: ActivityLog[] = [];
+    
+    if (!awsData) return logs;
+
+    // EC2 Instances
+    awsData.ec2Instances?.forEach((instance) => {
+      const stateStatus = instance.state === 'running' ? 'success' : 
+                         instance.state === 'stopped' ? 'warning' : 'error';
+      logs.push({
+        id: `ec2-${instance.id}`,
+        timestamp: instance.launchTime || new Date().toISOString(),
+        user: 'AWS',
+        action: `EC2 Instance ${instance.state}`,
+        resource: instance.id,
+        resourceType: 'EC2',
+        status: stateStatus,
+        details: `Instance ${instance.name || instance.id} is ${instance.state} in ${instance.availabilityZone}`,
+        ip: instance.publicIp || 'N/A'
+      });
+    });
+
+    // RDS Databases
+    awsData.rdsDatabases?.forEach((db) => {
+      const dbStatus = db.state === 'available' ? 'success' : 
+                      db.state === 'backing-up' ? 'warning' : 'error';
+      logs.push({
+        id: `rds-${db.id}`,
+        timestamp: new Date().toISOString(),
+        user: 'AWS',
+        action: `RDS Database ${db.state}`,
+        resource: db.name,
+        resourceType: 'RDS',
+        status: dbStatus,
+        details: `${db.engine} ${db.engineVersion} database ${db.state}`,
+        ip: 'N/A'
+      });
+    });
+
+    // VPCs
+    awsData.vpcs?.forEach((vpc) => {
+      logs.push({
+        id: `vpc-${vpc.id}`,
+        timestamp: new Date().toISOString(),
+        user: 'AWS',
+        action: 'VPC Active',
+        resource: vpc.id,
+        resourceType: 'VPC',
+        status: vpc.state === 'available' ? 'success' : 'warning',
+        details: `VPC ${vpc.name || vpc.id} (${vpc.cidrBlock}) is ${vpc.state}`,
+        ip: 'N/A'
+      });
+    });
+
+    // Security Groups
+    awsData.securityGroups?.forEach((sg) => {
+      logs.push({
+        id: `sg-${sg.id}`,
+        timestamp: new Date().toISOString(),
+        user: 'AWS',
+        action: 'Security Group Configuration',
+        resource: sg.id,
+        resourceType: 'Security',
+        status: 'success',
+        details: `Security group ${sg.name} has ${sg.inboundRules} inbound and ${sg.outboundRules} outbound rules`,
+        ip: 'N/A'
+      });
+    });
+
+    // CloudWatch Alarms
+    awsData.alarms?.forEach((alarm) => {
+      const alarmStatus = alarm.state === 'OK' ? 'success' : 
+                         alarm.state === 'ALARM' ? 'error' : 'warning';
+      logs.push({
+        id: `alarm-${alarm.id}`,
+        timestamp: alarm.timestamp || new Date().toISOString(),
+        user: 'system',
+        action: `CloudWatch Alarm ${alarm.state}`,
+        resource: alarm.name,
+        resourceType: 'Monitoring',
+        status: alarmStatus,
+        details: alarm.description || `Alarm is in ${alarm.state} state - ${alarm.metric} threshold: ${alarm.threshold}`,
+        ip: 'N/A'
+      });
+    });
+
+    return logs.sort((a, b) => 
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  }, [awsData]);
+
+  // Filter logs by time range
+  const timeFilteredLogs = useMemo(() => {
+    const now = new Date();
+    let cutoffDate: Date;
+
+    switch (timeRange) {
+      case '1h':
+        cutoffDate = subHours(now, 1);
+        break;
+      case '24h':
+        cutoffDate = subHours(now, 24);
+        break;
+      case '7d':
+        cutoffDate = subDays(now, 7);
+        break;
+      case '30d':
+        cutoffDate = subDays(now, 30);
+        break;
+      default:
+        cutoffDate = subHours(now, 24);
+    }
+
+    return activityLogs.filter(log => 
+      isAfter(new Date(log.timestamp), cutoffDate)
+    );
+  }, [activityLogs, timeRange]);
+
+  // Calculate statistics
+  const activityStats = useMemo(() => {
+    const total = timeFilteredLogs.length;
+    const successCount = timeFilteredLogs.filter(log => log.status === 'success').length;
+    const errorCount = timeFilteredLogs.filter(log => log.status === 'error').length;
+    const uniqueUsers = new Set(timeFilteredLogs.map(log => log.user)).size;
+    const successRate = total > 0 ? ((successCount / total) * 100).toFixed(1) : '0.0';
+
+    return [
+      { label: "Total Actions", value: total.toString(), change: `in ${timeRange}` },
+      { label: "Success Rate", value: `${successRate}%`, change: `${successCount}/${total} actions` },
+      { label: "Active Users", value: uniqueUsers.toString(), change: 'unique' },
+      { label: "Failed Actions", value: errorCount.toString(), change: errorCount > 0 ? 'needs attention' : 'all good' }
+    ];
+  }, [timeFilteredLogs, timeRange]);
+
+  // Get unique users and actions for filters
+  const uniqueUsers = useMemo(() => 
+    Array.from(new Set(activityLogs.map(log => log.user))),
+    [activityLogs]
+  );
+
+  const uniqueActions = useMemo(() => 
+    Array.from(new Set(activityLogs.map(log => log.resourceType))),
+    [activityLogs]
+  );
 
   const handleRefresh = () => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 2000);
+    toast.info("Refreshing activity logs...");
+    refetch();
+  };
+
+  const handleExport = () => {
+    const dataStr = JSON.stringify(filteredLogs, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `activity-logs-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success("Activity logs exported successfully");
   };
 
   const getResourceIcon = (type: string) => {
@@ -105,6 +218,8 @@ export default function ActivityLog() {
       case "EC2": return <Server className="h-4 w-4" />;
       case "RDS": return <Database className="h-4 w-4" />;
       case "Security": return <Shield className="h-4 w-4" />;
+      case "VPC": return <Network className="h-4 w-4" />;
+      case "Monitoring": return <DollarSign className="h-4 w-4" />;
       default: return <Activity className="h-4 w-4" />;
     }
   };
@@ -112,21 +227,23 @@ export default function ActivityLog() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "success": return "text-success";
-      case "failed": return "text-destructive";
-      case "pending": return "text-warning";
+      case "error": return "text-destructive";
+      case "warning": return "text-warning";
       default: return "text-muted-foreground";
     }
   };
 
-  const filteredLogs = activityLogs.filter(log => {
-    const matchesSearch = log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         log.resource.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         log.user.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesUser = filterUser === "all" || log.user === filterUser;
-    const matchesAction = filterAction === "all" || log.action.includes(filterAction);
-    
-    return matchesSearch && matchesUser && matchesAction;
-  });
+  const filteredLogs = useMemo(() => {
+    return timeFilteredLogs.filter(log => {
+      const matchesSearch = log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           log.resource.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                           log.user.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesUser = filterUser === "all" || log.user === filterUser;
+      const matchesAction = filterAction === "all" || log.resourceType === filterAction;
+      
+      return matchesSearch && matchesUser && matchesAction;
+    });
+  }, [timeFilteredLogs, searchTerm, filterUser, filterAction]);
 
   return (
     <SidebarProvider>
@@ -157,39 +274,46 @@ export default function ActivityLog() {
                       <SelectItem value="30d">30 Days</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button variant="outline" size="sm">
+                  <Button variant="outline" size="sm" onClick={handleExport} disabled={filteredLogs.length === 0}>
                     <Download className="h-4 w-4 mr-2" />
                     Export
                   </Button>
-                  <Button onClick={handleRefresh} disabled={refreshing}>
-                    <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                  <Button onClick={handleRefresh} disabled={loading}>
+                    <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
                 </div>
               </div>
 
-              {/* Info Banner */}
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  CloudTrail activity log integration coming soon. Currently displaying sample data for demonstration purposes.
-                </AlertDescription>
-              </Alert>
-
               {/* Activity Statistics */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {activityStats.map((stat, index) => (
-                  <Card key={index}>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">{stat.label}</CardTitle>
-                      <Activity className="h-4 w-4 text-primary" />
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-2xl font-bold">{stat.value}</div>
-                      <p className="text-xs text-muted-foreground">{stat.change} from last period</p>
-                    </CardContent>
-                  </Card>
-                ))}
+                {loading ? (
+                  Array(4).fill(0).map((_, index) => (
+                    <Card key={index}>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-4 w-4 rounded" />
+                      </CardHeader>
+                      <CardContent>
+                        <Skeleton className="h-8 w-16 mb-2" />
+                        <Skeleton className="h-3 w-32" />
+                      </CardContent>
+                    </Card>
+                  ))
+                ) : (
+                  activityStats.map((stat, index) => (
+                    <Card key={index}>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">{stat.label}</CardTitle>
+                        <Activity className="h-4 w-4 text-primary" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{stat.value}</div>
+                        <p className="text-xs text-muted-foreground">{stat.change}</p>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
               </div>
 
               {/* Filters */}
@@ -217,9 +341,9 @@ export default function ActivityLog() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Users</SelectItem>
-                        <SelectItem value="admin@company.com">Admin User</SelectItem>
-                        <SelectItem value="developer@company.com">Developer</SelectItem>
-                        <SelectItem value="system">System</SelectItem>
+                        {uniqueUsers.map((user) => (
+                          <SelectItem key={user} value={user}>{user}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <Select value={filterAction} onValueChange={setFilterAction}>
@@ -227,11 +351,10 @@ export default function ActivityLog() {
                         <SelectValue placeholder="Filter by action" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Actions</SelectItem>
-                        <SelectItem value="Started">Instance Started</SelectItem>
-                        <SelectItem value="Stopped">Instance Stopped</SelectItem>
-                        <SelectItem value="Created">Resource Created</SelectItem>
-                        <SelectItem value="Modified">Resource Modified</SelectItem>
+                        <SelectItem value="all">All Resource Types</SelectItem>
+                        {uniqueActions.map((action) => (
+                          <SelectItem key={action} value={action}>{action}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -247,48 +370,146 @@ export default function ActivityLog() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {filteredLogs.map((log) => (
-                      <div key={log.id} className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors">
-                        <div className="flex-shrink-0 mt-1">
-                          {getResourceIcon(log.resourceType)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-medium truncate">{log.action}</h4>
-                            <Badge variant={log.status === "success" ? "default" : "destructive"}>
-                              {log.status}
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">
-                              {log.resourceType}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground mb-2">{log.details}</p>
-                          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <User className="h-3 w-3" />
-                              {log.user}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {log.timestamp}
-                            </span>
-                            <span>Resource: {log.resource}</span>
-                            {log.ip !== "N/A" && <span>IP: {log.ip}</span>}
+                  {loading ? (
+                    <div className="space-y-4">
+                      {Array(5).fill(0).map((_, index) => (
+                        <div key={index} className="flex items-start gap-4 p-4 border rounded-lg">
+                          <Skeleton className="h-4 w-4 rounded" />
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <Skeleton className="h-5 w-40" />
+                              <Skeleton className="h-5 w-16" />
+                            </div>
+                            <Skeleton className="h-4 w-full" />
+                            <div className="flex items-center gap-4">
+                              <Skeleton className="h-3 w-24" />
+                              <Skeleton className="h-3 w-32" />
+                              <Skeleton className="h-3 w-28" />
+                            </div>
                           </div>
                         </div>
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : filteredLogs.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No activity logs found matching your filters</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {filteredLogs.map((log) => (
+                        <div key={log.id} className="flex items-start gap-4 p-4 border rounded-lg hover:bg-accent/50 transition-colors">
+                          <div className="flex-shrink-0 mt-1">
+                            {getResourceIcon(log.resourceType)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-medium truncate">{log.action}</h4>
+                              <Badge 
+                                className={
+                                  log.status === "success" ? "bg-success text-success-foreground" :
+                                  log.status === "error" ? "bg-destructive text-destructive-foreground" :
+                                  "bg-warning text-warning-foreground"
+                                }
+                              >
+                                {log.status}
+                              </Badge>
+                              <Badge variant="outline" className="text-xs">
+                                {log.resourceType}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground mb-2">{log.details}</p>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1">
+                                <User className="h-3 w-3" />
+                                {log.user}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Calendar className="h-3 w-3" />
+                                {format(new Date(log.timestamp), 'PPp')}
+                              </span>
+                              <span>Resource: {log.resource}</span>
+                              {log.ip !== "N/A" && <span>IP: {log.ip}</span>}
+                            </div>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => setSelectedLog(log)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
           </main>
         </div>
       </div>
+
+      {/* Log Details Dialog */}
+      <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Activity Log Details</DialogTitle>
+            <DialogDescription>
+              Complete information about this activity
+            </DialogDescription>
+          </DialogHeader>
+          {selectedLog && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Action</label>
+                  <p className="text-foreground font-medium">{selectedLog.action}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Status</label>
+                  <div className="mt-1">
+                    <Badge 
+                      className={
+                        selectedLog.status === "success" ? "bg-success text-success-foreground" :
+                        selectedLog.status === "error" ? "bg-destructive text-destructive-foreground" :
+                        "bg-warning text-warning-foreground"
+                      }
+                    >
+                      {selectedLog.status}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Resource Type</label>
+                  <p className="text-foreground flex items-center gap-2">
+                    {getResourceIcon(selectedLog.resourceType)}
+                    {selectedLog.resourceType}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Resource ID</label>
+                  <p className="text-foreground font-mono text-sm">{selectedLog.resource}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">User</label>
+                  <p className="text-foreground">{selectedLog.user}</p>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">Timestamp</label>
+                  <p className="text-foreground">{format(new Date(selectedLog.timestamp), 'PPpp')}</p>
+                </div>
+                {selectedLog.ip !== 'N/A' && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground">IP Address</label>
+                    <p className="text-foreground font-mono text-sm">{selectedLog.ip}</p>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Details</label>
+                <p className="text-foreground mt-1 p-3 bg-muted rounded-md">{selectedLog.details}</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   );
 }
