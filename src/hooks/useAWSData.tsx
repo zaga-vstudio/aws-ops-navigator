@@ -77,6 +77,25 @@ export interface CloudWatchAlarm {
   resourceId?: string;
 }
 
+export interface IAMUser {
+  userName: string;
+  userId: string;
+  arn: string;
+  createDate: string;
+  passwordLastUsed?: string;
+  mfaEnabled: boolean;
+  accessKeys: number;
+}
+
+export interface ComplianceCheck {
+  id: string;
+  name: string;
+  status: 'COMPLIANT' | 'NON_COMPLIANT' | 'NOT_APPLICABLE' | 'INSUFFICIENT_DATA';
+  description: string;
+  resourceType?: string;
+  resourceId?: string;
+}
+
 export interface AWSMetrics {
   totalInstances: number;
   runningInstances: number;
@@ -94,6 +113,8 @@ export interface AWSData {
   subnets: Subnet[];
   securityGroups: SecurityGroup[];
   alarms: CloudWatchAlarm[];
+  iamUsers: IAMUser[];
+  complianceChecks: ComplianceCheck[];
   metrics: AWSMetrics;
 }
 

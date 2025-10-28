@@ -4,6 +4,8 @@ import { EC2Client, DescribeInstancesCommand, DescribeVpcsCommand, DescribeSubne
 import { RDSClient, DescribeDBInstancesCommand } from "npm:@aws-sdk/client-rds@3.451.0";
 import { S3Client, ListBucketsCommand } from "npm:@aws-sdk/client-s3@3.451.0";
 import { CloudWatchClient, GetMetricStatisticsCommand, DescribeAlarmsCommand } from "npm:@aws-sdk/client-cloudwatch@3.451.0";
+import { IAMClient, ListUsersCommand, GetUserCommand, ListAccessKeysCommand } from "npm:@aws-sdk/client-iam@3.451.0";
+import { ConfigServiceClient, DescribeComplianceByResourceCommand, DescribeConfigRulesCommand } from "npm:@aws-sdk/client-config-service@3.451.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -86,6 +88,25 @@ interface CloudWatchAlarm {
   resourceId?: string;
 }
 
+interface IAMUser {
+  userName: string;
+  userId: string;
+  arn: string;
+  createDate: string;
+  passwordLastUsed?: string;
+  mfaEnabled: boolean;
+  accessKeys: number;
+}
+
+interface ComplianceCheck {
+  id: string;
+  name: string;
+  status: 'COMPLIANT' | 'NON_COMPLIANT' | 'NOT_APPLICABLE' | 'INSUFFICIENT_DATA';
+  description: string;
+  resourceType?: string;
+  resourceId?: string;
+}
+
 interface DashboardData {
   ec2Instances: EC2Instance[];
   rdsDatabases: RDSDatabase[];
@@ -94,6 +115,8 @@ interface DashboardData {
   subnets: Subnet[];
   securityGroups: SecurityGroup[];
   alarms: CloudWatchAlarm[];
+  iamUsers: IAMUser[];
+  complianceChecks: ComplianceCheck[];
   metrics: {
     totalInstances: number;
     runningInstances: number;
@@ -508,6 +531,128 @@ async function getCloudWatchAlarms(config: AWSConfig): Promise<CloudWatchAlarm[]
   }
 }
 
+async function getIAMUsers(config: AWSConfig): Promise<IAMUser[]> {
+  console.log('Fetching IAM Users (region-independent)');
+  
+  try {
+    const iamClient = new IAMClient({
+      region: 'us-east-1', // IAM is global, but client needs a region
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
+    });
+
+    const listUsersCommand = new ListUsersCommand({});
+    const response = await iamClient.send(listUsersCommand);
+    
+    const users: IAMUser[] = [];
+    
+    if (response.Users) {
+      for (const user of response.Users) {
+        // Get access keys count for each user
+        let accessKeysCount = 0;
+        try {
+          const accessKeysCommand = new ListAccessKeysCommand({ UserName: user.UserName });
+          const accessKeysResponse = await iamClient.send(accessKeysCommand);
+          accessKeysCount = accessKeysResponse.AccessKeyMetadata?.length || 0;
+        } catch (error) {
+          console.log(`Could not fetch access keys for ${user.UserName}`);
+        }
+
+        users.push({
+          userName: user.UserName || '',
+          userId: user.UserId || '',
+          arn: user.Arn || '',
+          createDate: user.CreateDate?.toISOString() || '',
+          passwordLastUsed: user.PasswordLastUsed?.toISOString(),
+          mfaEnabled: false, // Note: Checking MFA requires additional permissions
+          accessKeys: accessKeysCount,
+        });
+      }
+    }
+    
+    console.log(`Found ${users.length} IAM Users`);
+    return users;
+  } catch (error: any) {
+    console.error('Error fetching IAM Users:', error);
+    // Return empty array if no IAM permissions
+    if (error.message?.includes('AccessDenied') || error.message?.includes('UnauthorizedOperation')) {
+      console.log('No IAM permissions, returning empty array');
+      return [];
+    }
+    throw new Error(`Failed to fetch IAM Users: ${error.message}`);
+  }
+}
+
+async function getComplianceChecks(config: AWSConfig): Promise<ComplianceCheck[]> {
+  console.log(`Fetching AWS Config compliance for region: ${config.aws_region}`);
+  
+  try {
+    const configClient = new ConfigServiceClient({
+      region: config.aws_region,
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
+    });
+
+    // First get config rules
+    const rulesCommand = new DescribeConfigRulesCommand({});
+    const rulesResponse = await configClient.send(rulesCommand);
+    
+    const checks: ComplianceCheck[] = [];
+    
+    if (rulesResponse.ConfigRules && rulesResponse.ConfigRules.length > 0) {
+      // Get compliance status for each rule
+      for (const rule of rulesResponse.ConfigRules.slice(0, 10)) { // Limit to 10 rules
+        try {
+          const complianceCommand = new DescribeComplianceByResourceCommand({
+            ResourceType: rule.Scope?.ComplianceResourceTypes?.[0] || 'AWS::EC2::Instance',
+          });
+          const complianceResponse = await configClient.send(complianceCommand);
+          
+          if (complianceResponse.ComplianceByResources) {
+            for (const resource of complianceResponse.ComplianceByResources.slice(0, 5)) {
+              checks.push({
+                id: `${rule.ConfigRuleName}-${resource.ResourceId}`,
+                name: rule.ConfigRuleName || 'Unknown Rule',
+                status: (resource.Compliance?.ComplianceType as any) || 'INSUFFICIENT_DATA',
+                description: rule.Description || `Compliance check for ${rule.ConfigRuleName}`,
+                resourceType: resource.ResourceType,
+                resourceId: resource.ResourceId,
+              });
+            }
+          }
+        } catch (err) {
+          console.log(`Could not get compliance for rule ${rule.ConfigRuleName}`);
+        }
+      }
+    }
+    
+    console.log(`Found ${checks.length} Compliance Checks`);
+    return checks;
+  } catch (error: any) {
+    console.error('Error fetching Compliance Checks:', error);
+    // Return empty array if AWS Config not enabled or no permissions
+    if (error.message?.includes('AccessDenied') || 
+        error.message?.includes('ResourceNotFound') ||
+        error.message?.includes('ConfigServiceNotEnabled')) {
+      console.log('AWS Config not available, returning empty array');
+      return [];
+    }
+    throw new Error(`Failed to fetch Compliance Checks: ${error.message}`);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -563,16 +708,20 @@ serve(async (req) => {
     let subnets: Subnet[] = [];
     let securityGroups: SecurityGroup[] = [];
     let alarms: CloudWatchAlarm[] = [];
+    let iamUsers: IAMUser[] = [];
+    let complianceChecks: ComplianceCheck[] = [];
     
     try {
-      [ec2Instances, rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, alarms] = await Promise.all([
+      [ec2Instances, rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, alarms, iamUsers, complianceChecks] = await Promise.all([
         getEC2Instances(awsConfig),
         getRDSDatabases(awsConfig),
         getS3Buckets(awsConfig),
         getVPCs(awsConfig),
         getSubnets(awsConfig),
         getSecurityGroups(awsConfig),
-        getCloudWatchAlarms(awsConfig)
+        getCloudWatchAlarms(awsConfig),
+        getIAMUsers(awsConfig),
+        getComplianceChecks(awsConfig)
       ]);
     } catch (awsError: any) {
       console.error('AWS API Error:', awsError);
@@ -618,10 +767,12 @@ serve(async (req) => {
       subnets,
       securityGroups,
       alarms,
+      iamUsers,
+      complianceChecks,
       metrics
     };
 
-    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets, ${vpcs.length} VPCs, ${subnets.length} subnets, ${securityGroups.length} security groups, ${alarms.length} alarms`);
+    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets, ${vpcs.length} VPCs, ${subnets.length} subnets, ${securityGroups.length} security groups, ${alarms.length} alarms, ${iamUsers.length} IAM users, ${complianceChecks.length} compliance checks`);
 
     return new Response(
       JSON.stringify(dashboardData),

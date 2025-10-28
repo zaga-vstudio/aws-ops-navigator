@@ -23,17 +23,15 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { useMemo } from "react";
 import { formatDistanceToNow } from "date-fns";
 
-const iamUsers = [
-  { name: "admin-user", lastActivity: "2 hours ago", status: "active", policies: "5" },
-  { name: "dev-user", lastActivity: "1 day ago", status: "active", policies: "3" },
-  { name: "readonly-user", lastActivity: "3 days ago", status: "inactive", policies: "1" }
-];
+// Mock IAM users removed - now using real data from AWS
 
 export default function Security() {
   const { data: awsData, loading, error, refetch } = useAWSData();
   
   const securityGroups = awsData?.securityGroups || [];
   const alarms = awsData?.alarms || [];
+  const iamUsers = awsData?.iamUsers || [];
+  const complianceChecks = awsData?.complianceChecks || [];
 
   // Calculate security score based on real AWS data
   const securityScore = useMemo(() => {
@@ -94,6 +92,26 @@ export default function Security() {
     ).length;
   }, [alarms]);
 
+  // Calculate IAM user stats
+  const inactiveUsers = useMemo(() => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    return iamUsers.filter(user => {
+      if (!user.passwordLastUsed) return true;
+      return new Date(user.passwordLastUsed) < thirtyDaysAgo;
+    }).length;
+  }, [iamUsers]);
+
+  // Get compliance stats
+  const complianceStats = useMemo(() => {
+    const compliant = complianceChecks.filter(c => c.status === 'COMPLIANT').length;
+    const nonCompliant = complianceChecks.filter(c => c.status === 'NON_COMPLIANT').length;
+    const total = complianceChecks.length;
+    
+    return { compliant, nonCompliant, total };
+  }, [complianceChecks]);
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
@@ -126,11 +144,11 @@ export default function Security() {
                 </Alert>
               )}
               
-              {!error && (
+              {!error && iamUsers.length === 0 && complianceChecks.length === 0 && (
                 <Alert>
                   <Info className="h-4 w-4" />
                   <AlertDescription>
-                    IAM and compliance monitoring coming soon. Currently showing Security Groups from your AWS account.
+                    IAM and compliance data requires additional AWS permissions. Grant IAM:ListUsers and Config permissions to your AWS credentials to view this data.
                   </AlertDescription>
                 </Alert>
               )}
@@ -187,8 +205,10 @@ export default function Security() {
                       <Skeleton className="h-8 w-12" />
                     ) : (
                       <>
-                        <div className="text-2xl font-bold">12</div>
-                        <p className="text-xs text-muted-foreground">3 inactive users</p>
+                        <div className="text-2xl font-bold">{iamUsers.length}</div>
+                        <p className="text-xs text-muted-foreground">
+                          {inactiveUsers} inactive {inactiveUsers === 1 ? 'user' : 'users'}
+                        </p>
                       </>
                     )}
                   </CardContent>
@@ -336,48 +356,79 @@ export default function Security() {
                 </TabsContent>
 
                 <TabsContent value="iam" className="space-y-4">
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertDescription>
-                      IAM user monitoring coming soon. Showing example data.
-                    </AlertDescription>
-                  </Alert>
+                  {iamUsers.length === 0 && !loading && (
+                    <Alert>
+                      <Info className="h-4 w-4" />
+                      <AlertDescription>
+                        No IAM users found. Ensure your AWS credentials have IAM:ListUsers permissions.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <Card>
                     <CardHeader>
-                      <CardTitle>IAM Users (Example Data)</CardTitle>
-                      <CardDescription>Monitor user access and permissions</CardDescription>
+                      <CardTitle>IAM Users</CardTitle>
+                      <CardDescription>Monitor user access and permissions from your AWS account</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <Table>
                         <TableHeader>
                           <TableRow>
                             <TableHead>Username</TableHead>
+                            <TableHead>User ID</TableHead>
+                            <TableHead>Created</TableHead>
                             <TableHead>Last Activity</TableHead>
+                            <TableHead>Access Keys</TableHead>
                             <TableHead>Status</TableHead>
-                            <TableHead>Policies</TableHead>
-                            <TableHead>Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {iamUsers.map((user) => (
-                            <TableRow key={user.name}>
-                              <TableCell className="font-medium">{user.name}</TableCell>
-                              <TableCell>{user.lastActivity}</TableCell>
-                              <TableCell>
-                                <Badge variant={user.status === "active" ? "default" : "secondary"}>
-                                  {user.status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline">{user.policies}</Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Button variant="ghost" size="sm" disabled>
-                                  <Key className="h-4 w-4" />
-                                </Button>
+                          {loading ? (
+                            Array(3).fill(0).map((_, i) => (
+                              <TableRow key={i}>
+                                <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                              </TableRow>
+                            ))
+                          ) : iamUsers.length === 0 ? (
+                            <TableRow>
+                              <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                                No IAM users available
                               </TableCell>
                             </TableRow>
-                          ))}
+                          ) : (
+                            iamUsers.map((user) => {
+                              const thirtyDaysAgo = new Date();
+                              thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                              const isInactive = !user.passwordLastUsed || new Date(user.passwordLastUsed) < thirtyDaysAgo;
+                              
+                              return (
+                                <TableRow key={user.userId}>
+                                  <TableCell className="font-medium">{user.userName}</TableCell>
+                                  <TableCell className="font-mono text-xs">{user.userId}</TableCell>
+                                  <TableCell>
+                                    {formatDistanceToNow(new Date(user.createDate), { addSuffix: true })}
+                                  </TableCell>
+                                  <TableCell>
+                                    {user.passwordLastUsed 
+                                      ? formatDistanceToNow(new Date(user.passwordLastUsed), { addSuffix: true })
+                                      : 'Never'}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant="outline">{user.accessKeys}</Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={isInactive ? "secondary" : "default"}>
+                                      {isInactive ? 'Inactive' : 'Active'}
+                                    </Badge>
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })
+                          )}
                         </TableBody>
                       </Table>
                     </CardContent>
@@ -385,52 +436,110 @@ export default function Security() {
                 </TabsContent>
 
                 <TabsContent value="compliance" className="space-y-4">
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertDescription>
-                      Compliance monitoring coming soon. Showing example data.
-                    </AlertDescription>
-                  </Alert>
+                  {complianceChecks.length === 0 && !loading && (
+                    <Alert>
+                      <Info className="h-4 w-4" />
+                      <AlertDescription>
+                        No compliance data found. Ensure AWS Config is enabled in your account and your credentials have Config permissions.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  
+                  {complianceChecks.length > 0 && (
+                    <div className="grid grid-cols-3 gap-4 mb-4">
+                      <Card>
+                        <CardContent className="pt-6">
+                          <div className="text-center">
+                            <div className="text-3xl font-bold text-success">{complianceStats.compliant}</div>
+                            <p className="text-sm text-muted-foreground">Compliant</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-6">
+                          <div className="text-center">
+                            <div className="text-3xl font-bold text-destructive">{complianceStats.nonCompliant}</div>
+                            <p className="text-sm text-muted-foreground">Non-Compliant</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-6">
+                          <div className="text-center">
+                            <div className="text-3xl font-bold">{complianceStats.total}</div>
+                            <p className="text-sm text-muted-foreground">Total Checks</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  )}
+                  
                   <Card>
                     <CardHeader>
-                      <CardTitle>Compliance Status (Example Data)</CardTitle>
-                      <CardDescription>AWS security best practices compliance</CardDescription>
+                      <CardTitle>Compliance Status</CardTitle>
+                      <CardDescription>AWS Config compliance checks from your account</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 border rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <CheckCircle className="h-5 w-5 text-success" />
-                            <div>
-                              <p className="font-medium">MFA Enabled</p>
-                              <p className="text-sm text-muted-foreground">Multi-factor authentication is configured</p>
+                      {loading ? (
+                        <div className="space-y-4">
+                          {Array(3).fill(0).map((_, i) => (
+                            <div key={i} className="p-4 border rounded-lg">
+                              <Skeleton className="h-5 w-3/4 mb-2" />
+                              <Skeleton className="h-4 w-1/2" />
                             </div>
-                          </div>
-                          <Badge variant="outline" className="text-success border-success">Compliant</Badge>
+                          ))}
                         </div>
-                        
-                        <div className="flex items-center justify-between p-4 border rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <AlertTriangle className="h-5 w-5 text-warning" />
-                            <div>
-                              <p className="font-medium">Root Access Keys</p>
-                              <p className="text-sm text-muted-foreground">Root account access keys detected</p>
-                            </div>
-                          </div>
-                          <Badge variant="outline" className="text-warning border-warning">Warning</Badge>
+                      ) : complianceChecks.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          No compliance checks available
                         </div>
-                        
-                        <div className="flex items-center justify-between p-4 border rounded-lg">
-                          <div className="flex items-center gap-3">
-                            <CheckCircle className="h-5 w-5 text-success" />
-                            <div>
-                              <p className="font-medium">CloudTrail Logging</p>
-                              <p className="text-sm text-muted-foreground">API call logging is enabled</p>
-                            </div>
-                          </div>
-                          <Badge variant="outline" className="text-success border-success">Compliant</Badge>
+                      ) : (
+                        <div className="space-y-4">
+                          {complianceChecks.map((check) => {
+                            const getStatusIcon = () => {
+                              switch (check.status) {
+                                case 'COMPLIANT':
+                                  return <CheckCircle className="h-5 w-5 text-success" />;
+                                case 'NON_COMPLIANT':
+                                  return <AlertTriangle className="h-5 w-5 text-destructive" />;
+                                default:
+                                  return <Info className="h-5 w-5 text-muted-foreground" />;
+                              }
+                            };
+                            
+                            const getStatusBadge = () => {
+                              switch (check.status) {
+                                case 'COMPLIANT':
+                                  return <Badge variant="outline" className="text-success border-success">Compliant</Badge>;
+                                case 'NON_COMPLIANT':
+                                  return <Badge variant="outline" className="text-destructive border-destructive">Non-Compliant</Badge>;
+                                case 'NOT_APPLICABLE':
+                                  return <Badge variant="outline">Not Applicable</Badge>;
+                                default:
+                                  return <Badge variant="outline">Insufficient Data</Badge>;
+                              }
+                            };
+                            
+                            return (
+                              <div key={check.id} className="flex items-center justify-between p-4 border rounded-lg">
+                                <div className="flex items-center gap-3">
+                                  {getStatusIcon()}
+                                  <div>
+                                    <p className="font-medium">{check.name}</p>
+                                    <p className="text-sm text-muted-foreground">{check.description}</p>
+                                    {check.resourceId && (
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        Resource: {check.resourceType} - {check.resourceId}
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                                {getStatusBadge()}
+                              </div>
+                            );
+                          })}
                         </div>
-                      </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
