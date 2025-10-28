@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { useMemo } from "react";
+import { formatDistanceToNow } from "date-fns";
 
 const iamUsers = [
   { name: "admin-user", lastActivity: "2 hours ago", status: "active", policies: "5" },
@@ -27,16 +29,70 @@ const iamUsers = [
   { name: "readonly-user", lastActivity: "3 days ago", status: "inactive", policies: "1" }
 ];
 
-const securityAlerts = [
-  { type: "critical", message: "Security group sg-web has overly permissive rules", timestamp: "1 hour ago" },
-  { type: "warning", message: "IAM user has not been active for 30+ days", timestamp: "2 hours ago" },
-  { type: "info", message: "New security patch available for EC2 instances", timestamp: "5 hours ago" }
-];
-
 export default function Security() {
   const { data: awsData, loading, error, refetch } = useAWSData();
   
   const securityGroups = awsData?.securityGroups || [];
+  const alarms = awsData?.alarms || [];
+
+  // Calculate security score based on real AWS data
+  const securityScore = useMemo(() => {
+    let score = 100;
+    
+    // Deduct points for overly permissive security groups (>10 inbound rules)
+    const permissiveGroups = securityGroups.filter(sg => sg.inboundRules > 10);
+    score -= permissiveGroups.length * 10;
+    
+    // Deduct points for default security groups (potential misconfiguration)
+    const defaultGroups = securityGroups.filter(sg => sg.name.toLowerCase().includes('default'));
+    score -= defaultGroups.length * 5;
+    
+    // Deduct points for critical alarms
+    const criticalAlarms = alarms.filter(alarm => 
+      alarm.state === 'ALARM' && alarm.severity === 'critical'
+    );
+    score -= criticalAlarms.length * 20;
+    
+    // Deduct points for any alarm in ALARM state
+    const activeAlarms = alarms.filter(alarm => alarm.state === 'ALARM');
+    score -= (activeAlarms.length - criticalAlarms.length) * 5;
+    
+    // Bonus points for having monitoring enabled
+    if (alarms.length > 0) {
+      score += 5;
+    }
+    
+    // Ensure score is between 0 and 100
+    return Math.max(0, Math.min(100, score));
+  }, [securityGroups, alarms]);
+
+  // Get score color based on value
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return 'text-success';
+    if (score >= 60) return 'text-warning';
+    return 'text-destructive';
+  };
+
+  // Transform CloudWatch alarms into security alerts
+  const securityAlerts = useMemo(() => {
+    return alarms
+      .filter(alarm => alarm.state === 'ALARM' || alarm.state === 'INSUFFICIENT_DATA')
+      .map(alarm => ({
+        type: alarm.severity === 'critical' ? 'critical' : 
+              alarm.state === 'ALARM' ? 'warning' : 'info',
+        message: alarm.description || `${alarm.name} - ${alarm.state}`,
+        timestamp: alarm.timestamp ? formatDistanceToNow(new Date(alarm.timestamp), { addSuffix: true }) : 'Unknown',
+        resourceId: alarm.resourceId
+      }))
+      .slice(0, 5); // Show top 5 alerts
+  }, [alarms]);
+
+  // Calculate critical alerts count
+  const criticalAlertsCount = useMemo(() => {
+    return alarms.filter(alarm => 
+      alarm.state === 'ALARM' && alarm.severity === 'critical'
+    ).length;
+  }, [alarms]);
 
   return (
     <SidebarProvider>
@@ -84,11 +140,21 @@ export default function Security() {
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Security Score</CardTitle>
-                    <Shield className="h-4 w-4 text-success" />
+                    <Shield className={`h-4 w-4 ${getScoreColor(securityScore)}`} />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-success">87/100</div>
-                    <p className="text-xs text-muted-foreground">+5 from last week</p>
+                    {loading ? (
+                      <Skeleton className="h-8 w-20" />
+                    ) : (
+                      <>
+                        <div className={`text-2xl font-bold ${getScoreColor(securityScore)}`}>
+                          {securityScore}/100
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Based on {securityGroups.length} groups & {alarms.length} alarms
+                        </p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -98,8 +164,16 @@ export default function Security() {
                     <AlertTriangle className="h-4 w-4 text-destructive" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold text-destructive">3</div>
-                    <p className="text-xs text-muted-foreground">Requires immediate attention</p>
+                    {loading ? (
+                      <Skeleton className="h-8 w-12" />
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold text-destructive">{criticalAlertsCount}</div>
+                        <p className="text-xs text-muted-foreground">
+                          {criticalAlertsCount > 0 ? 'Requires immediate attention' : 'No critical alerts'}
+                        </p>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -145,25 +219,49 @@ export default function Security() {
                     <AlertTriangle className="h-5 w-5" />
                     Recent Security Alerts
                   </CardTitle>
-                  <CardDescription>Critical security issues requiring attention</CardDescription>
+                  <CardDescription>CloudWatch alarms requiring attention</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {securityAlerts.map((alert, index) => (
-                      <Alert key={index} variant={alert.type === "critical" ? "destructive" : "default"}>
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertDescription>
-                          <div className="flex justify-between items-start">
-                            <div>
-                              <p className="font-medium capitalize mb-1">{alert.type}</p>
-                              <p>{alert.message}</p>
+                  {loading ? (
+                    <div className="space-y-3">
+                      {Array(3).fill(0).map((_, i) => (
+                        <div key={i} className="p-4 border rounded-lg">
+                          <Skeleton className="h-4 w-full mb-2" />
+                          <Skeleton className="h-3 w-2/3" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : securityAlerts.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <CheckCircle className="h-12 w-12 mx-auto mb-2 text-success" />
+                      <p>No active security alerts</p>
+                      <p className="text-xs mt-1">All systems are operating normally</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {securityAlerts.map((alert, index) => (
+                        <Alert key={index} variant={alert.type === "critical" ? "destructive" : "default"}>
+                          <AlertTriangle className="h-4 w-4" />
+                          <AlertDescription>
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <p className="font-medium capitalize mb-1">{alert.type}</p>
+                                <p>{alert.message}</p>
+                                {alert.resourceId && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    Resource: {alert.resourceId}
+                                  </p>
+                                )}
+                              </div>
+                              <span className="text-xs text-muted-foreground whitespace-nowrap ml-4">
+                                {alert.timestamp}
+                              </span>
                             </div>
-                            <span className="text-xs text-muted-foreground whitespace-nowrap ml-4">{alert.timestamp}</span>
-                          </div>
-                        </AlertDescription>
-                      </Alert>
-                    ))}
-                  </div>
+                          </AlertDescription>
+                        </Alert>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -238,9 +336,15 @@ export default function Security() {
                 </TabsContent>
 
                 <TabsContent value="iam" className="space-y-4">
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      IAM user monitoring coming soon. Showing example data.
+                    </AlertDescription>
+                  </Alert>
                   <Card>
                     <CardHeader>
-                      <CardTitle>IAM Users</CardTitle>
+                      <CardTitle>IAM Users (Example Data)</CardTitle>
                       <CardDescription>Monitor user access and permissions</CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -268,7 +372,7 @@ export default function Security() {
                                 <Badge variant="outline">{user.policies}</Badge>
                               </TableCell>
                               <TableCell>
-                                <Button variant="ghost" size="sm">
+                                <Button variant="ghost" size="sm" disabled>
                                   <Key className="h-4 w-4" />
                                 </Button>
                               </TableCell>
@@ -281,9 +385,15 @@ export default function Security() {
                 </TabsContent>
 
                 <TabsContent value="compliance" className="space-y-4">
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      Compliance monitoring coming soon. Showing example data.
+                    </AlertDescription>
+                  </Alert>
                   <Card>
                     <CardHeader>
-                      <CardTitle>Compliance Status</CardTitle>
+                      <CardTitle>Compliance Status (Example Data)</CardTitle>
                       <CardDescription>AWS security best practices compliance</CardDescription>
                     </CardHeader>
                     <CardContent>
