@@ -6,6 +6,7 @@ import { S3Client, ListBucketsCommand } from "npm:@aws-sdk/client-s3@3.451.0";
 import { CloudWatchClient, GetMetricStatisticsCommand, DescribeAlarmsCommand } from "npm:@aws-sdk/client-cloudwatch@3.451.0";
 import { IAMClient, ListUsersCommand, GetUserCommand, ListAccessKeysCommand } from "npm:@aws-sdk/client-iam@3.451.0";
 import { ConfigServiceClient, DescribeComplianceByResourceCommand, DescribeConfigRulesCommand } from "npm:@aws-sdk/client-config-service@3.451.0";
+import { CostExplorerClient, GetCostAndUsageCommand, GetAnomaliesCommand } from "npm:@aws-sdk/client-cost-explorer@3.451.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -107,6 +108,27 @@ interface ComplianceCheck {
   resourceId?: string;
 }
 
+interface ServiceCost {
+  service: string;
+  amount: number;
+  percentage: number;
+}
+
+interface CostAnomaly {
+  id: string;
+  type: 'warning' | 'critical' | 'info';
+  message: string;
+  amount: string;
+  impactValue: number;
+}
+
+interface TopSpendingResource {
+  resourceId: string;
+  resourceType: string;
+  cost: number;
+  trend: 'up' | 'down' | 'stable';
+}
+
 interface DashboardData {
   ec2Instances: EC2Instance[];
   rdsDatabases: RDSDatabase[];
@@ -117,6 +139,11 @@ interface DashboardData {
   alarms: CloudWatchAlarm[];
   iamUsers: IAMUser[];
   complianceChecks: ComplianceCheck[];
+  costData: {
+    serviceBreakdown: ServiceCost[];
+    topResources: TopSpendingResource[];
+    anomalies: CostAnomaly[];
+  };
   metrics: {
     totalInstances: number;
     runningInstances: number;
@@ -653,6 +680,143 @@ async function getComplianceChecks(config: AWSConfig): Promise<ComplianceCheck[]
   }
 }
 
+async function getCostData(config: AWSConfig): Promise<{
+  serviceBreakdown: ServiceCost[];
+  topResources: TopSpendingResource[];
+  anomalies: CostAnomaly[];
+}> {
+  console.log('Fetching AWS cost data from Cost Explorer');
+  
+  try {
+    const costExplorerClient = new CostExplorerClient({
+      region: 'us-east-1', // Cost Explorer only available in us-east-1
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
+    });
+
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    // Fetch cost and usage by service
+    const costCommand = new GetCostAndUsageCommand({
+      TimePeriod: {
+        Start: startDate.toISOString().split('T')[0],
+        End: endDate.toISOString().split('T')[0],
+      },
+      Granularity: 'MONTHLY',
+      Metrics: ['UnblendedCost'],
+      GroupBy: [
+        {
+          Type: 'DIMENSION',
+          Key: 'SERVICE',
+        },
+      ],
+    });
+
+    const costResponse = await costExplorerClient.send(costCommand);
+    
+    let serviceBreakdown: ServiceCost[] = [];
+    let totalCost = 0;
+
+    if (costResponse.ResultsByTime && costResponse.ResultsByTime[0]?.Groups) {
+      const groups = costResponse.ResultsByTime[0].Groups;
+      
+      totalCost = groups.reduce((sum, group) => {
+        const amount = parseFloat(group.Metrics?.UnblendedCost?.Amount || '0');
+        return sum + amount;
+      }, 0);
+
+      serviceBreakdown = groups
+        .map(group => ({
+          service: group.Keys?.[0] || 'Unknown',
+          amount: parseFloat(group.Metrics?.UnblendedCost?.Amount || '0'),
+          percentage: 0,
+        }))
+        .filter(s => s.amount > 0)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 10);
+
+      serviceBreakdown = serviceBreakdown.map(s => ({
+        ...s,
+        percentage: totalCost > 0 ? (s.amount / totalCost) * 100 : 0,
+      }));
+
+      console.log(`Found ${serviceBreakdown.length} services, total: $${totalCost.toFixed(2)}`);
+    }
+
+    // Fetch cost anomalies
+    let anomalies: CostAnomaly[] = [];
+    
+    try {
+      const anomalyCommand = new GetAnomaliesCommand({
+        DateInterval: {
+          StartDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          EndDate: now.toISOString().split('T')[0],
+        },
+        MaxResults: 10,
+      });
+
+      const anomalyResponse = await costExplorerClient.send(anomalyCommand);
+      
+      if (anomalyResponse.Anomalies) {
+        anomalies = anomalyResponse.Anomalies.map((anomaly, index) => {
+          const impact = parseFloat(anomaly.Impact?.TotalImpact?.toString() || '0');
+          const maxImpact = parseFloat(anomaly.Impact?.MaxImpact || '0');
+          
+          let type: 'warning' | 'critical' | 'info' = 'info';
+          if (maxImpact > 100) type = 'critical';
+          else if (maxImpact > 50) type = 'warning';
+
+          return {
+            id: anomaly.AnomalyId || `anomaly-${index}`,
+            type,
+            message: anomaly.RootCauses?.[0]?.Service || 'Unusual spending detected',
+            amount: `$${impact.toFixed(2)}`,
+            impactValue: impact,
+          };
+        }).slice(0, 5);
+      }
+
+      console.log(`Found ${anomalies.length} cost anomalies`);
+    } catch (anomalyError: any) {
+      console.log('Cost anomaly detection not enabled or not available:', anomalyError.message);
+    }
+
+    const topResources: TopSpendingResource[] = serviceBreakdown.slice(0, 5).map(service => ({
+      resourceId: service.service,
+      resourceType: service.service,
+      cost: service.amount,
+      trend: 'stable' as const,
+    }));
+
+    return {
+      serviceBreakdown,
+      topResources,
+      anomalies,
+    };
+  } catch (error: any) {
+    console.error('Error fetching cost data:', error.message);
+    // Return empty data if Cost Explorer not enabled or no permissions
+    if (error.message?.includes('AccessDenied') || 
+        error.message?.includes('SubscriptionRequiredException') ||
+        error.message?.includes('UnauthorizedOperation')) {
+      console.log('Cost Explorer not available, returning empty cost data');
+    }
+    return {
+      serviceBreakdown: [],
+      topResources: [],
+      anomalies: [],
+    };
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -710,9 +874,14 @@ serve(async (req) => {
     let alarms: CloudWatchAlarm[] = [];
     let iamUsers: IAMUser[] = [];
     let complianceChecks: ComplianceCheck[] = [];
+    let costData = {
+      serviceBreakdown: [] as ServiceCost[],
+      topResources: [] as TopSpendingResource[],
+      anomalies: [] as CostAnomaly[],
+    };
     
     try {
-      [ec2Instances, rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, alarms, iamUsers, complianceChecks] = await Promise.all([
+      [ec2Instances, rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, alarms, iamUsers, complianceChecks, costData] = await Promise.all([
         getEC2Instances(awsConfig),
         getRDSDatabases(awsConfig),
         getS3Buckets(awsConfig),
@@ -721,7 +890,8 @@ serve(async (req) => {
         getSecurityGroups(awsConfig),
         getCloudWatchAlarms(awsConfig),
         getIAMUsers(awsConfig),
-        getComplianceChecks(awsConfig)
+        getComplianceChecks(awsConfig),
+        getCostData(awsConfig)
       ]);
     } catch (awsError: any) {
       console.error('AWS API Error:', awsError);
@@ -769,10 +939,11 @@ serve(async (req) => {
       alarms,
       iamUsers,
       complianceChecks,
+      costData,
       metrics
     };
 
-    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets, ${vpcs.length} VPCs, ${subnets.length} subnets, ${securityGroups.length} security groups, ${alarms.length} alarms, ${iamUsers.length} IAM users, ${complianceChecks.length} compliance checks`);
+    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets, ${vpcs.length} VPCs, ${subnets.length} subnets, ${securityGroups.length} security groups, ${alarms.length} alarms, ${iamUsers.length} IAM users, ${complianceChecks.length} compliance checks, ${costData.serviceBreakdown.length} cost services`);
 
     return new Response(
       JSON.stringify(dashboardData),

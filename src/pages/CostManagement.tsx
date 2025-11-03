@@ -21,35 +21,6 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, PieChart as RechartsPieChart, Pie, Cell } from "recharts";
 
-const monthlySpend = [
-  { month: "Jan", cost: 450 },
-  { month: "Feb", cost: 520 },
-  { month: "Mar", cost: 480 },
-  { month: "Apr", cost: 690 },
-  { month: "May", cost: 720 },
-  { month: "Jun", cost: 650 }
-];
-
-const serviceBreakdown = [
-  { name: "EC2", value: 65, cost: 468 },
-  { name: "RDS", value: 20, cost: 144 },
-  { name: "S3", value: 8, cost: 58 },
-  { name: "CloudWatch", value: 4, cost: 29 },
-  { name: "Other", value: 3, cost: 22 }
-];
-
-const topResources = [
-  { resource: "i-0123456789abcdef0", type: "EC2", cost: "$156.23", trend: "up" },
-  { resource: "db-prod-mysql", type: "RDS", cost: "$89.45", trend: "down" },
-  { resource: "i-0987654321fedcba0", type: "EC2", cost: "$78.90", trend: "up" },
-  { resource: "cloudfront-dist", type: "CloudFront", cost: "$45.67", trend: "stable" }
-];
-
-const costAlerts = [
-  { type: "warning", message: "Monthly spend 15% higher than last month", amount: "$721.00" },
-  { type: "critical", message: "EC2 instance i-abc123 running for 72+ hours", amount: "$45.60" },
-  { type: "info", message: "Reserved Instance savings opportunity available", amount: "Save $120/month" }
-];
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--muted))', 'hsl(var(--border))'];
 
@@ -68,6 +39,28 @@ export default function CostManagement() {
       cost: Math.round(currentCost * (0.7 + (index * 0.05)))
     }));
   }, [currentCost]);
+
+  // Transform real cost data
+  const serviceBreakdown = useMemo(() => {
+    return awsData?.costData?.serviceBreakdown?.map(s => ({
+      name: s.service,
+      value: s.percentage,
+      cost: s.amount
+    })) || [];
+  }, [awsData?.costData?.serviceBreakdown]);
+
+  const topResources = useMemo(() => {
+    return awsData?.costData?.topResources?.map(r => ({
+      resource: r.resourceId,
+      type: r.resourceType,
+      cost: `$${r.cost.toFixed(2)}`,
+      trend: r.trend
+    })) || [];
+  }, [awsData?.costData?.topResources]);
+
+  const costAlerts = useMemo(() => {
+    return awsData?.costData?.anomalies || [];
+  }, [awsData?.costData?.anomalies]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -194,22 +187,36 @@ export default function CostManagement() {
                   <CardDescription>Important cost notifications and recommendations</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    {costAlerts.map((alert, index) => (
-                      <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div className="flex items-center gap-3">
-                          <AlertTriangle className={`h-4 w-4 ${
-                            alert.type === "critical" ? "text-destructive" : 
-                            alert.type === "warning" ? "text-warning" : "text-primary"
-                          }`} />
-                          <span className="text-sm">{alert.message}</span>
+                  {loading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="h-12 bg-muted animate-pulse rounded" />
+                      ))}
+                    </div>
+                  ) : costAlerts.length > 0 ? (
+                    <div className="space-y-3">
+                      {costAlerts.map((alert) => (
+                        <div key={alert.id} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div className="flex items-center gap-3">
+                            <AlertTriangle className={`h-4 w-4 ${
+                              alert.type === "critical" ? "text-destructive" : 
+                              alert.type === "warning" ? "text-warning" : "text-primary"
+                            }`} />
+                            <span className="text-sm">{alert.message}</span>
+                          </div>
+                          <Badge variant="outline" className="text-xs">
+                            {alert.amount}
+                          </Badge>
                         </div>
-                        <Badge variant="outline" className="text-xs">
-                          {alert.amount}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-8">
+                      <AlertTriangle className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>No cost anomalies detected</p>
+                      <p className="text-xs mt-1">Enable AWS Cost Anomaly Detection for alerts</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -251,24 +258,38 @@ export default function CostManagement() {
                     <CardDescription>Cost distribution by AWS service</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <RechartsPieChart>
-                        <Pie
-                          data={serviceBreakdown}
-                          cx="50%"
-                          cy="50%"
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                          label={({ name, value }) => `${name}: ${value}%`}
-                        >
-                          {serviceBreakdown.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(value) => [`${value}%`, 'Percentage']} />
-                      </RechartsPieChart>
-                    </ResponsiveContainer>
+                    {loading ? (
+                      <div className="h-[300px] flex items-center justify-center">
+                        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : serviceBreakdown.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <RechartsPieChart>
+                          <Pie
+                            data={serviceBreakdown}
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={80}
+                            fill="#8884d8"
+                            dataKey="value"
+                            label={({ name, value }) => `${name}: ${value.toFixed(1)}%`}
+                          >
+                            {serviceBreakdown.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => [`${value.toFixed(2)}%`, 'Percentage']} />
+                        </RechartsPieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                        <div>
+                          <PieChart className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                          <p>No cost data available</p>
+                          <p className="text-xs mt-1">Requires AWS Cost Explorer API access</p>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -280,36 +301,50 @@ export default function CostManagement() {
                   <CardDescription>Resources with highest costs this month</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Resource</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Monthly Cost</TableHead>
-                        <TableHead>Trend</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {topResources.map((resource, index) => (
-                        <TableRow key={index}>
-                          <TableCell className="font-medium">{resource.resource}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{resource.type}</Badge>
-                          </TableCell>
-                          <TableCell className="font-medium">{resource.cost}</TableCell>
-                          <TableCell>
-                            {resource.trend === "up" && <TrendingUp className="h-4 w-4 text-destructive" />}
-                            {resource.trend === "down" && <TrendingDown className="h-4 w-4 text-success" />}
-                            {resource.trend === "stable" && <div className="h-4 w-4 rounded-full bg-muted" />}
-                          </TableCell>
-                          <TableCell>
-                            <Button variant="ghost" size="sm">Optimize</Button>
-                          </TableCell>
-                        </TableRow>
+                  {loading ? (
+                    <div className="space-y-3">
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="h-12 bg-muted animate-pulse rounded" />
                       ))}
-                    </TableBody>
-                  </Table>
+                    </div>
+                  ) : topResources.length > 0 ? (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Resource</TableHead>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Monthly Cost</TableHead>
+                          <TableHead>Trend</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {topResources.map((resource, index) => (
+                          <TableRow key={index}>
+                            <TableCell className="font-medium">{resource.resource}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline">{resource.type}</Badge>
+                            </TableCell>
+                            <TableCell className="font-medium">{resource.cost}</TableCell>
+                            <TableCell>
+                              {resource.trend === "up" && <TrendingUp className="h-4 w-4 text-destructive" />}
+                              {resource.trend === "down" && <TrendingDown className="h-4 w-4 text-success" />}
+                              {resource.trend === "stable" && <div className="h-4 w-4 rounded-full bg-muted" />}
+                            </TableCell>
+                            <TableCell>
+                              <Button variant="ghost" size="sm">Optimize</Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-8">
+                      <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>No resource cost data available</p>
+                      <p className="text-xs mt-1">Requires AWS Cost Explorer API access</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

@@ -96,6 +96,27 @@ export interface ComplianceCheck {
   resourceId?: string;
 }
 
+export interface ServiceCost {
+  service: string;
+  amount: number;
+  percentage: number;
+}
+
+export interface CostAnomaly {
+  id: string;
+  type: 'warning' | 'critical' | 'info';
+  message: string;
+  amount: string;
+  impactValue: number;
+}
+
+export interface TopSpendingResource {
+  resourceId: string;
+  resourceType: string;
+  cost: number;
+  trend: 'up' | 'down' | 'stable';
+}
+
 export interface AWSMetrics {
   totalInstances: number;
   runningInstances: number;
@@ -115,6 +136,11 @@ export interface AWSData {
   alarms: CloudWatchAlarm[];
   iamUsers: IAMUser[];
   complianceChecks: ComplianceCheck[];
+  costData: {
+    serviceBreakdown: ServiceCost[];
+    topResources: TopSpendingResource[];
+    anomalies: CostAnomaly[];
+  };
   metrics: AWSMetrics;
 }
 
