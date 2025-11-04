@@ -3,6 +3,7 @@ import { Header } from "@/components/Header";
 import { useAWSData } from "@/hooks/useAWSData";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { NotificationBadge } from "@/components/NotificationBadge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -82,7 +83,10 @@ export default function CostManagement() {
             <div className="max-w-7xl mx-auto space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold text-foreground">Cost Management</h1>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-3xl font-bold text-foreground">Cost Management</h1>
+                    <NotificationBadge source="cost" className="text-base px-2 py-1" />
+                  </div>
                   <p className="text-muted-foreground">Monitor and optimize your AWS spending</p>
                 </div>
                 <div className="flex items-center gap-3">

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useLocation, NavLink } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { NotificationBadge } from "@/components/NotificationBadge";
+import { useAWSData } from "@/hooks/useAWSData";
 import { 
   LayoutDashboard,
   Server,
@@ -38,69 +40,70 @@ const menuItems = [
     title: "Dashboard",
     icon: LayoutDashboard,
     href: "/dashboard",
-    badge: null,
+    notificationSource: null,
   },
   {
     title: "EC2 Instances",
     icon: Server,
     href: "/ec2",
-    badge: "3",
+    notificationSource: null,
   },
   {
     title: "RDS Databases",
     icon: Database,
     href: "/rds",
-    badge: "1",
+    notificationSource: null,
   },
   {
     title: "VPC Networks",
     icon: Network,
     href: "/vpc",
-    badge: "2",
+    notificationSource: null,
   },
   {
     title: "Security",
     icon: Shield,
     href: "/security",
-    badge: "!",
+    notificationSource: 'security' as const,
   },
   {
     title: "Cost Management",
     icon: DollarSign,
     href: "/costs",
-    badge: null,
+    notificationSource: 'cost' as const,
   },
   {
     title: "Monitoring",
     icon: BarChart3,
     href: "/monitoring",
-    badge: null,
+    notificationSource: null,
   },
   {
     title: "Alerts",
     icon: Bell,
     href: "/alerts",
-    badge: "2",
+    notificationSource: 'alarm' as const,
   },
   {
     title: "Activity Log",
     icon: Activity,
     href: "/logs",
-    badge: null,
+    notificationSource: null,
   },
   {
     title: "Settings",
     icon: Settings,
     href: "/settings",
-    badge: null,
+    notificationSource: null,
   }
-];
+] as const;
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const location = useLocation();
   const { signOut } = useAuth();
   const { toast } = useToast();
+  const { data: awsData } = useAWSData();
   const [awsRegion, setAwsRegion] = useState("us-east-1");
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
   
@@ -161,13 +164,11 @@ export function AppSidebar() {
                       {!collapsed && (
                         <>
                           <span className="flex-1 text-left">{item.title}</span>
-                          {item.badge && (
-                            <Badge 
-                              variant={item.badge === "!" ? "destructive" : "secondary"}
+                          {item.notificationSource && (
+                            <NotificationBadge 
+                              source={item.notificationSource}
                               className="h-5 px-2 text-xs"
-                            >
-                              {item.badge}
-                            </Badge>
+                            />
                           )}
                           {isActive(item.href) && (
                             <ChevronRight className="h-4 w-4 text-primary" />
