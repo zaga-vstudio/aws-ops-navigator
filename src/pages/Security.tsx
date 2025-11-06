@@ -8,6 +8,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SecurityGroupDetailsDialog } from "@/components/SecurityGroupDetailsDialog";
+import { IAMUserDetailsDialog } from "@/components/IAMUserDetailsDialog";
+import { ComplianceDetailsDialog } from "@/components/ComplianceDetailsDialog";
 import { 
   Shield, 
   AlertTriangle, 
@@ -21,7 +24,7 @@ import {
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 
 // Mock IAM users removed - now using real data from AWS
@@ -33,6 +36,11 @@ export default function Security() {
   const alarms = awsData?.alarms || [];
   const iamUsers = awsData?.iamUsers || [];
   const complianceChecks = awsData?.complianceChecks || [];
+
+  // Dialog state
+  const [selectedSecurityGroup, setSelectedSecurityGroup] = useState<typeof securityGroups[0] | null>(null);
+  const [selectedIAMUser, setSelectedIAMUser] = useState<typeof iamUsers[0] | null>(null);
+  const [selectedComplianceCheck, setSelectedComplianceCheck] = useState<typeof complianceChecks[0] | null>(null);
 
   // Calculate security score based on real AWS data
   const securityScore = useMemo(() => {
@@ -346,7 +354,11 @@ export default function Security() {
                                   <Badge variant="secondary">{group.outboundRules}</Badge>
                                 </TableCell>
                                 <TableCell>
-                                  <Button variant="ghost" size="sm">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm"
+                                    onClick={() => setSelectedSecurityGroup(group)}
+                                  >
                                     <Eye className="h-4 w-4" />
                                   </Button>
                                 </TableCell>
@@ -410,7 +422,11 @@ export default function Security() {
                               const isInactive = !user.passwordLastUsed || new Date(user.passwordLastUsed) < thirtyDaysAgo;
                               
                               return (
-                                <TableRow key={user.userId}>
+                                <TableRow 
+                                  key={user.userId}
+                                  className="cursor-pointer hover:bg-muted/50"
+                                  onClick={() => setSelectedIAMUser(user)}
+                                >
                                   <TableCell className="font-medium">{user.userName}</TableCell>
                                   <TableCell className="font-mono text-xs">{user.userId}</TableCell>
                                   <TableCell>
@@ -525,7 +541,11 @@ export default function Security() {
                             };
                             
                             return (
-                              <div key={check.id} className="flex items-center justify-between p-4 border rounded-lg">
+                              <div 
+                                key={check.id} 
+                                className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
+                                onClick={() => setSelectedComplianceCheck(check)}
+                              >
                                 <div className="flex items-center gap-3">
                                   {getStatusIcon()}
                                   <div>
@@ -552,6 +572,31 @@ export default function Security() {
           </main>
         </div>
       </div>
+
+      {/* Dialogs */}
+      {selectedSecurityGroup && (
+        <SecurityGroupDetailsDialog
+          open={!!selectedSecurityGroup}
+          onOpenChange={(open) => !open && setSelectedSecurityGroup(null)}
+          securityGroup={selectedSecurityGroup}
+        />
+      )}
+
+      {selectedIAMUser && (
+        <IAMUserDetailsDialog
+          open={!!selectedIAMUser}
+          onOpenChange={(open) => !open && setSelectedIAMUser(null)}
+          user={selectedIAMUser}
+        />
+      )}
+
+      {selectedComplianceCheck && (
+        <ComplianceDetailsDialog
+          open={!!selectedComplianceCheck}
+          onOpenChange={(open) => !open && setSelectedComplianceCheck(null)}
+          check={selectedComplianceCheck}
+        />
+      )}
     </SidebarProvider>
   );
 }
