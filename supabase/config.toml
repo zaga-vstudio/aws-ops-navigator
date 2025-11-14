@@ -5,3 +5,12 @@ verify_jwt = true
 
 [functions.save-aws-credentials]
 verify_jwt = true
+
+[functions.manage-security-groups]
+verify_jwt = true
+
+[functions.manage-iam-users]
+verify_jwt = true
+
+[functions.compliance-remediation]
+verify_jwt = true
