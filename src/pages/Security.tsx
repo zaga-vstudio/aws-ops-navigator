@@ -11,6 +11,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SecurityGroupDetailsDialog } from "@/components/SecurityGroupDetailsDialog";
 import { IAMUserDetailsDialog } from "@/components/IAMUserDetailsDialog";
 import { ComplianceDetailsDialog } from "@/components/ComplianceDetailsDialog";
+import { ManageSecurityGroupDialog } from "@/components/ManageSecurityGroupDialog";
+import { ManageIAMUserDialog } from "@/components/ManageIAMUserDialog";
+import { RemediationDialog } from "@/components/RemediationDialog";
+import { NotificationPreferencesDialog } from "@/components/NotificationPreferencesDialog";
 import { 
   Shield, 
   AlertTriangle, 
@@ -20,7 +24,11 @@ import {
   Users,
   Key,
   RefreshCw,
-  Info
+  Info,
+  Settings,
+  Plus,
+  Wrench,
+  Bell
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -41,6 +49,13 @@ export default function Security() {
   const [selectedSecurityGroup, setSelectedSecurityGroup] = useState<typeof securityGroups[0] | null>(null);
   const [selectedIAMUser, setSelectedIAMUser] = useState<typeof iamUsers[0] | null>(null);
   const [selectedComplianceCheck, setSelectedComplianceCheck] = useState<typeof complianceChecks[0] | null>(null);
+  const [manageSecurityGroupOpen, setManageSecurityGroupOpen] = useState(false);
+  const [manageSecurityGroupData, setManageSecurityGroupData] = useState<any>(null);
+  const [manageIAMUserOpen, setManageIAMUserOpen] = useState(false);
+  const [manageIAMUserData, setManageIAMUserData] = useState<any>(null);
+  const [remediationOpen, setRemediationOpen] = useState(false);
+  const [remediationData, setRemediationData] = useState<any>(null);
+  const [notificationPrefsOpen, setNotificationPrefsOpen] = useState(false);
 
   // Calculate security score based on real AWS data
   const securityScore = useMemo(() => {
@@ -141,10 +156,19 @@ export default function Security() {
                   </div>
                   <p className="text-muted-foreground">Monitor and manage your AWS security posture</p>
                 </div>
-                <Button onClick={refetch} disabled={loading}>
-                  <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="outline"
+                    onClick={() => setNotificationPrefsOpen(true)}
+                  >
+                    <Bell className="h-4 w-4 mr-2" />
+                    Notifications
+                  </Button>
+                  <Button onClick={refetch} disabled={loading}>
+                    <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
               </div>
 
               {/* Error/Info Banner */}
@@ -354,13 +378,27 @@ export default function Security() {
                                   <Badge variant="secondary">{group.outboundRules}</Badge>
                                 </TableCell>
                                 <TableCell>
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm"
-                                    onClick={() => setSelectedSecurityGroup(group)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
+                                  <div className="flex gap-1">
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm"
+                                      onClick={() => setSelectedSecurityGroup(group)}
+                                      title="View Details"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm"
+                                      onClick={() => {
+                                        setManageSecurityGroupData(group);
+                                        setManageSecurityGroupOpen(true);
+                                      }}
+                                      title="Manage Rules"
+                                    >
+                                      <Settings className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             ))
@@ -381,9 +419,21 @@ export default function Security() {
                     </Alert>
                   )}
                   <Card>
-                    <CardHeader>
-                      <CardTitle>IAM Users</CardTitle>
-                      <CardDescription>Monitor user access and permissions from your AWS account</CardDescription>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle>IAM Users</CardTitle>
+                        <CardDescription>Monitor user access and permissions from your AWS account</CardDescription>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          setManageIAMUserData(null);
+                          setManageIAMUserOpen(true);
+                        }}
+                        size="sm"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create User
+                      </Button>
                     </CardHeader>
                     <CardContent>
                       <Table>
@@ -395,6 +445,7 @@ export default function Security() {
                             <TableHead>Last Activity</TableHead>
                             <TableHead>Access Keys</TableHead>
                             <TableHead>Status</TableHead>
+                            <TableHead>Actions</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -411,7 +462,7 @@ export default function Security() {
                             ))
                           ) : iamUsers.length === 0 ? (
                             <TableRow>
-                              <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                              <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                                 No IAM users available
                               </TableCell>
                             </TableRow>
@@ -424,8 +475,6 @@ export default function Security() {
                               return (
                                 <TableRow 
                                   key={user.userId}
-                                  className="cursor-pointer hover:bg-muted/50"
-                                  onClick={() => setSelectedIAMUser(user)}
                                 >
                                   <TableCell className="font-medium">{user.userName}</TableCell>
                                   <TableCell className="font-mono text-xs">{user.userId}</TableCell>
@@ -444,6 +493,33 @@ export default function Security() {
                                     <Badge variant={isInactive ? "secondary" : "default"}>
                                       {isInactive ? 'Inactive' : 'Active'}
                                     </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex gap-1">
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSelectedIAMUser(user);
+                                        }}
+                                        title="View Details"
+                                      >
+                                        <Eye className="h-4 w-4" />
+                                      </Button>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setManageIAMUserData(user);
+                                          setManageIAMUserOpen(true);
+                                        }}
+                                        title="Manage User"
+                                      >
+                                        <Settings className="h-4 w-4" />
+                                      </Button>
+                                    </div>
                                   </TableCell>
                                 </TableRow>
                               );
@@ -543,10 +619,12 @@ export default function Security() {
                             return (
                               <div 
                                 key={check.id} 
-                                className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
-                                onClick={() => setSelectedComplianceCheck(check)}
+                                className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors"
                               >
-                                <div className="flex items-center gap-3">
+                                <div 
+                                  className="flex items-center gap-3 flex-1 cursor-pointer"
+                                  onClick={() => setSelectedComplianceCheck(check)}
+                                >
                                   {getStatusIcon()}
                                   <div>
                                     <p className="font-medium">{check.name}</p>
@@ -558,7 +636,22 @@ export default function Security() {
                                     )}
                                   </div>
                                 </div>
-                                {getStatusBadge()}
+                                <div className="flex items-center gap-2">
+                                  {getStatusBadge()}
+                                  {check.status === 'NON_COMPLIANT' && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setRemediationData(check);
+                                        setRemediationOpen(true);
+                                      }}
+                                    >
+                                      <Wrench className="h-4 w-4 mr-2" />
+                                      Fix
+                                    </Button>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}
@@ -595,6 +688,49 @@ export default function Security() {
           open={!!selectedComplianceCheck}
           onOpenChange={(open) => !open && setSelectedComplianceCheck(null)}
           check={selectedComplianceCheck}
+        />
+      )}
+
+      {manageSecurityGroupOpen && (
+        <ManageSecurityGroupDialog
+          open={manageSecurityGroupOpen}
+          onOpenChange={setManageSecurityGroupOpen}
+          securityGroup={manageSecurityGroupData}
+          onSuccess={() => {
+            refetch();
+            setManageSecurityGroupOpen(false);
+          }}
+        />
+      )}
+
+      {manageIAMUserOpen && (
+        <ManageIAMUserDialog
+          open={manageIAMUserOpen}
+          onOpenChange={setManageIAMUserOpen}
+          user={manageIAMUserData}
+          onSuccess={() => {
+            refetch();
+            setManageIAMUserOpen(false);
+          }}
+        />
+      )}
+
+      {remediationOpen && remediationData && (
+        <RemediationDialog
+          open={remediationOpen}
+          onOpenChange={setRemediationOpen}
+          complianceCheck={remediationData}
+          onSuccess={() => {
+            refetch();
+            setRemediationOpen(false);
+          }}
+        />
+      )}
+
+      {notificationPrefsOpen && (
+        <NotificationPreferencesDialog
+          open={notificationPrefsOpen}
+          onOpenChange={setNotificationPrefsOpen}
         />
       )}
     </SidebarProvider>
