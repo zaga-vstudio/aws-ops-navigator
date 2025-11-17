@@ -74,6 +74,78 @@ export type Database = {
         }
         Relationships: []
       }
+      compliance_remediation_log: {
+        Row: {
+          compliance_check_id: string
+          created_at: string
+          details: Json | null
+          id: string
+          remediation_type: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          compliance_check_id: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          remediation_type: string
+          status: string
+          user_id: string
+        }
+        Update: {
+          compliance_check_id?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          remediation_type?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notification_preferences: {
+        Row: {
+          created_at: string
+          discord_webhook: string | null
+          email_enabled: boolean | null
+          id: string
+          notify_on_approval_needed: boolean | null
+          notify_on_compliance_issue: boolean | null
+          notify_on_security_alert: boolean | null
+          slack_webhook: string | null
+          updated_at: string
+          user_id: string
+          webhook_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          discord_webhook?: string | null
+          email_enabled?: boolean | null
+          id?: string
+          notify_on_approval_needed?: boolean | null
+          notify_on_compliance_issue?: boolean | null
+          notify_on_security_alert?: boolean | null
+          slack_webhook?: string | null
+          updated_at?: string
+          user_id: string
+          webhook_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          discord_webhook?: string | null
+          email_enabled?: boolean | null
+          id?: string
+          notify_on_approval_needed?: boolean | null
+          notify_on_compliance_issue?: boolean | null
+          notify_on_security_alert?: boolean | null
+          slack_webhook?: string | null
+          updated_at?: string
+          user_id?: string
+          webhook_url?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           aws_default_region: string | null
@@ -99,6 +171,81 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      security_change_approvals: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          change_details: Json
+          change_type: Database["public"]["Enums"]["security_change_type"]
+          created_at: string
+          executed_at: string | null
+          execution_result: Json | null
+          id: string
+          reason: string | null
+          status: Database["public"]["Enums"]["approval_status"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          change_details: Json
+          change_type: Database["public"]["Enums"]["security_change_type"]
+          created_at?: string
+          executed_at?: string | null
+          execution_result?: Json | null
+          id?: string
+          reason?: string | null
+          status?: Database["public"]["Enums"]["approval_status"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          change_details?: Json
+          change_type?: Database["public"]["Enums"]["security_change_type"]
+          created_at?: string
+          executed_at?: string | null
+          execution_result?: Json | null
+          id?: string
+          reason?: string | null
+          status?: Database["public"]["Enums"]["approval_status"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      security_dashboard_configs: {
+        Row: {
+          config: Json
+          created_at: string
+          id: string
+          is_default: boolean | null
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          config: Json
+          created_at?: string
+          id?: string
+          is_default?: boolean | null
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          id?: string
+          is_default?: boolean | null
+          name?: string
           updated_at?: string
           user_id?: string
         }
@@ -191,10 +338,7 @@ export type Database = {
         Args: { encrypted_data: string; nonce: string }
         Returns: string
       }
-      encrypt_secret: {
-        Args: { secret: string }
-        Returns: string
-      }
+      encrypt_secret: { Args: { secret: string }; Returns: string }
       get_user_aws_credentials: {
         Args: { user_id_param: string }
         Returns: {
@@ -205,7 +349,18 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      approval_status:
+        | "pending"
+        | "approved"
+        | "rejected"
+        | "executed"
+        | "failed"
+      security_change_type:
+        | "security_group_rule"
+        | "iam_user_create"
+        | "iam_user_delete"
+        | "iam_key_rotation"
+        | "compliance_remediation"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -332,6 +487,21 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      approval_status: [
+        "pending",
+        "approved",
+        "rejected",
+        "executed",
+        "failed",
+      ],
+      security_change_type: [
+        "security_group_rule",
+        "iam_user_create",
+        "iam_user_delete",
+        "iam_key_rotation",
+        "compliance_remediation",
+      ],
+    },
   },
 } as const
