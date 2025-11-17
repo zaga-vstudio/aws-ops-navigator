@@ -16,7 +16,6 @@ export type Database = {
     Tables: {
       aws_configurations: {
         Row: {
-          access_key_id: string
           alert_thresholds: Json | null
           aws_region: string
           configuration_name: string
@@ -28,14 +27,10 @@ export type Database = {
           is_active: boolean | null
           key_nonce: string | null
           projects: Json | null
-          role_arn: string | null
-          secret_access_key: string
-          session_token: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
-          access_key_id: string
           alert_thresholds?: Json | null
           aws_region?: string
           configuration_name?: string
@@ -47,14 +42,10 @@ export type Database = {
           is_active?: boolean | null
           key_nonce?: string | null
           projects?: Json | null
-          role_arn?: string | null
-          secret_access_key: string
-          session_token?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
-          access_key_id?: string
           alert_thresholds?: Json | null
           aws_region?: string
           configuration_name?: string
@@ -66,9 +57,6 @@ export type Database = {
           is_active?: boolean | null
           key_nonce?: string | null
           projects?: Json | null
-          role_arn?: string | null
-          secret_access_key?: string
-          session_token?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -253,7 +241,6 @@ export type Database = {
       }
       user_aws_credentials: {
         Row: {
-          access_key_id: string
           created_at: string | null
           encrypted_access_key: string | null
           encrypted_secret_key: string | null
@@ -261,12 +248,10 @@ export type Database = {
           is_active: boolean | null
           key_nonce: string | null
           region: string | null
-          secret_access_key: string
           updated_at: string | null
           user_id: string
         }
         Insert: {
-          access_key_id: string
           created_at?: string | null
           encrypted_access_key?: string | null
           encrypted_secret_key?: string | null
@@ -274,12 +259,10 @@ export type Database = {
           is_active?: boolean | null
           key_nonce?: string | null
           region?: string | null
-          secret_access_key: string
           updated_at?: string | null
           user_id: string
         }
         Update: {
-          access_key_id?: string
           created_at?: string | null
           encrypted_access_key?: string | null
           encrypted_secret_key?: string | null
@@ -287,7 +270,6 @@ export type Database = {
           is_active?: boolean | null
           key_nonce?: string | null
           region?: string | null
-          secret_access_key?: string
           updated_at?: string | null
           user_id?: string
         }

@@ -107,16 +107,13 @@ serve(async (req) => {
     }
 
     if (existingConfig) {
-      // Update existing credentials with encrypted values
+      // Update existing credentials with ONLY encrypted values
       const { error: updateError } = await supabase
         .from('user_aws_credentials')
         .update({
           encrypted_access_key: encryptedAccessKey,
           encrypted_secret_key: encryptedSecretKey,
           updated_at: new Date().toISOString(),
-          // Keep plain text temporarily for migration period
-          access_key_id: accessKeyId,
-          secret_access_key: secretAccessKey,
         })
         .eq('user_id', user.id);
 
@@ -125,7 +122,7 @@ serve(async (req) => {
         throw updateError;
       }
     } else {
-      // Create new credentials with encrypted values
+      // Create new credentials with ONLY encrypted values
       const { error: insertError } = await supabase
         .from('user_aws_credentials')
         .insert({
@@ -133,9 +130,6 @@ serve(async (req) => {
           encrypted_access_key: encryptedAccessKey,
           encrypted_secret_key: encryptedSecretKey,
           region: 'us-east-1',
-          // Keep plain text temporarily for migration period
-          access_key_id: accessKeyId,
-          secret_access_key: secretAccessKey,
         });
 
       if (insertError) {

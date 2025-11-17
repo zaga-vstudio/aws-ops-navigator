@@ -8,6 +8,15 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { z } from "zod";
+
+// Validation schema for security group rules
+const securityGroupSchema = z.object({
+  fromPort: z.number().min(0).max(65535).optional(),
+  toPort: z.number().min(0).max(65535).optional(),
+  cidrIp: z.string().regex(/^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$/, "Invalid CIDR format (e.g., 0.0.0.0/0)").optional(),
+  reason: z.string().min(10, "Reason must be at least 10 characters").max(500, "Reason must be less than 500 characters"),
+});
 
 interface ManageSecurityGroupDialogProps {
   open: boolean;
@@ -37,6 +46,21 @@ export function ManageSecurityGroupDialog({
     setLoading(true);
 
     try {
+      // Validate inputs
+      const validationData = {
+        fromPort: fromPort ? parseInt(fromPort) : undefined,
+        toPort: toPort ? parseInt(toPort) : undefined,
+        cidrIp: cidrIp || undefined,
+        reason,
+      };
+
+      const validationResult = securityGroupSchema.safeParse(validationData);
+      
+      if (!validationResult.success) {
+        const firstError = validationResult.error.errors[0];
+        throw new Error(firstError.message);
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('No active session');
@@ -48,10 +72,7 @@ export function ManageSecurityGroupDialog({
           action,
           ruleType,
           ipProtocol,
-          fromPort: fromPort ? parseInt(fromPort) : undefined,
-          toPort: toPort ? parseInt(toPort) : undefined,
-          cidrIp: cidrIp || undefined,
-          reason
+          ...validationResult.data
         }
       });
 
