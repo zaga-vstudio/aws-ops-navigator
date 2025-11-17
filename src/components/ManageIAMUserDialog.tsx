@@ -9,6 +9,22 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { z } from "zod";
+
+// Validation schemas for IAM operations
+const iamUserNameSchema = z.string()
+  .min(1, "Username is required")
+  .max(64, "Username must be less than 64 characters")
+  .regex(/^[\w+=,.@-]+$/, "Username can only contain alphanumeric characters and +=,.@-");
+
+const accessKeyIdSchema = z.string()
+  .min(16, "Access Key ID must be at least 16 characters")
+  .max(128, "Access Key ID must be less than 128 characters")
+  .regex(/^[A-Z0-9]+$/, "Access Key ID must contain only uppercase letters and numbers");
+
+const reasonSchema = z.string()
+  .min(10, "Reason must be at least 10 characters")
+  .max(500, "Reason must be less than 500 characters");
 
 interface ManageIAMUserDialogProps {
   open: boolean;
@@ -35,6 +51,28 @@ export function ManageIAMUserDialog({
     setLoading(true);
 
     try {
+      // Validate inputs based on action
+      const finalUserName = userName || user?.userName;
+      
+      if ((action === 'create' || action === 'delete') && finalUserName) {
+        const userNameResult = iamUserNameSchema.safeParse(finalUserName);
+        if (!userNameResult.success) {
+          throw new Error(userNameResult.error.errors[0].message);
+        }
+      }
+
+      if ((action === 'rotate_key' || action === 'disable_key') && accessKeyId) {
+        const accessKeyResult = accessKeyIdSchema.safeParse(accessKeyId);
+        if (!accessKeyResult.success) {
+          throw new Error(accessKeyResult.error.errors[0].message);
+        }
+      }
+
+      const reasonResult = reasonSchema.safeParse(reason);
+      if (!reasonResult.success) {
+        throw new Error(reasonResult.error.errors[0].message);
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         throw new Error('No active session');
@@ -43,9 +81,9 @@ export function ManageIAMUserDialog({
       const response = await supabase.functions.invoke('manage-iam-users', {
         body: {
           action,
-          userName: userName || user?.userName,
+          userName: finalUserName,
           accessKeyId: accessKeyId || undefined,
-          reason
+          reason: reasonResult.data
         }
       });
 
