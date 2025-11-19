@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/Header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,11 @@ import {
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useTheme } from "next-themes";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
+import { Enable2FADialog } from "@/components/Enable2FADialog";
+import { AWSCredentialsDialog } from "@/components/AWSCredentialsDialog";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 export default function Settings() {
   const [saving, setSaving] = useState(false);
@@ -36,10 +41,54 @@ export default function Settings() {
     mobile: true,
     marketing: false
   });
+  
+  // Security dialogs state
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [enable2FAOpen, setEnable2FAOpen] = useState(false);
+  const [awsCredentialsOpen, setAWSCredentialsOpen] = useState(false);
+  const [awsCredentialsMode, setAWSCredentialsMode] = useState<"update" | "test">("update");
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+
+  // Check if 2FA is enabled
+  useEffect(() => {
+    const check2FA = async () => {
+      const { data, error } = await supabase.auth.mfa.listFactors();
+      if (!error && data) {
+        setIs2FAEnabled(data.totp.length > 0);
+      }
+    };
+    check2FA();
+  }, []);
 
   const handleSave = () => {
     setSaving(true);
     setTimeout(() => setSaving(false), 2000);
+  };
+
+  const handle2FAToggle = async (checked: boolean) => {
+    if (checked && !is2FAEnabled) {
+      setEnable2FAOpen(true);
+    } else if (!checked && is2FAEnabled) {
+      // Disable 2FA
+      try {
+        const { data: factors } = await supabase.auth.mfa.listFactors();
+        if (factors && factors.totp.length > 0) {
+          const { error } = await supabase.auth.mfa.unenroll({
+            factorId: factors.totp[0].id
+          });
+          if (error) throw error;
+          setIs2FAEnabled(false);
+          toast.success("Two-factor authentication disabled");
+        }
+      } catch (error: any) {
+        toast.error(error.message || "Failed to disable 2FA");
+      }
+    }
+  };
+
+  const handleAWSCredentialsClick = (mode: "update" | "test") => {
+    setAWSCredentialsMode(mode);
+    setAWSCredentialsOpen(true);
   };
 
   return (
@@ -346,16 +395,25 @@ export default function Settings() {
                       <div className="space-y-4">
                         <h3 className="text-lg font-medium">Password & Authentication</h3>
                         <div className="space-y-3">
-                          <Button variant="outline" className="w-full justify-start">
+                          <Button 
+                            variant="outline" 
+                            className="w-full justify-start"
+                            onClick={() => setChangePasswordOpen(true)}
+                          >
                             <Key className="h-4 w-4 mr-2" />
                             Change Password
                           </Button>
                           <div className="flex items-center justify-between">
                             <div>
                               <Label>Two-factor authentication</Label>
-                              <p className="text-sm text-muted-foreground">Add an extra layer of security to your account</p>
+                              <p className="text-sm text-muted-foreground">
+                                {is2FAEnabled ? "2FA is currently enabled" : "Add an extra layer of security to your account"}
+                              </p>
                             </div>
-                            <Switch />
+                            <Switch 
+                              checked={is2FAEnabled}
+                              onCheckedChange={handle2FAToggle}
+                            />
                           </div>
                         </div>
                       </div>
@@ -365,11 +423,19 @@ export default function Settings() {
                       <div className="space-y-4">
                         <h3 className="text-lg font-medium">AWS Credentials</h3>
                         <div className="space-y-3">
-                          <Button variant="outline" className="w-full justify-start">
+                          <Button 
+                            variant="outline" 
+                            className="w-full justify-start"
+                            onClick={() => handleAWSCredentialsClick("update")}
+                          >
                             <RefreshCw className="h-4 w-4 mr-2" />
-                            Rotate AWS Access Keys
+                            Update AWS Credentials
                           </Button>
-                          <Button variant="outline" className="w-full justify-start">
+                          <Button 
+                            variant="outline" 
+                            className="w-full justify-start"
+                            onClick={() => handleAWSCredentialsClick("test")}
+                          >
                             <Database className="h-4 w-4 mr-2" />
                             Test AWS Connection
                           </Button>
@@ -408,6 +474,22 @@ export default function Settings() {
           </main>
         </div>
       </div>
+
+      {/* Security Dialogs */}
+      <ChangePasswordDialog 
+        open={changePasswordOpen} 
+        onOpenChange={setChangePasswordOpen} 
+      />
+      <Enable2FADialog 
+        open={enable2FAOpen} 
+        onOpenChange={setEnable2FAOpen}
+        onSuccess={() => setIs2FAEnabled(true)}
+      />
+      <AWSCredentialsDialog 
+        open={awsCredentialsOpen} 
+        onOpenChange={setAWSCredentialsOpen}
+        mode={awsCredentialsMode}
+      />
     </SidebarProvider>
   );
 }
