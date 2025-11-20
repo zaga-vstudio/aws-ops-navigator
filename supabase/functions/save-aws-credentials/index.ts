@@ -50,6 +50,11 @@ serve(async (req) => {
         accessKeyId: accessKeyId,
         secretAccessKey: secretAccessKey,
       },
+      // Evitar que busque credenciales en archivos del sistema
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId,
+        secretAccessKey,
+      }),
     });
 
     try {
