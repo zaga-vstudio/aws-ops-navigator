@@ -69,12 +69,26 @@ export function AWSCredentialsDialog({ open, onOpenChange, mode }: AWSCredential
       });
       onOpenChange(false);
     } catch (error: any) {
-      if (error.message?.includes("InvalidClientTokenId")) {
-        toast.error("Invalid AWS Access Key ID");
-      } else if (error.message?.includes("SignatureDoesNotMatch")) {
-        toast.error("Invalid AWS Secret Access Key");
+      console.error("Error al guardar las credenciales de AWS:", error);
+
+      // Extraemos el mensaje más útil posible del edge function
+      const rawMessage =
+        (error?.context as any)?.error ??
+        error?.message ??
+        (typeof error === "string" ? error : "");
+
+      const message = (rawMessage || "").toString();
+
+      if (message.includes("InvalidClientTokenId")) {
+        toast.error("Tu AWS Access Key ID no es válido. Revisa el valor e inténtalo otra vez.");
+      } else if (message.includes("SignatureDoesNotMatch")) {
+        toast.error("Tu AWS Secret Access Key no es válido. Vuelve a escribirlo con cuidado.");
+      } else if (message.includes("Failed to encrypt credentials")) {
+        toast.error("No pudimos guardar tus credenciales de AWS de forma segura. Inténtalo nuevamente en unos minutos.");
+      } else if (message.includes("AWS credentials not configured")) {
+        toast.error("Tus credenciales de AWS aún no están configuradas. Vuelve a introducirlas y guarda los cambios.");
       } else {
-        toast.error(error.message || "Failed to save AWS credentials");
+        toast.error("No pudimos guardar tus credenciales de AWS. Verifica los datos e inténtalo de nuevo.");
       }
     } finally {
       setLoading(false);
