@@ -107,6 +107,10 @@ export function AWSCredentialsDialog({ open, onOpenChange, mode }: AWSCredential
                 value={formData.accessKeyId}
                 onChange={(e) => setFormData({ ...formData, accessKeyId: e.target.value })}
                 required
+                autoComplete="new-password"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
               <Button
                 type="button"
@@ -130,6 +134,10 @@ export function AWSCredentialsDialog({ open, onOpenChange, mode }: AWSCredential
                 value={formData.secretAccessKey}
                 onChange={(e) => setFormData({ ...formData, secretAccessKey: e.target.value })}
                 required
+                autoComplete="new-password"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
               />
               <Button
                 type="button"
