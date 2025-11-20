@@ -28,60 +28,26 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { accessKeyId, secretAccessKey } = await req.json();
+    const { accessKeyId, secretAccessKey, region } = await req.json();
 
     if (!accessKeyId || !secretAccessKey) {
       throw new Error('Access Key ID and Secret Access Key are required');
     }
 
-    // Validate AWS credentials by making a simple API call
-    console.log('Validating AWS credentials...');
-    
-    // Debug: Log partial credentials (masked for security)
+    console.log('Received AWS credentials for user:', user.id);
     console.log('Access Key ID:', accessKeyId ? `${accessKeyId.substring(0, 4)}***${accessKeyId.substring(accessKeyId.length - 4)}` : 'undefined');
-    console.log('Secret Access Key:', secretAccessKey ? `${secretAccessKey.substring(0, 4)}***` : 'undefined');
-    
-    // Import AWS STS SDK components using esm.sh
-    const { STSClient, GetCallerIdentityCommand } = await import('https://esm.sh/@aws-sdk/client-sts@3.451.0');
-    
-    const stsClient = new STSClient({
-      region: 'us-east-1',
-      credentials: {
-        accessKeyId: accessKeyId,
-        secretAccessKey: secretAccessKey,
-      },
-      // Evitar que busque credenciales en archivos del sistema
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId,
-        secretAccessKey,
-      }),
-    });
+    console.log('Region:', region || 'us-east-1');
 
-    try {
-      // Test the credentials with STS GetCallerIdentity (lowest cost, most reliable test)
-      const result = await stsClient.send(new GetCallerIdentityCommand({}));
-      console.log('AWS credentials validated successfully. Account:', result.Account, 'User:', result.Arn);
-    } catch (awsError: any) {
-      console.error('AWS credential validation failed:', awsError);
-      console.error('AWS Error Code:', awsError.name || awsError.code);
-      console.error('AWS Error Message:', awsError.message);
-      
-      // Return specific AWS error codes for better frontend handling
-      const errorCode = awsError.name || awsError.code || 'UnknownError';
-      const errorMessage = awsError.message || 'Invalid AWS credentials. Please check your Access Key ID and Secret Access Key.';
-      
-      return new Response(JSON.stringify({ 
-        error: errorMessage,
-        errorCode: errorCode 
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // IMPORTANT: We do NOT call AWS STS here because the Node credential
+    // provider chain tries to access the local filesystem (fs.readFile),
+    // which is not supported in Supabase Edge Functions (Deno).
+    //
+    // Instead, we:
+    // - Validate presence/format on the client
+    // - Store the credentials encrypted in the database
+    // - Let the aws-dashboard-data function surface any AWS auth errors
+    console.log('Skipping live AWS validation in save-aws-credentials; proceeding to encrypt & store.');
 
-    // Encrypt and store the credentials using database encryption
-    console.log('Encrypting and storing AWS credentials...');
-    
     // Check if user already has AWS credentials
     const { data: existingConfig, error: selectError } = await supabase
       .from('user_aws_credentials')
@@ -95,21 +61,25 @@ serve(async (req) => {
     }
 
     // Encrypt the credentials using the database function
+    console.log('Encrypting AWS Access Key ID...');
     const { data: encryptedAccessKey, error: encryptAccessKeyError } = await supabase
       .rpc('encrypt_secret', { secret: accessKeyId });
-    
+
     if (encryptAccessKeyError) {
       console.error('Error encrypting access key:', encryptAccessKeyError);
       throw new Error('Failed to encrypt credentials');
     }
 
+    console.log('Encrypting AWS Secret Access Key...');
     const { data: encryptedSecretKey, error: encryptSecretKeyError } = await supabase
       .rpc('encrypt_secret', { secret: secretAccessKey });
-    
+
     if (encryptSecretKeyError) {
       console.error('Error encrypting secret key:', encryptSecretKeyError);
       throw new Error('Failed to encrypt credentials');
     }
+
+    const finalRegion = region || 'us-east-1';
 
     if (existingConfig) {
       // Update existing credentials with ONLY encrypted values
@@ -118,6 +88,7 @@ serve(async (req) => {
         .update({
           encrypted_access_key: encryptedAccessKey,
           encrypted_secret_key: encryptedSecretKey,
+          region: finalRegion,
           updated_at: new Date().toISOString(),
         })
         .eq('user_id', user.id);
@@ -134,7 +105,8 @@ serve(async (req) => {
           user_id: user.id,
           encrypted_access_key: encryptedAccessKey,
           encrypted_secret_key: encryptedSecretKey,
-          region: 'us-east-1',
+          region: finalRegion,
+          is_active: true,
         });
 
       if (insertError) {
@@ -142,17 +114,15 @@ serve(async (req) => {
         throw insertError;
       }
     }
-    
-    console.log('AWS credentials encrypted and stored successfully');
 
-    console.log('AWS credentials saved successfully for user:', user.id);
+    console.log('AWS credentials encrypted and stored successfully for user:', user.id);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
     console.error('Error in save-aws-credentials function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error.message || 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
