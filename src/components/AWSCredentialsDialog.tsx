@@ -69,9 +69,9 @@ export function AWSCredentialsDialog({ open, onOpenChange, mode }: AWSCredential
       });
       onOpenChange(false);
     } catch (error: any) {
-      console.error("Error al guardar las credenciales de AWS:", error);
+      console.error("Error saving AWS credentials:", error);
 
-      // Extraemos el mensaje más útil posible del edge function
+      // Extract the most useful message from the edge function
       const rawMessage =
         (error?.context as any)?.error ??
         error?.message ??
@@ -80,15 +80,15 @@ export function AWSCredentialsDialog({ open, onOpenChange, mode }: AWSCredential
       const message = (rawMessage || "").toString();
 
       if (message.includes("InvalidClientTokenId")) {
-        toast.error("Tu AWS Access Key ID no es válido. Revisa el valor e inténtalo otra vez.");
+        toast.error("Your AWS Access Key ID is invalid. Please check and try again.");
       } else if (message.includes("SignatureDoesNotMatch")) {
-        toast.error("Tu AWS Secret Access Key no es válido. Vuelve a escribirlo con cuidado.");
+        toast.error("Your AWS Secret Access Key is invalid. Please re-enter it carefully.");
       } else if (message.includes("Failed to encrypt credentials")) {
-        toast.error("No pudimos guardar tus credenciales de AWS de forma segura. Inténtalo nuevamente en unos minutos.");
+        toast.error("Could not save your AWS credentials securely. Please try again in a few minutes.");
       } else if (message.includes("AWS credentials not configured")) {
-        toast.error("Tus credenciales de AWS aún no están configuradas. Vuelve a introducirlas y guarda los cambios.");
+        toast.error("Your AWS credentials are not configured yet. Please enter them and save.");
       } else {
-        toast.error("No pudimos guardar tus credenciales de AWS. Verifica los datos e inténtalo de nuevo.");
+        toast.error("Could not save your AWS credentials. Please verify the data and try again.");
       }
     } finally {
       setLoading(false);
