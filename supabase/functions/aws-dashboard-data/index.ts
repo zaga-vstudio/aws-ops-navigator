@@ -129,6 +129,17 @@ interface TopSpendingResource {
   trend: 'up' | 'down' | 'stable';
 }
 
+interface MetricDataPoint {
+  timestamp: string;
+  value: number;
+}
+
+interface CloudWatchMetrics {
+  cpu: MetricDataPoint[];
+  networkIn: MetricDataPoint[];
+  networkOut: MetricDataPoint[];
+}
+
 interface DashboardData {
   ec2Instances: EC2Instance[];
   rdsDatabases: RDSDatabase[];
@@ -144,6 +155,7 @@ interface DashboardData {
     topResources: TopSpendingResource[];
     anomalies: CostAnomaly[];
   };
+  cloudWatchMetrics: CloudWatchMetrics;
   metrics: {
     totalInstances: number;
     runningInstances: number;
@@ -507,6 +519,82 @@ async function getSecurityGroups(config: AWSConfig): Promise<SecurityGroup[]> {
   } catch (error: any) {
     console.error('Error fetching Security Groups:', error);
     throw new Error(`Failed to fetch Security Groups: ${error.message}`);
+  }
+}
+
+async function getCloudWatchMetrics(config: AWSConfig, instanceIds: string[]): Promise<CloudWatchMetrics> {
+  console.log(`Fetching CloudWatch Metrics for ${instanceIds.length} instances in region: ${config.aws_region}`);
+  
+  const emptyMetrics: CloudWatchMetrics = { cpu: [], networkIn: [], networkOut: [] };
+  
+  if (instanceIds.length === 0) {
+    console.log('No instances to fetch metrics for');
+    return emptyMetrics;
+  }
+
+  try {
+    const cloudWatchClient = new CloudWatchClient({
+      region: config.aws_region,
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
+    });
+
+    const endTime = new Date();
+    const startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000); // Last 24 hours
+    const period = 3600; // 1 hour intervals
+
+    // Fetch metrics for all instances aggregated
+    const fetchMetric = async (metricName: string, namespace: string = 'AWS/EC2'): Promise<MetricDataPoint[]> => {
+      try {
+        // Get metrics for first running instance (for simplicity, aggregate view)
+        const command = new GetMetricStatisticsCommand({
+          Namespace: namespace,
+          MetricName: metricName,
+          Dimensions: instanceIds.length > 0 ? [
+            { Name: 'InstanceId', Value: instanceIds[0] }
+          ] : undefined,
+          StartTime: startTime,
+          EndTime: endTime,
+          Period: period,
+          Statistics: ['Average'],
+        });
+
+        const response = await cloudWatchClient.send(command);
+        
+        if (!response.Datapoints || response.Datapoints.length === 0) {
+          return [];
+        }
+
+        return response.Datapoints
+          .sort((a, b) => (a.Timestamp?.getTime() || 0) - (b.Timestamp?.getTime() || 0))
+          .map(dp => ({
+            timestamp: dp.Timestamp?.toISOString() || '',
+            value: Math.round((dp.Average || 0) * 100) / 100,
+          }));
+      } catch (err: any) {
+        console.log(`Could not fetch ${metricName}: ${err.message}`);
+        return [];
+      }
+    };
+
+    const [cpu, networkIn, networkOut] = await Promise.all([
+      fetchMetric('CPUUtilization'),
+      fetchMetric('NetworkIn'),
+      fetchMetric('NetworkOut'),
+    ]);
+
+    console.log(`Fetched metrics: ${cpu.length} CPU, ${networkIn.length} NetworkIn, ${networkOut.length} NetworkOut datapoints`);
+
+    return { cpu, networkIn, networkOut };
+  } catch (error: any) {
+    console.error('Error fetching CloudWatch Metrics:', error.message);
+    return emptyMetrics;
   }
 }
 
@@ -874,6 +962,7 @@ serve(async (req) => {
     let alarms: CloudWatchAlarm[] = [];
     let iamUsers: IAMUser[] = [];
     let complianceChecks: ComplianceCheck[] = [];
+    let cloudWatchMetrics: CloudWatchMetrics = { cpu: [], networkIn: [], networkOut: [] };
     let costData = {
       serviceBreakdown: [] as ServiceCost[],
       topResources: [] as TopSpendingResource[],
@@ -881,8 +970,16 @@ serve(async (req) => {
     };
     
     try {
-      [ec2Instances, rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, alarms, iamUsers, complianceChecks, costData] = await Promise.all([
-        getEC2Instances(awsConfig),
+      // First fetch EC2 instances to get IDs for metrics
+      ec2Instances = await getEC2Instances(awsConfig);
+      
+      // Get running instance IDs for metrics
+      const runningInstanceIds = ec2Instances
+        .filter(i => i.state === 'running')
+        .map(i => i.id);
+
+      // Fetch remaining data in parallel
+      [rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, alarms, iamUsers, complianceChecks, costData, cloudWatchMetrics] = await Promise.all([
         getRDSDatabases(awsConfig),
         getS3Buckets(awsConfig),
         getVPCs(awsConfig),
@@ -891,7 +988,8 @@ serve(async (req) => {
         getCloudWatchAlarms(awsConfig),
         getIAMUsers(awsConfig),
         getComplianceChecks(awsConfig),
-        getCostData(awsConfig)
+        getCostData(awsConfig),
+        getCloudWatchMetrics(awsConfig, runningInstanceIds)
       ]);
     } catch (awsError: any) {
       console.error('AWS API Error:', awsError);
@@ -940,6 +1038,7 @@ serve(async (req) => {
       iamUsers,
       complianceChecks,
       costData,
+      cloudWatchMetrics,
       metrics
     };
 

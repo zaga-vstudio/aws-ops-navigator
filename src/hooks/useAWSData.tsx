@@ -117,6 +117,17 @@ export interface TopSpendingResource {
   trend: 'up' | 'down' | 'stable';
 }
 
+export interface MetricDataPoint {
+  timestamp: string;
+  value: number;
+}
+
+export interface CloudWatchMetrics {
+  cpu: MetricDataPoint[];
+  networkIn: MetricDataPoint[];
+  networkOut: MetricDataPoint[];
+}
+
 export interface AWSMetrics {
   totalInstances: number;
   runningInstances: number;
@@ -141,6 +152,7 @@ export interface AWSData {
     topResources: TopSpendingResource[];
     anomalies: CostAnomaly[];
   };
+  cloudWatchMetrics?: CloudWatchMetrics;
   metrics: AWSMetrics;
 }
 

@@ -93,27 +93,66 @@ export default function Monitoring() {
   const alarmsInAlarm = cloudWatchAlarms.filter(a => a.state === 'ALARM').length;
   const totalAlarms = cloudWatchAlarms.length;
 
-  // Generate simulated chart data based on time range
-  const generateChartData = () => {
-    const points = timeRange === '1h' ? 6 : timeRange === '6h' ? 12 : timeRange === '24h' ? 24 : 7;
-    const labels = timeRange === '7d' 
-      ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-      : Array.from({ length: points }, (_, i) => {
-          if (timeRange === '1h') return `${i * 10}m`;
-          if (timeRange === '6h') return `${i * 30}m`;
-          return `${i}:00`;
-        });
-    
-    return labels.map((time, i) => ({
-      time,
-      cpu: Math.floor(30 + Math.random() * 50 + Math.sin(i) * 10),
-      memory: Math.floor(50 + Math.random() * 30 + Math.cos(i) * 10),
-      networkIn: Math.floor(10 + Math.random() * 40),
-      networkOut: Math.floor(5 + Math.random() * 25),
-    }));
+  // Get real CloudWatch metrics from data
+  const cloudWatchMetrics = data?.cloudWatchMetrics;
+  const hasRealMetrics = cloudWatchMetrics && (
+    cloudWatchMetrics.cpu.length > 0 || 
+    cloudWatchMetrics.networkIn.length > 0 || 
+    cloudWatchMetrics.networkOut.length > 0
+  );
+
+  // Format metrics for charts
+  const formatChartData = () => {
+    if (!cloudWatchMetrics || !hasRealMetrics) {
+      // Generate simulated data as fallback
+      const points = timeRange === '1h' ? 6 : timeRange === '6h' ? 12 : timeRange === '24h' ? 24 : 7;
+      const labels = timeRange === '7d' 
+        ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        : Array.from({ length: points }, (_, i) => {
+            if (timeRange === '1h') return `${i * 10}m`;
+            if (timeRange === '6h') return `${i * 30}m`;
+            return `${i}:00`;
+          });
+      
+      return labels.map((time, i) => ({
+        time,
+        cpu: Math.floor(30 + Math.random() * 50 + Math.sin(i) * 10),
+        networkIn: Math.floor(10 + Math.random() * 40),
+        networkOut: Math.floor(5 + Math.random() * 25),
+      }));
+    }
+
+    // Use real CloudWatch metrics
+    const cpuData = cloudWatchMetrics.cpu;
+    const networkInData = cloudWatchMetrics.networkIn;
+    const networkOutData = cloudWatchMetrics.networkOut;
+
+    // Merge all timestamps and create unified data points
+    const allTimestamps = new Set<string>();
+    cpuData.forEach(d => allTimestamps.add(d.timestamp));
+    networkInData.forEach(d => allTimestamps.add(d.timestamp));
+    networkOutData.forEach(d => allTimestamps.add(d.timestamp));
+
+    const sortedTimestamps = Array.from(allTimestamps).sort();
+
+    return sortedTimestamps.map(timestamp => {
+      const date = new Date(timestamp);
+      const time = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+      
+      const cpuPoint = cpuData.find(d => d.timestamp === timestamp);
+      const networkInPoint = networkInData.find(d => d.timestamp === timestamp);
+      const networkOutPoint = networkOutData.find(d => d.timestamp === timestamp);
+
+      return {
+        time,
+        cpu: cpuPoint?.value || 0,
+        networkIn: networkInPoint ? Math.round(networkInPoint.value / 1024 / 1024) : 0, // Convert to MB
+        networkOut: networkOutPoint ? Math.round(networkOutPoint.value / 1024 / 1024) : 0, // Convert to MB
+      };
+    });
   };
 
-  const chartData = generateChartData();
+  const chartData = formatChartData();
 
   if (error) {
     return (
@@ -176,12 +215,17 @@ export default function Monitoring() {
               </div>
 
               {/* Info Banner */}
-              <Alert>
-                <Info className="h-4 w-4" />
-                <AlertDescription>
-                  Displaying real AWS resource status. Chart data is simulated - CloudWatch Metrics API integration coming soon.
-                </AlertDescription>
-              </Alert>
+              {!hasRealMetrics && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    {runningEC2 === 0 
+                      ? "No running EC2 instances found. Charts show simulated data. Launch an instance to see real metrics."
+                      : "CloudWatch metrics not yet available for your instances. Charts show simulated data. Metrics may take a few minutes to appear."
+                    }
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Resource Overview Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -271,7 +315,7 @@ export default function Monitoring() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>CPU Usage (Simulated)</CardTitle>
+                    <CardTitle>CPU Usage {!hasRealMetrics && "(Simulated)"}</CardTitle>
                     <CardDescription>Average CPU utilization trend</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -292,35 +336,12 @@ export default function Monitoring() {
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Memory Usage (Simulated)</CardTitle>
-                    <CardDescription>Memory utilization trend</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <LineChart data={chartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="time" />
-                        <YAxis domain={[0, 100]} />
-                        <Tooltip formatter={(value) => [`${value}%`, 'Memory Usage']} />
-                        <Line 
-                          type="monotone" 
-                          dataKey="memory" 
-                          stroke="hsl(var(--success))" 
-                          strokeWidth={2}
-                        />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
               </div>
 
               {/* Network Traffic */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Network Traffic (Simulated)</CardTitle>
+                  <CardTitle>Network Traffic {!hasRealMetrics && "(Simulated)"}</CardTitle>
                   <CardDescription>Inbound and outbound network traffic</CardDescription>
                 </CardHeader>
                 <CardContent>
