@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { EC2Client, DescribeInstancesCommand, DescribeVpcsCommand, DescribeSubnetsCommand, DescribeSecurityGroupsCommand } from "npm:@aws-sdk/client-ec2@3.451.0";
+import { EC2Client, DescribeInstancesCommand, DescribeVpcsCommand, DescribeSubnetsCommand, DescribeSecurityGroupsCommand, DescribeVpcPeeringConnectionsCommand } from "npm:@aws-sdk/client-ec2@3.451.0";
 import { RDSClient, DescribeDBInstancesCommand } from "npm:@aws-sdk/client-rds@3.451.0";
 import { S3Client, ListBucketsCommand } from "npm:@aws-sdk/client-s3@3.451.0";
 import { CloudWatchClient, GetMetricStatisticsCommand, DescribeAlarmsCommand } from "npm:@aws-sdk/client-cloudwatch@3.451.0";
@@ -77,6 +77,19 @@ interface SecurityGroup {
   outboundRules: number;
 }
 
+interface VPCPeeringConnection {
+  id: string;
+  status: string;
+  statusMessage?: string;
+  requesterVpcId: string;
+  requesterCidrBlock: string;
+  requesterOwnerId: string;
+  accepterVpcId: string;
+  accepterCidrBlock: string;
+  accepterOwnerId: string;
+  tags: { key: string; value: string }[];
+}
+
 interface CloudWatchAlarm {
   id: string;
   name: string;
@@ -147,6 +160,7 @@ interface DashboardData {
   vpcs: VPC[];
   subnets: Subnet[];
   securityGroups: SecurityGroup[];
+  vpcPeeringConnections: VPCPeeringConnection[];
   alarms: CloudWatchAlarm[];
   iamUsers: IAMUser[];
   complianceChecks: ComplianceCheck[];
@@ -477,6 +491,52 @@ async function getSubnets(config: AWSConfig): Promise<Subnet[]> {
   } catch (error: any) {
     console.error('Error fetching Subnets:', error);
     throw new Error(`Failed to fetch Subnets: ${error.message}`);
+  }
+}
+
+async function getVpcPeeringConnections(config: AWSConfig): Promise<VPCPeeringConnection[]> {
+  console.log(`Fetching VPC Peering Connections for region: ${config.aws_region}`);
+  
+  try {
+    const ec2Client = new EC2Client({
+      region: config.aws_region,
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
+    });
+
+    const command = new DescribeVpcPeeringConnectionsCommand({});
+    const response = await ec2Client.send(command);
+    
+    const peeringConnections: VPCPeeringConnection[] = [];
+    
+    if (response.VpcPeeringConnections) {
+      for (const peering of response.VpcPeeringConnections) {
+        peeringConnections.push({
+          id: peering.VpcPeeringConnectionId || '',
+          status: peering.Status?.Code || 'unknown',
+          statusMessage: peering.Status?.Message,
+          requesterVpcId: peering.RequesterVpcInfo?.VpcId || '',
+          requesterCidrBlock: peering.RequesterVpcInfo?.CidrBlock || '',
+          requesterOwnerId: peering.RequesterVpcInfo?.OwnerId || '',
+          accepterVpcId: peering.AccepterVpcInfo?.VpcId || '',
+          accepterCidrBlock: peering.AccepterVpcInfo?.CidrBlock || '',
+          accepterOwnerId: peering.AccepterVpcInfo?.OwnerId || '',
+          tags: peering.Tags?.map(tag => ({ key: tag.Key || '', value: tag.Value || '' })) || [],
+        });
+      }
+    }
+    
+    console.log(`Found ${peeringConnections.length} VPC Peering Connections`);
+    return peeringConnections;
+  } catch (error: any) {
+    console.error('Error fetching VPC Peering Connections:', error);
+    return []; // Return empty array on error to not block other data
   }
 }
 
@@ -959,6 +1019,7 @@ serve(async (req) => {
     let vpcs: VPC[] = [];
     let subnets: Subnet[] = [];
     let securityGroups: SecurityGroup[] = [];
+    let vpcPeeringConnections: VPCPeeringConnection[] = [];
     let alarms: CloudWatchAlarm[] = [];
     let iamUsers: IAMUser[] = [];
     let complianceChecks: ComplianceCheck[] = [];
@@ -979,12 +1040,13 @@ serve(async (req) => {
         .map(i => i.id);
 
       // Fetch remaining data in parallel
-      [rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, alarms, iamUsers, complianceChecks, costData, cloudWatchMetrics] = await Promise.all([
+      [rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, vpcPeeringConnections, alarms, iamUsers, complianceChecks, costData, cloudWatchMetrics] = await Promise.all([
         getRDSDatabases(awsConfig),
         getS3Buckets(awsConfig),
         getVPCs(awsConfig),
         getSubnets(awsConfig),
         getSecurityGroups(awsConfig),
+        getVpcPeeringConnections(awsConfig),
         getCloudWatchAlarms(awsConfig),
         getIAMUsers(awsConfig),
         getComplianceChecks(awsConfig),
@@ -1034,6 +1096,7 @@ serve(async (req) => {
       vpcs,
       subnets,
       securityGroups,
+      vpcPeeringConnections,
       alarms,
       iamUsers,
       complianceChecks,
@@ -1042,7 +1105,7 @@ serve(async (req) => {
       metrics
     };
 
-    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets, ${vpcs.length} VPCs, ${subnets.length} subnets, ${securityGroups.length} security groups, ${alarms.length} alarms, ${iamUsers.length} IAM users, ${complianceChecks.length} compliance checks, ${costData.serviceBreakdown.length} cost services`);
+    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets, ${vpcs.length} VPCs, ${subnets.length} subnets, ${securityGroups.length} security groups, ${vpcPeeringConnections.length} peering connections, ${alarms.length} alarms, ${iamUsers.length} IAM users, ${complianceChecks.length} compliance checks, ${costData.serviceBreakdown.length} cost services`);
 
     return new Response(
       JSON.stringify(dashboardData),

@@ -19,7 +19,8 @@ import {
   Plus,
   Filter,
   MoreVertical,
-  RefreshCw
+  RefreshCw,
+  Link2
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -36,6 +37,7 @@ const VPCNetworking = () => {
   const vpcs = awsData?.vpcs || [];
   const subnets = awsData?.subnets || [];
   const securityGroups = awsData?.securityGroups || [];
+  const vpcPeeringConnections = awsData?.vpcPeeringConnections || [];
   const loading = authLoading || dataLoading;
 
   useEffect(() => {
@@ -59,7 +61,7 @@ const VPCNetworking = () => {
     return null;
   }
 
-  const hasData = vpcs.length > 0 || subnets.length > 0 || securityGroups.length > 0;
+  const hasData = vpcs.length > 0 || subnets.length > 0 || securityGroups.length > 0 || vpcPeeringConnections.length > 0;
 
   return (
     <SidebarProvider>
@@ -163,16 +165,14 @@ const VPCNetworking = () => {
                 </Card>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Available IPs</CardTitle>
-                    <Network className="h-4 w-4 text-muted-foreground" />
+                    <CardTitle className="text-sm font-medium">Peering Connections</CardTitle>
+                    <Link2 className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
                     {loading ? (
-                      <Skeleton className="h-8 w-16" />
+                      <Skeleton className="h-8 w-12" />
                     ) : (
-                      <div className="text-2xl font-bold">
-                        {subnets.reduce((sum, subnet) => sum + subnet.availableIps, 0).toLocaleString()}
-                      </div>
+                      <div className="text-2xl font-bold">{vpcPeeringConnections.length}</div>
                     )}
                   </CardContent>
                 </Card>
@@ -184,6 +184,7 @@ const VPCNetworking = () => {
                   <TabsTrigger value="vpcs">VPCs</TabsTrigger>
                   <TabsTrigger value="subnets">Subnets</TabsTrigger>
                   <TabsTrigger value="security">Security Groups</TabsTrigger>
+                  <TabsTrigger value="peering">Peering</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="vpcs">
@@ -415,6 +416,100 @@ const VPCNetworking = () => {
                                   </TableCell>
                                 </TableRow>
                               ))
+                            )}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="peering">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>VPC Peering Connections</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Peering ID</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Requester VPC</TableHead>
+                              <TableHead>Accepter VPC</TableHead>
+                              <TableHead>Requester CIDR</TableHead>
+                              <TableHead>Accepter CIDR</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {loading ? (
+                              Array(3).fill(0).map((_, i) => (
+                                <TableRow key={i}>
+                                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                </TableRow>
+                              ))
+                            ) : vpcPeeringConnections.length === 0 ? (
+                              <TableRow>
+                                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                                  No VPC peering connections found. Create a peering connection to link VPCs.
+                                </TableCell>
+                              </TableRow>
+                            ) : (
+                              vpcPeeringConnections.map((peering) => {
+                                const getStatusVariant = (status: string) => {
+                                  switch (status) {
+                                    case 'active': return 'default';
+                                    case 'pending-acceptance': return 'secondary';
+                                    case 'deleted': case 'rejected': case 'failed': return 'destructive';
+                                    default: return 'outline';
+                                  }
+                                };
+                                const nameTag = peering.tags.find(t => t.key === 'Name');
+                                return (
+                                  <TableRow key={peering.id}>
+                                    <TableCell>
+                                      <div className="font-mono text-sm">{peering.id}</div>
+                                      {nameTag && <div className="text-xs text-muted-foreground">{nameTag.value}</div>}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge variant={getStatusVariant(peering.status)}>
+                                        {peering.status}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="font-mono text-sm">{peering.requesterVpcId}</TableCell>
+                                    <TableCell className="font-mono text-sm">{peering.accepterVpcId}</TableCell>
+                                    <TableCell className="font-mono text-sm">{peering.requesterCidrBlock}</TableCell>
+                                    <TableCell className="font-mono text-sm">{peering.accepterCidrBlock}</TableCell>
+                                    <TableCell className="text-right">
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" className="h-8 w-8 p-0">
+                                            <MoreVertical className="h-4 w-4" />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem>View Details</DropdownMenuItem>
+                                          {peering.status === 'pending-acceptance' && (
+                                            <DropdownMenuItem>Accept Connection</DropdownMenuItem>
+                                          )}
+                                          <DropdownMenuItem>Manage Route Tables</DropdownMenuItem>
+                                          <DropdownMenuItem className="text-destructive">
+                                            Delete Connection
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })
                             )}
                           </TableBody>
                         </Table>
