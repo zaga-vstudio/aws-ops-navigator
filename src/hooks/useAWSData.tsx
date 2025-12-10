@@ -65,6 +65,19 @@ export interface SecurityGroup {
   outboundRules: number;
 }
 
+export interface VPCPeeringConnection {
+  id: string;
+  status: string;
+  statusMessage?: string;
+  requesterVpcId: string;
+  requesterCidrBlock: string;
+  requesterOwnerId: string;
+  accepterVpcId: string;
+  accepterCidrBlock: string;
+  accepterOwnerId: string;
+  tags: { key: string; value: string }[];
+}
+
 export interface CloudWatchAlarm {
   id: string;
   name: string;
@@ -144,6 +157,7 @@ export interface AWSData {
   vpcs: VPC[];
   subnets: Subnet[];
   securityGroups: SecurityGroup[];
+  vpcPeeringConnections: VPCPeeringConnection[];
   alarms: CloudWatchAlarm[];
   iamUsers: IAMUser[];
   complianceChecks: ComplianceCheck[];
