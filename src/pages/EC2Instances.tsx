@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { LaunchEC2Dialog } from "@/components/LaunchEC2Dialog";
 import { 
   Server, 
   Play, 
@@ -17,7 +20,8 @@ import {
   MoreVertical,
   Plus,
   Filter,
-  RefreshCw
+  RefreshCw,
+  Loader2
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -50,8 +54,64 @@ const EC2Instances = () => {
   const { user, loading } = useAuth();
   const { data: awsData, loading: awsLoading, refetch } = useAWSData();
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [launchDialogOpen, setLaunchDialogOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const instances = awsData?.ec2Instances || [];
+
+  const handleInstanceAction = async (action: 'start' | 'stop' | 'reboot' | 'terminate', instanceId: string, instanceName: string) => {
+    if (action === 'terminate') {
+      const confirmed = window.confirm(`Are you sure you want to terminate instance "${instanceName}" (${instanceId})? This action cannot be undone.`);
+      if (!confirmed) return;
+    }
+
+    setActionLoading(instanceId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('No active session');
+      }
+
+      const { data, error } = await supabase.functions.invoke('manage-ec2-instances', {
+        body: { action, instanceId },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      const actionMessages: Record<string, string> = {
+        start: 'starting',
+        stop: 'stopping',
+        reboot: 'rebooting',
+        terminate: 'terminating',
+      };
+
+      toast({
+        title: `Instance ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+        description: `Instance ${instanceName} is ${actionMessages[action]}...`,
+      });
+
+      // Refresh data after a short delay
+      setTimeout(() => refetch(), 2000);
+    } catch (error: any) {
+      console.error(`Error ${action} instance:`, error);
+      toast({
+        variant: "destructive",
+        title: `${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
+        description: error.message || `Failed to ${action} instance. Please check your AWS permissions.`,
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -113,7 +173,11 @@ const EC2Instances = () => {
                     <Filter className="h-4 w-4 mr-2" />
                     Filter
                   </Button>
-                  <Button size="sm" className="bg-gradient-to-r from-primary to-primary-glow">
+                  <Button 
+                    size="sm" 
+                    className="bg-gradient-to-r from-primary to-primary-glow"
+                    onClick={() => setLaunchDialogOpen(true)}
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Launch Instance
                   </Button>
@@ -201,7 +265,10 @@ const EC2Instances = () => {
                       <p className="text-muted-foreground mb-4">
                         No se encontraron instancias en tu cuenta de AWS
                       </p>
-                      <Button className="bg-gradient-to-r from-primary to-primary-glow">
+                      <Button 
+                        className="bg-gradient-to-r from-primary to-primary-glow"
+                        onClick={() => setLaunchDialogOpen(true)}
+                      >
                         <Plus className="h-4 w-4 mr-2" />
                         Launch Instance
                       </Button>
@@ -241,23 +308,43 @@ const EC2Instances = () => {
                               </TableCell>
                               <TableCell className="font-mono text-sm">{instance.privateIp}</TableCell>
                               <TableCell className="text-right">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" className="h-8 w-8 p-0">
-                                      <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem>Connect</DropdownMenuItem>
-                                    <DropdownMenuItem>
-                                      {instance.state === 'running' ? 'Stop' : 'Start'}
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem>Reboot</DropdownMenuItem>
-                                    <DropdownMenuItem className="text-destructive">
-                                      Terminate
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
+                                {actionLoading === instance.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin ml-auto" />
+                                ) : (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" className="h-8 w-8 p-0">
+                                        <MoreVertical className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem disabled>Connect</DropdownMenuItem>
+                                      {instance.state === 'running' ? (
+                                        <DropdownMenuItem onClick={() => handleInstanceAction('stop', instance.id, instance.name)}>
+                                          <Square className="h-4 w-4 mr-2" />
+                                          Stop
+                                        </DropdownMenuItem>
+                                      ) : instance.state === 'stopped' ? (
+                                        <DropdownMenuItem onClick={() => handleInstanceAction('start', instance.id, instance.name)}>
+                                          <Play className="h-4 w-4 mr-2" />
+                                          Start
+                                        </DropdownMenuItem>
+                                      ) : null}
+                                      {instance.state === 'running' && (
+                                        <DropdownMenuItem onClick={() => handleInstanceAction('reboot', instance.id, instance.name)}>
+                                          <RotateCcw className="h-4 w-4 mr-2" />
+                                          Reboot
+                                        </DropdownMenuItem>
+                                      )}
+                                      <DropdownMenuItem 
+                                        className="text-destructive"
+                                        onClick={() => handleInstanceAction('terminate', instance.id, instance.name)}
+                                      >
+                                        Terminate
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -271,6 +358,12 @@ const EC2Instances = () => {
           </main>
         </div>
       </div>
+
+      <LaunchEC2Dialog
+        open={launchDialogOpen}
+        onOpenChange={setLaunchDialogOpen}
+        onSuccess={refetch}
+      />
     </SidebarProvider>
   );
 };
