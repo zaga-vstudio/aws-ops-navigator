@@ -17,3 +17,6 @@ verify_jwt = true
 
 [functions.manage-ec2-instances]
 verify_jwt = true
+
+[functions.manage-rds-instances]
+verify_jwt = true

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -15,8 +15,8 @@ import {
   Clock,
   MoreVertical,
   Plus,
-  Filter,
-  RefreshCw
+  RefreshCw,
+  Loader2
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -25,6 +25,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAWSData } from "@/hooks/useAWSData";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { CreateRDSDialog } from "@/components/CreateRDSDialog";
 
 const getStatusColor = (status: string) => {
   switch (status.toLowerCase()) {
@@ -53,9 +56,45 @@ const getStatusIcon = (status: string) => {
 const RDSDatabases = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { data: awsData, loading: awsLoading, error: awsError, refetch } = useAWSData();
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const databases = awsData?.rdsDatabases || [];
+
+  const handleRDSAction = async (action: 'start' | 'stop' | 'reboot' | 'delete', dbIdentifier: string) => {
+    if (action === 'delete' && !confirm(`Are you sure you want to delete ${dbIdentifier}? This action cannot be undone.`)) {
+      return;
+    }
+
+    setActionLoading(`${action}-${dbIdentifier}`);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-rds-instances', {
+        body: { action, dbInstanceIdentifier: dbIdentifier },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast({
+        title: `${action.charAt(0).toUpperCase() + action.slice(1)} initiated`,
+        description: `${dbIdentifier} is being ${action === 'delete' ? 'deleted' : action + 'ed'}.`,
+      });
+
+      setTimeout(() => refetch(), 2000);
+    } catch (error: any) {
+      console.error(`RDS ${action} error:`, error);
+      toast({
+        title: `Failed to ${action} database`,
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   useEffect(() => {
     if (!loading && !user) {
@@ -111,11 +150,21 @@ const RDSDatabases = () => {
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Refresh
                   </Button>
-                  <Button size="sm" className="bg-gradient-to-r from-primary to-primary-glow">
+                  <Button 
+                    size="sm" 
+                    className="bg-gradient-to-r from-primary to-primary-glow"
+                    onClick={() => setCreateDialogOpen(true)}
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Create Database
                   </Button>
                 </div>
+
+                <CreateRDSDialog
+                  open={createDialogOpen}
+                  onOpenChange={setCreateDialogOpen}
+                  onSuccess={refetch}
+                />
               </div>
 
               {/* Stats Cards */}
@@ -231,11 +280,29 @@ const RDSDatabases = () => {
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
-                                    <DropdownMenuItem>Connect</DropdownMenuItem>
-                                    <DropdownMenuItem>Modify</DropdownMenuItem>
-                                    <DropdownMenuItem>Create Snapshot</DropdownMenuItem>
-                                    <DropdownMenuItem>View Monitoring</DropdownMenuItem>
-                                    <DropdownMenuItem className="text-destructive">
+                                    <DropdownMenuItem 
+                                      onClick={() => handleRDSAction('start', database.name)}
+                                      disabled={database.state === 'available' || actionLoading !== null}
+                                    >
+                                      {actionLoading === `start-${database.name}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                      Start
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => handleRDSAction('stop', database.name)}
+                                      disabled={database.state === 'stopped' || actionLoading !== null}
+                                    >
+                                      {actionLoading === `stop-${database.name}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                      Stop
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => handleRDSAction('reboot', database.name)}
+                                      disabled={database.state !== 'available' || actionLoading !== null}
+                                    >
+                                      {actionLoading === `reboot-${database.name}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                      Reboot
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem className="text-destructive" onClick={() => handleRDSAction('delete', database.name)}>
+                                      {actionLoading === `delete-${database.name}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                       Delete
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
