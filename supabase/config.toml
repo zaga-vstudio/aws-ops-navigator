@@ -20,3 +20,6 @@ verify_jwt = true
 
 [functions.manage-rds-instances]
 verify_jwt = true
+
+[functions.manage-vpcs]
+verify_jwt = true

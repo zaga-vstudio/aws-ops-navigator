@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -17,10 +17,10 @@ import {
   Shield, 
   Globe,
   Plus,
-  Filter,
   MoreVertical,
   RefreshCw,
-  Link2
+  Link2,
+  Loader2
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -28,17 +28,56 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { CreateVPCDialog } from "@/components/CreateVPCDialog";
 
 const VPCNetworking = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { data: awsData, loading: dataLoading, error, refetch } = useAWSData();
+  const [createVPCDialogOpen, setCreateVPCDialogOpen] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
   
   const vpcs = awsData?.vpcs || [];
   const subnets = awsData?.subnets || [];
   const securityGroups = awsData?.securityGroups || [];
   const vpcPeeringConnections = awsData?.vpcPeeringConnections || [];
   const loading = authLoading || dataLoading;
+
+  const handleDeleteVPC = async (vpcId: string, vpcName: string) => {
+    if (!confirm(`Are you sure you want to delete VPC ${vpcName || vpcId}? This cannot be undone.`)) {
+      return;
+    }
+
+    setActionLoading(`delete-${vpcId}`);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-vpcs', {
+        body: { action: 'delete-vpc', vpcId },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast({
+        title: "VPC deleted",
+        description: `${vpcName || vpcId} has been deleted.`,
+      });
+
+      setTimeout(() => refetch(), 1000);
+    } catch (error: any) {
+      console.error('Delete VPC error:', error);
+      toast({
+        title: "Failed to delete VPC",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -98,12 +137,22 @@ const VPCNetworking = () => {
                     <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
-                  <Button size="sm" className="bg-gradient-to-r from-primary to-primary-glow">
+                  <Button 
+                    size="sm" 
+                    className="bg-gradient-to-r from-primary to-primary-glow"
+                    onClick={() => setCreateVPCDialogOpen(true)}
+                  >
                     <Plus className="h-4 w-4 mr-2" />
                     Create VPC
                   </Button>
                 </div>
               </div>
+
+              <CreateVPCDialog
+                open={createVPCDialogOpen}
+                onOpenChange={setCreateVPCDialogOpen}
+                onSuccess={refetch}
+              />
 
               {/* Error/Empty State Banner */}
               {error && (
@@ -255,8 +304,13 @@ const VPCNetworking = () => {
                                           <DropdownMenuItem>View Details</DropdownMenuItem>
                                           <DropdownMenuItem>Create Subnet</DropdownMenuItem>
                                           <DropdownMenuItem>Manage Route Tables</DropdownMenuItem>
-                                          <DropdownMenuItem className="text-destructive">
-                                            Delete VPC
+                                          <DropdownMenuItem 
+                                            className="text-destructive"
+                                            onClick={() => handleDeleteVPC(vpc.id, vpc.name)}
+                                            disabled={vpc.isDefault || actionLoading !== null}
+                                          >
+                                            {actionLoading === `delete-${vpc.id}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                            {vpc.isDefault ? "Cannot delete default" : "Delete VPC"}
                                           </DropdownMenuItem>
                                         </DropdownMenuContent>
                                       </DropdownMenu>
