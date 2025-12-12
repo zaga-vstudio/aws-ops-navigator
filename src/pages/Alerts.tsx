@@ -20,35 +20,39 @@ import {
   X,
   Volume2,
   Mail,
-  Smartphone,
   Trash2,
-  Loader2
+  Loader2,
+  MessageSquare,
+  Globe
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useAWSData } from "@/hooks/useAWSData";
 import { useAlertRules } from "@/hooks/useAlertRules";
+import { useNotificationPreferences, NotificationChannel } from "@/hooks/useNotificationPreferences";
 import { NewAlertRuleDialog } from "@/components/NewAlertRuleDialog";
+import { NotificationChannelDialog } from "@/components/NotificationChannelDialog";
 import { formatDistanceToNow } from "date-fns";
-
-const notificationChannels = [
-  { id: "1", type: "email", name: "Email Notifications", enabled: true, config: "admin@company.com" },
-  { id: "2", type: "sms", name: "SMS Alerts", enabled: false, config: "+1 (555) 123-4567" },
-  { id: "3", type: "slack", name: "Slack Channel", enabled: true, config: "#aws-alerts" },
-  { id: "4", type: "webhook", name: "Webhook", enabled: false, config: "https://api.company.com/alerts" }
-];
 
 export default function Alerts() {
   const { data, loading: awsLoading, error, refetch } = useAWSData();
   const { rules, loading: rulesLoading, actionLoading, createRule, deleteRule, toggleRule, fetchRules } = useAlertRules();
+  const { channels, loading: prefsLoading, saving, updateChannel, toggleChannel } = useNotificationPreferences();
   const [newRuleDialogOpen, setNewRuleDialogOpen] = useState(false);
+  const [channelDialogOpen, setChannelDialogOpen] = useState(false);
+  const [selectedChannel, setSelectedChannel] = useState<NotificationChannel | null>(null);
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
 
-  const loading = awsLoading || rulesLoading;
+  const loading = awsLoading || rulesLoading || prefsLoading;
 
   const handleRefresh = () => {
     refetch();
     fetchRules();
+  };
+
+  const handleOpenChannelSettings = (channel: NotificationChannel) => {
+    setSelectedChannel(channel);
+    setChannelDialogOpen(true);
   };
 
   const handleDismissAlert = (alertId: string) => {
@@ -84,9 +88,9 @@ export default function Alerts() {
   const getChannelIcon = (type: string) => {
     switch (type) {
       case "email": return <Mail className="h-4 w-4" />;
-      case "sms": return <Smartphone className="h-4 w-4" />;
       case "slack": return <Volume2 className="h-4 w-4" />;
-      case "webhook": return <Settings className="h-4 w-4" />;
+      case "discord": return <MessageSquare className="h-4 w-4" />;
+      case "webhook": return <Globe className="h-4 w-4" />;
       default: return <Bell className="h-4 w-4" />;
     }
   };
@@ -386,30 +390,36 @@ export default function Alerts() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-6">
-                        {notificationChannels.map((channel) => (
+                        {channels.map((channel) => (
                           <div key={channel.id} className="flex items-center justify-between p-4 border rounded-lg">
                             <div className="flex items-center gap-3">
                               {getChannelIcon(channel.type)}
                               <div>
                                 <h4 className="font-medium">{channel.name}</h4>
-                                <p className="text-sm text-muted-foreground">{channel.config}</p>
+                                <p className="text-sm text-muted-foreground">
+                                  {channel.type === 'email' 
+                                    ? (channel.enabled ? 'Enabled' : 'Disabled')
+                                    : (channel.config || 'Not configured')
+                                  }
+                                </p>
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
-                              <Switch defaultChecked={channel.enabled} />
-                              <Button variant="ghost" size="sm">
+                              <Switch 
+                                checked={channel.enabled} 
+                                onCheckedChange={() => toggleChannel(channel.type)}
+                                disabled={saving}
+                              />
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleOpenChannelSettings(channel)}
+                              >
                                 <Settings className="h-4 w-4" />
                               </Button>
                             </div>
                           </div>
                         ))}
-                        
-                        <div className="pt-4">
-                          <Button variant="outline" className="w-full">
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add Notification Channel
-                          </Button>
-                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -424,6 +434,13 @@ export default function Alerts() {
         onOpenChange={setNewRuleDialogOpen}
         onSubmit={createRule}
         loading={actionLoading === 'create'}
+      />
+      <NotificationChannelDialog
+        open={channelDialogOpen}
+        onOpenChange={setChannelDialogOpen}
+        channel={selectedChannel}
+        onSave={updateChannel}
+        loading={saving}
       />
     </SidebarProvider>
   );
