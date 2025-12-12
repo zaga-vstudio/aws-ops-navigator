@@ -20,11 +20,14 @@ import {
   X,
   Volume2,
   Mail,
-  Smartphone
+  Smartphone,
+  Trash2,
+  Loader2
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useAWSData } from "@/hooks/useAWSData";
+import { useAlertRules } from "@/hooks/useAlertRules";
 import { NewAlertRuleDialog } from "@/components/NewAlertRuleDialog";
 import { formatDistanceToNow } from "date-fns";
 
@@ -36,12 +39,16 @@ const notificationChannels = [
 ];
 
 export default function Alerts() {
-  const { data, loading, error, refetch } = useAWSData();
+  const { data, loading: awsLoading, error, refetch } = useAWSData();
+  const { rules, loading: rulesLoading, actionLoading, createRule, deleteRule, toggleRule, fetchRules } = useAlertRules();
   const [newRuleDialogOpen, setNewRuleDialogOpen] = useState(false);
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
 
+  const loading = awsLoading || rulesLoading;
+
   const handleRefresh = () => {
     refetch();
+    fetchRules();
   };
 
   const handleDismissAlert = (alertId: string) => {
@@ -83,6 +90,30 @@ export default function Alerts() {
       default: return <Bell className="h-4 w-4" />;
     }
   };
+
+  // Combine CloudWatch alarms with user-created rules for display
+  const allRules = [
+    ...rules.map(rule => ({
+      id: rule.id,
+      name: rule.name,
+      metric: rule.metric,
+      threshold: rule.threshold,
+      state: rule.enabled ? 'OK' : 'DISABLED',
+      severity: rule.severity,
+      isUserCreated: true,
+      enabled: rule.enabled,
+    })),
+    ...alarms.map(alarm => ({
+      id: alarm.id,
+      name: alarm.name,
+      metric: alarm.metric,
+      threshold: alarm.threshold,
+      state: alarm.state,
+      severity: alarm.severity,
+      isUserCreated: false,
+      enabled: true,
+    }))
+  ];
 
   return (
     <SidebarProvider>
@@ -154,9 +185,9 @@ export default function Alerts() {
                       <Skeleton className="h-8 w-16" />
                     ) : (
                       <>
-                        <div className="text-2xl font-bold">{alarms.length}</div>
+                        <div className="text-2xl font-bold">{rules.length + alarms.length}</div>
                         <p className="text-xs text-muted-foreground">
-                          {alarms.filter(a => a.state !== 'INSUFFICIENT_DATA').length} active
+                          {rules.filter(r => r.enabled).length + alarms.filter(a => a.state !== 'INSUFFICIENT_DATA').length} active
                         </p>
                       </>
                     )}
@@ -169,19 +200,19 @@ export default function Alerts() {
                     <Bell className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">47</div>
+                    <div className="text-2xl font-bold">{activeAlarms.length > 0 ? activeAlarms.length : 0}</div>
                     <p className="text-xs text-muted-foreground">Triggered alerts</p>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Avg Response</CardTitle>
+                    <CardTitle className="text-sm font-medium">User Rules</CardTitle>
                     <CheckCircle className="h-4 w-4 text-success" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">4.2m</div>
-                    <p className="text-xs text-muted-foreground">Time to acknowledge</p>
+                    <div className="text-2xl font-bold">{rules.length}</div>
+                    <p className="text-xs text-muted-foreground">Custom CloudWatch alarms</p>
                   </CardContent>
                 </Card>
               </div>
@@ -265,7 +296,7 @@ export default function Alerts() {
                             <Skeleton key={i} className="h-16 w-full" />
                           ))}
                         </div>
-                      ) : alarms.length === 0 ? (
+                      ) : allRules.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground">
                           <Settings className="h-12 w-12 mx-auto mb-2" />
                           <p>No alert rules configured yet.</p>
@@ -280,23 +311,63 @@ export default function Alerts() {
                               <TableHead>Threshold</TableHead>
                               <TableHead>State</TableHead>
                               <TableHead>Severity</TableHead>
+                              <TableHead>Enabled</TableHead>
+                              <TableHead className="w-[80px]">Actions</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {alarms.map((alarm) => (
-                              <TableRow key={alarm.id}>
-                                <TableCell className="font-medium">{alarm.name}</TableCell>
-                                <TableCell>{alarm.metric}</TableCell>
-                                <TableCell>{alarm.threshold}</TableCell>
+                            {allRules.map((rule) => (
+                              <TableRow key={rule.id}>
+                                <TableCell className="font-medium">
+                                  <div className="flex items-center gap-2">
+                                    {rule.name}
+                                    {rule.isUserCreated && (
+                                      <Badge variant="secondary" className="text-xs">Custom</Badge>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell>{rule.metric}</TableCell>
+                                <TableCell>{rule.threshold}</TableCell>
                                 <TableCell>
-                                  <Badge variant={alarm.state === 'OK' ? 'secondary' : alarm.state === 'ALARM' ? 'destructive' : 'outline'}>
-                                    {alarm.state}
+                                  <Badge variant={
+                                    rule.state === 'OK' ? 'secondary' : 
+                                    rule.state === 'ALARM' ? 'destructive' : 
+                                    rule.state === 'DISABLED' ? 'outline' : 'outline'
+                                  }>
+                                    {rule.state}
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
-                                  <Badge variant={alarm.severity === "critical" ? "destructive" : "outline"}>
-                                    {alarm.severity}
+                                  <Badge variant={rule.severity === "critical" ? "destructive" : "outline"}>
+                                    {rule.severity}
                                   </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  {rule.isUserCreated ? (
+                                    <Switch 
+                                      checked={rule.enabled}
+                                      onCheckedChange={() => toggleRule(rule.id)}
+                                      disabled={actionLoading === rule.id}
+                                    />
+                                  ) : (
+                                    <span className="text-muted-foreground text-sm">AWS</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {rule.isUserCreated && (
+                                    <Button 
+                                      variant="ghost" 
+                                      size="sm"
+                                      onClick={() => deleteRule(rule.id)}
+                                      disabled={actionLoading === rule.id}
+                                    >
+                                      {actionLoading === rule.id ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                      )}
+                                    </Button>
+                                  )}
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -348,7 +419,12 @@ export default function Alerts() {
           </main>
         </div>
       </div>
-      <NewAlertRuleDialog open={newRuleDialogOpen} onOpenChange={setNewRuleDialogOpen} />
+      <NewAlertRuleDialog 
+        open={newRuleDialogOpen} 
+        onOpenChange={setNewRuleDialogOpen}
+        onSubmit={createRule}
+        loading={actionLoading === 'create'}
+      />
     </SidebarProvider>
   );
 }

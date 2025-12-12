@@ -14,6 +14,48 @@ export type Database = {
   }
   public: {
     Tables: {
+      alert_rules: {
+        Row: {
+          cloudwatch_alarm_name: string | null
+          created_at: string
+          duration: number
+          enabled: boolean
+          id: string
+          metric: string
+          name: string
+          severity: string
+          threshold: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cloudwatch_alarm_name?: string | null
+          created_at?: string
+          duration?: number
+          enabled?: boolean
+          id?: string
+          metric: string
+          name: string
+          severity?: string
+          threshold: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cloudwatch_alarm_name?: string | null
+          created_at?: string
+          duration?: number
+          enabled?: boolean
+          id?: string
+          metric?: string
+          name?: string
+          severity?: string
+          threshold?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       aws_configurations: {
         Row: {
           alert_thresholds: Json | null
