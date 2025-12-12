@@ -4,40 +4,43 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 interface NewAlertRuleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSubmit: (data: {
+    name: string;
+    metric: string;
+    threshold: string;
+    duration: string;
+    severity: string;
+  }) => Promise<boolean>;
+  loading?: boolean;
 }
 
-export function NewAlertRuleDialog({ open, onOpenChange }: NewAlertRuleDialogProps) {
-  const { toast } = useToast();
+export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: NewAlertRuleDialogProps) {
   const [formData, setFormData] = useState({
     name: "",
     metric: "",
     threshold: "",
-    duration: "",
+    duration: "5",
     severity: "warning"
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // TODO: Integrate with CloudWatch to create actual alarm
-    toast({
-      title: "Alert Rule Created",
-      description: `${formData.name} has been created successfully.`,
-    });
-    
-    onOpenChange(false);
-    setFormData({
-      name: "",
-      metric: "",
-      threshold: "",
-      duration: "",
-      severity: "warning"
-    });
+    const success = await onSubmit(formData);
+    if (success) {
+      onOpenChange(false);
+      setFormData({
+        name: "",
+        metric: "",
+        threshold: "",
+        duration: "5",
+        severity: "warning"
+      });
+    }
   };
 
   return (
@@ -46,7 +49,7 @@ export function NewAlertRuleDialog({ open, onOpenChange }: NewAlertRuleDialogPro
         <DialogHeader>
           <DialogTitle>Create New Alert Rule</DialogTitle>
           <DialogDescription>
-            Configure a new alert rule to monitor your AWS resources.
+            Configure a new CloudWatch alarm to monitor your AWS resources.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -59,6 +62,7 @@ export function NewAlertRuleDialog({ open, onOpenChange }: NewAlertRuleDialogPro
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
+                disabled={loading}
               />
             </div>
             
@@ -68,6 +72,7 @@ export function NewAlertRuleDialog({ open, onOpenChange }: NewAlertRuleDialogPro
                 value={formData.metric} 
                 onValueChange={(value) => setFormData({ ...formData, metric: value })}
                 required
+                disabled={loading}
               >
                 <SelectTrigger id="metric">
                   <SelectValue placeholder="Select metric" />
@@ -93,6 +98,7 @@ export function NewAlertRuleDialog({ open, onOpenChange }: NewAlertRuleDialogPro
                 value={formData.threshold}
                 onChange={(e) => setFormData({ ...formData, threshold: e.target.value })}
                 required
+                disabled={loading}
               />
             </div>
             
@@ -106,6 +112,7 @@ export function NewAlertRuleDialog({ open, onOpenChange }: NewAlertRuleDialogPro
                 value={formData.duration}
                 onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
                 required
+                disabled={loading}
               />
             </div>
             
@@ -114,6 +121,7 @@ export function NewAlertRuleDialog({ open, onOpenChange }: NewAlertRuleDialogPro
               <Select 
                 value={formData.severity} 
                 onValueChange={(value) => setFormData({ ...formData, severity: value })}
+                disabled={loading}
               >
                 <SelectTrigger id="severity">
                   <SelectValue />
@@ -128,10 +136,13 @@ export function NewAlertRuleDialog({ open, onOpenChange }: NewAlertRuleDialogPro
           </div>
           
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit">Create Rule</Button>
+            <Button type="submit" disabled={loading || !formData.name || !formData.metric || !formData.threshold}>
+              {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Create Rule
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

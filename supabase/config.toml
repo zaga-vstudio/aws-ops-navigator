@@ -23,3 +23,6 @@ verify_jwt = true
 
 [functions.manage-vpcs]
 verify_jwt = true
+
+[functions.manage-alert-rules]
+verify_jwt = true
