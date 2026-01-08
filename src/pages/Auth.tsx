@@ -9,6 +9,7 @@ import { Cloud, Loader2, ArrowLeft } from "lucide-react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { MFAVerificationDialog } from "@/components/MFAVerificationDialog";
 
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -16,6 +17,7 @@ const Auth = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showMFAVerification, setShowMFAVerification] = useState(false);
   const [searchParams] = useSearchParams();
   
   const { signIn, signUp, user } = useAuth();
@@ -49,6 +51,19 @@ const Auth = () => {
     }
   }, [user, navigate, showResetPassword]);
 
+  const checkMFARequired = async (): Promise<boolean> => {
+    const { data: { totp } } = await supabase.auth.mfa.listFactors();
+    const verifiedFactors = totp?.filter(f => f.status === 'verified') || [];
+    
+    if (verifiedFactors.length > 0) {
+      // Check the current AAL level
+      const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+      // If current level is aal1 but next level should be aal2, MFA is required
+      return aalData?.currentLevel === 'aal1' && aalData?.nextLevel === 'aal2';
+    }
+    return false;
+  };
+
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
@@ -62,9 +77,37 @@ const Auth = () => {
     
     if (error) {
       setError(error.message);
+      setIsLoading(false);
+      return;
+    }
+
+    // Check if MFA is required for this user
+    const mfaRequired = await checkMFARequired();
+    if (mfaRequired) {
+      setShowMFAVerification(true);
     }
     
     setIsLoading(false);
+  };
+
+  const handleMFASuccess = async () => {
+    setShowMFAVerification(false);
+    // Navigate after successful MFA
+    const { data: setupData } = await supabase.from('user_setup')
+      .select('aws_setup_completed')
+      .eq('user_id', user?.id)
+      .maybeSingle();
+    
+    if (setupData?.aws_setup_completed) {
+      navigate('/dashboard');
+    } else {
+      navigate('/aws-setup');
+    }
+  };
+
+  const handleMFACancel = () => {
+    setShowMFAVerification(false);
+    setError("Two-factor authentication is required for your account.");
   };
 
   const handleSignUp = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -392,6 +435,13 @@ const Auth = () => {
             </CardContent>
           </Card>
         </div>
+
+        <MFAVerificationDialog
+          open={showMFAVerification}
+          onOpenChange={setShowMFAVerification}
+          onSuccess={handleMFASuccess}
+          onCancel={handleMFACancel}
+        />
       </div>
     </div>
   );
