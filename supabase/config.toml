@@ -26,3 +26,9 @@ verify_jwt = true
 
 [functions.manage-alert-rules]
 verify_jwt = true
+
+[functions.send-ses-email]
+verify_jwt = true
+
+[functions.send-alert-notification]
+verify_jwt = true
