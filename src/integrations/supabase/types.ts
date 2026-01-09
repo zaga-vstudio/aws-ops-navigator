@@ -134,6 +134,51 @@ export type Database = {
         }
         Relationships: []
       }
+      drift_events: {
+        Row: {
+          acknowledged: boolean
+          acknowledged_at: string | null
+          changes: Json
+          current_hash: string
+          detected_at: string
+          id: string
+          previous_hash: string
+          resource_id: string
+          resource_name: string | null
+          resource_type: string
+          severity: string
+          user_id: string
+        }
+        Insert: {
+          acknowledged?: boolean
+          acknowledged_at?: string | null
+          changes: Json
+          current_hash: string
+          detected_at?: string
+          id?: string
+          previous_hash: string
+          resource_id: string
+          resource_name?: string | null
+          resource_type: string
+          severity?: string
+          user_id: string
+        }
+        Update: {
+          acknowledged?: boolean
+          acknowledged_at?: string | null
+          changes?: Json
+          current_hash?: string
+          detected_at?: string
+          id?: string
+          previous_hash?: string
+          resource_id?: string
+          resource_name?: string | null
+          resource_type?: string
+          severity?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notification_preferences: {
         Row: {
           created_at: string
@@ -202,6 +247,42 @@ export type Database = {
           display_name?: string | null
           id?: string
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      resource_snapshots: {
+        Row: {
+          configuration: Json
+          created_at: string
+          id: string
+          resource_arn: string | null
+          resource_id: string
+          resource_type: string
+          snapshot_hash: string
+          source: string
+          user_id: string
+        }
+        Insert: {
+          configuration: Json
+          created_at?: string
+          id?: string
+          resource_arn?: string | null
+          resource_id: string
+          resource_type: string
+          snapshot_hash: string
+          source?: string
+          user_id: string
+        }
+        Update: {
+          configuration?: Json
+          created_at?: string
+          id?: string
+          resource_arn?: string | null
+          resource_id?: string
+          resource_type?: string
+          snapshot_hash?: string
+          source?: string
           user_id?: string
         }
         Relationships: []
