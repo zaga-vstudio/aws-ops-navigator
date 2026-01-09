@@ -23,27 +23,45 @@ import {
   Trash2,
   Loader2,
   MessageSquare,
-  Globe
+  Globe,
+  GitCompare,
+  Eye,
+  Check
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useAWSData } from "@/hooks/useAWSData";
 import { useAlertRules } from "@/hooks/useAlertRules";
 import { useNotificationPreferences, NotificationChannel } from "@/hooks/useNotificationPreferences";
+import { useDriftDetection } from "@/hooks/useDriftDetection";
 import { NewAlertRuleDialog } from "@/components/NewAlertRuleDialog";
 import { NotificationChannelDialog } from "@/components/NotificationChannelDialog";
+import { DriftDetailsDialog } from "@/components/DriftDetailsDialog";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Alerts() {
   const { data, loading: awsLoading, error, refetch } = useAWSData();
   const { rules, loading: rulesLoading, actionLoading, createRule, deleteRule, toggleRule, fetchRules } = useAlertRules();
   const { channels, loading: prefsLoading, saving, updateChannel, toggleChannel } = useNotificationPreferences();
+  const { 
+    driftEvents, 
+    loading: driftLoading, 
+    scanning, 
+    unacknowledgedCount: driftCount,
+    criticalCount: driftCritical,
+    scanForDrift, 
+    acknowledgeDrift, 
+    acceptDrift 
+  } = useDriftDetection();
+  
   const [newRuleDialogOpen, setNewRuleDialogOpen] = useState(false);
   const [channelDialogOpen, setChannelDialogOpen] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<NotificationChannel | null>(null);
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
+  const [selectedDrift, setSelectedDrift] = useState<typeof driftEvents[0] | null>(null);
+  const [driftDialogOpen, setDriftDialogOpen] = useState(false);
 
-  const loading = awsLoading || rulesLoading || prefsLoading;
+  const loading = awsLoading || rulesLoading || prefsLoading || driftLoading;
 
   const handleRefresh = () => {
     refetch();
@@ -219,12 +237,39 @@ export default function Alerts() {
                     <p className="text-xs text-muted-foreground">Custom CloudWatch alarms</p>
                   </CardContent>
                 </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Drift Detected</CardTitle>
+                    <GitCompare className="h-4 w-4 text-warning" />
+                  </CardHeader>
+                  <CardContent>
+                    {driftLoading ? (
+                      <Skeleton className="h-8 w-16" />
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold text-warning">{driftCount}</div>
+                        <p className="text-xs text-muted-foreground">
+                          {driftCritical} critical changes
+                        </p>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
 
               {/* Alerts Tabs */}
               <Tabs defaultValue="active" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="active">Active Alerts</TabsTrigger>
+                  <TabsTrigger value="drift" className="flex items-center gap-2">
+                    Drift Detection
+                    {driftCount > 0 && (
+                      <Badge variant="destructive" className="h-5 w-5 p-0 flex items-center justify-center text-xs">
+                        {driftCount}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
                   <TabsTrigger value="rules">Alert Rules</TabsTrigger>
                   <TabsTrigger value="notifications">Notifications</TabsTrigger>
                 </TabsList>
@@ -281,6 +326,135 @@ export default function Alerts() {
                               </div>
                             </div>
                           ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="drift" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2">
+                            <GitCompare className="h-5 w-5" />
+                            Drift Detection
+                          </CardTitle>
+                          <CardDescription>
+                            Detect when resources are modified outside of CloudHub (e.g., via AWS Console)
+                          </CardDescription>
+                        </div>
+                        <Button onClick={scanForDrift} disabled={scanning}>
+                          {scanning ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Scanning...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="h-4 w-4 mr-2" />
+                              Scan Now
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {driftLoading ? (
+                        <div className="space-y-4">
+                          {[1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-20 w-full" />
+                          ))}
+                        </div>
+                      ) : driftEvents.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <CheckCircle className="h-12 w-12 mx-auto mb-2 text-success" />
+                          <p>No drift detected. All resources match their expected configuration.</p>
+                          <p className="text-sm mt-2">Click "Scan Now" to check for changes.</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {driftEvents.filter(d => !d.acknowledged).map((drift) => (
+                            <div key={drift.id} className="flex items-center justify-between p-4 border rounded-lg">
+                              <div className="flex items-center gap-4">
+                                <GitCompare className={`h-5 w-5 ${
+                                  drift.severity === 'critical' ? 'text-destructive' : 
+                                  drift.severity === 'warning' ? 'text-warning' : 'text-primary'
+                                }`} />
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className="font-medium">{drift.resource_name || drift.resource_id}</h4>
+                                    <Badge variant={
+                                      drift.severity === 'critical' ? 'destructive' : 
+                                      drift.severity === 'warning' ? 'outline' : 'secondary'
+                                    }>
+                                      {drift.severity}
+                                    </Badge>
+                                    <Badge variant="secondary">{drift.resource_type.toUpperCase()}</Badge>
+                                  </div>
+                                  <p className="text-sm text-muted-foreground mb-1">
+                                    {drift.changes.length} configuration change(s) detected
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Detected {formatDistanceToNow(new Date(drift.detected_at), { addSuffix: true })}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedDrift(drift);
+                                    setDriftDialogOpen(true);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  Details
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => acknowledgeDrift(drift.id)}
+                                >
+                                  <X className="h-4 w-4 mr-1" />
+                                  Dismiss
+                                </Button>
+                                <Button 
+                                  size="sm"
+                                  onClick={() => acceptDrift(drift.id)}
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Accept
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          
+                          {driftEvents.some(d => d.acknowledged) && (
+                            <div className="mt-6">
+                              <h4 className="text-sm font-medium text-muted-foreground mb-3">
+                                Previously Acknowledged ({driftEvents.filter(d => d.acknowledged).length})
+                              </h4>
+                              {driftEvents.filter(d => d.acknowledged).slice(0, 5).map((drift) => (
+                                <div key={drift.id} className="flex items-center justify-between p-3 border rounded-lg opacity-60 mb-2">
+                                  <div className="flex items-center gap-3">
+                                    <GitCompare className="h-4 w-4 text-muted-foreground" />
+                                    <div>
+                                      <span className="font-medium text-sm">{drift.resource_name || drift.resource_id}</span>
+                                      <span className="text-xs text-muted-foreground ml-2">
+                                        ({drift.resource_type})
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">
+                                    {drift.acknowledged_at && formatDistanceToNow(new Date(drift.acknowledged_at), { addSuffix: true })}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </CardContent>
@@ -441,6 +615,13 @@ export default function Alerts() {
         channel={selectedChannel}
         onSave={updateChannel}
         loading={saving}
+      />
+      <DriftDetailsDialog
+        open={driftDialogOpen}
+        onOpenChange={setDriftDialogOpen}
+        drift={selectedDrift}
+        onAcknowledge={acknowledgeDrift}
+        onAccept={acceptDrift}
       />
     </SidebarProvider>
   );

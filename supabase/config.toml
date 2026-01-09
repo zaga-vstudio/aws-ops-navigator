@@ -32,3 +32,6 @@ verify_jwt = true
 
 [functions.send-alert-notification]
 verify_jwt = true
+
+[functions.detect-drift]
+verify_jwt = true
