@@ -183,10 +183,14 @@ export type Database = {
         Row: {
           created_at: string
           discord_webhook: string | null
+          drift_scan_enabled: boolean | null
+          drift_scan_frequency: string | null
+          drift_scan_last_run: string | null
           email_enabled: boolean | null
           id: string
           notify_on_approval_needed: boolean | null
           notify_on_compliance_issue: boolean | null
+          notify_on_drift: boolean | null
           notify_on_security_alert: boolean | null
           slack_webhook: string | null
           updated_at: string
@@ -196,10 +200,14 @@ export type Database = {
         Insert: {
           created_at?: string
           discord_webhook?: string | null
+          drift_scan_enabled?: boolean | null
+          drift_scan_frequency?: string | null
+          drift_scan_last_run?: string | null
           email_enabled?: boolean | null
           id?: string
           notify_on_approval_needed?: boolean | null
           notify_on_compliance_issue?: boolean | null
+          notify_on_drift?: boolean | null
           notify_on_security_alert?: boolean | null
           slack_webhook?: string | null
           updated_at?: string
@@ -209,10 +217,14 @@ export type Database = {
         Update: {
           created_at?: string
           discord_webhook?: string | null
+          drift_scan_enabled?: boolean | null
+          drift_scan_frequency?: string | null
+          drift_scan_last_run?: string | null
           email_enabled?: boolean | null
           id?: string
           notify_on_approval_needed?: boolean | null
           notify_on_compliance_issue?: boolean | null
+          notify_on_drift?: boolean | null
           notify_on_security_alert?: boolean | null
           slack_webhook?: string | null
           updated_at?: string

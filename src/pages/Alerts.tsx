@@ -37,6 +37,7 @@ import { useDriftDetection } from "@/hooks/useDriftDetection";
 import { NewAlertRuleDialog } from "@/components/NewAlertRuleDialog";
 import { NotificationChannelDialog } from "@/components/NotificationChannelDialog";
 import { DriftDetailsDialog } from "@/components/DriftDetailsDialog";
+import { DriftScheduleSettings } from "@/components/DriftScheduleSettings";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Alerts() {
@@ -459,6 +460,9 @@ export default function Alerts() {
                       )}
                     </CardContent>
                   </Card>
+
+                  {/* Scheduled Drift Scanning Settings */}
+                  <DriftScheduleSettings />
                 </TabsContent>
 
                 <TabsContent value="rules" className="space-y-4">

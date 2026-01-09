@@ -35,3 +35,6 @@ verify_jwt = true
 
 [functions.detect-drift]
 verify_jwt = true
+
+[functions.scheduled-drift-scan]
+verify_jwt = false
