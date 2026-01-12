@@ -4,7 +4,7 @@ import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
-import { useAWSData, VPC } from "@/hooks/useAWSData";
+import { useAWSData, VPC, Subnet } from "@/hooks/useAWSData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CreateVPCDialog } from "@/components/CreateVPCDialog";
 import { VPCBlastRadiusDialog } from "@/components/VPCBlastRadiusDialog";
+import { SubnetBlastRadiusDialog } from "@/components/SubnetBlastRadiusDialog";
 
 const VPCNetworking = () => {
   const { user, loading: authLoading } = useAuth();
@@ -43,6 +44,8 @@ const VPCNetworking = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [blastRadiusDialogOpen, setBlastRadiusDialogOpen] = useState(false);
   const [selectedVPCForDeletion, setSelectedVPCForDeletion] = useState<VPC | null>(null);
+  const [subnetBlastRadiusDialogOpen, setSubnetBlastRadiusDialogOpen] = useState(false);
+  const [selectedSubnetForDeletion, setSelectedSubnetForDeletion] = useState<Subnet | null>(null);
   
   const vpcs = awsData?.vpcs || [];
   const subnets = awsData?.subnets || [];
@@ -55,6 +58,11 @@ const VPCNetworking = () => {
   const handleOpenBlastRadius = (vpc: VPC) => {
     setSelectedVPCForDeletion(vpc);
     setBlastRadiusDialogOpen(true);
+  };
+
+  const handleOpenSubnetBlastRadius = (subnet: Subnet) => {
+    setSelectedSubnetForDeletion(subnet);
+    setSubnetBlastRadiusDialogOpen(true);
   };
 
   const handleConfirmDelete = async () => {
@@ -85,6 +93,42 @@ const VPCNetworking = () => {
       console.error('Delete VPC error:', error);
       toast({
         title: "Failed to delete VPC",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleConfirmSubnetDelete = async () => {
+    if (!selectedSubnetForDeletion) return;
+
+    const subnetId = selectedSubnetForDeletion.id;
+    const subnetName = selectedSubnetForDeletion.name;
+    
+    setActionLoading(`delete-subnet-${subnetId}`);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-vpcs', {
+        body: { action: 'delete-subnet', subnetId },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast({
+        title: "Subnet deleted",
+        description: `${subnetName || subnetId} has been deleted.`,
+      });
+
+      setSubnetBlastRadiusDialogOpen(false);
+      setSelectedSubnetForDeletion(null);
+      setTimeout(() => refetch(), 1000);
+    } catch (error: any) {
+      console.error('Delete subnet error:', error);
+      toast({
+        title: "Failed to delete subnet",
         description: error.message || "An unexpected error occurred",
         variant: "destructive",
       });
@@ -181,6 +225,18 @@ const VPCNetworking = () => {
                 rdsDatabases={rdsDatabases}
                 vpcPeeringConnections={vpcPeeringConnections}
                 onConfirmDelete={handleConfirmDelete}
+                isDeleting={actionLoading !== null}
+              />
+
+              <SubnetBlastRadiusDialog
+                open={subnetBlastRadiusDialogOpen}
+                onOpenChange={(open) => {
+                  setSubnetBlastRadiusDialogOpen(open);
+                  if (!open) setSelectedSubnetForDeletion(null);
+                }}
+                subnet={selectedSubnetForDeletion}
+                ec2Instances={ec2Instances}
+                onConfirmDelete={handleConfirmSubnetDelete}
                 isDeleting={actionLoading !== null}
               />
 
@@ -418,8 +474,13 @@ const VPCNetworking = () => {
                                         <DropdownMenuItem>View Details</DropdownMenuItem>
                                         <DropdownMenuItem>Manage Route Table</DropdownMenuItem>
                                         <DropdownMenuItem>Network ACLs</DropdownMenuItem>
-                                        <DropdownMenuItem className="text-destructive">
-                                          Delete Subnet
+                                        <DropdownMenuItem 
+                                          className="text-destructive"
+                                          onClick={() => handleOpenSubnetBlastRadius(subnet)}
+                                          disabled={actionLoading !== null}
+                                        >
+                                          <AlertTriangle className="mr-2 h-4 w-4" />
+                                          Delete Subnet...
                                         </DropdownMenuItem>
                                       </DropdownMenuContent>
                                     </DropdownMenu>
