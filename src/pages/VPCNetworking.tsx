@@ -4,7 +4,7 @@ import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSData, VPC } from "@/hooks/useAWSData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,8 @@ import {
   MoreVertical,
   RefreshCw,
   Link2,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -31,6 +32,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CreateVPCDialog } from "@/components/CreateVPCDialog";
+import { VPCBlastRadiusDialog } from "@/components/VPCBlastRadiusDialog";
 
 const VPCNetworking = () => {
   const { user, loading: authLoading } = useAuth();
@@ -39,18 +41,28 @@ const VPCNetworking = () => {
   const { data: awsData, loading: dataLoading, error, refetch } = useAWSData();
   const [createVPCDialogOpen, setCreateVPCDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [blastRadiusDialogOpen, setBlastRadiusDialogOpen] = useState(false);
+  const [selectedVPCForDeletion, setSelectedVPCForDeletion] = useState<VPC | null>(null);
   
   const vpcs = awsData?.vpcs || [];
   const subnets = awsData?.subnets || [];
   const securityGroups = awsData?.securityGroups || [];
   const vpcPeeringConnections = awsData?.vpcPeeringConnections || [];
+  const ec2Instances = awsData?.ec2Instances || [];
+  const rdsDatabases = awsData?.rdsDatabases || [];
   const loading = authLoading || dataLoading;
 
-  const handleDeleteVPC = async (vpcId: string, vpcName: string) => {
-    if (!confirm(`Are you sure you want to delete VPC ${vpcName || vpcId}? This cannot be undone.`)) {
-      return;
-    }
+  const handleOpenBlastRadius = (vpc: VPC) => {
+    setSelectedVPCForDeletion(vpc);
+    setBlastRadiusDialogOpen(true);
+  };
 
+  const handleConfirmDelete = async () => {
+    if (!selectedVPCForDeletion) return;
+
+    const vpcId = selectedVPCForDeletion.id;
+    const vpcName = selectedVPCForDeletion.name;
+    
     setActionLoading(`delete-${vpcId}`);
 
     try {
@@ -66,6 +78,8 @@ const VPCNetworking = () => {
         description: `${vpcName || vpcId} has been deleted.`,
       });
 
+      setBlastRadiusDialogOpen(false);
+      setSelectedVPCForDeletion(null);
       setTimeout(() => refetch(), 1000);
     } catch (error: any) {
       console.error('Delete VPC error:', error);
@@ -152,6 +166,22 @@ const VPCNetworking = () => {
                 open={createVPCDialogOpen}
                 onOpenChange={setCreateVPCDialogOpen}
                 onSuccess={refetch}
+              />
+
+              <VPCBlastRadiusDialog
+                open={blastRadiusDialogOpen}
+                onOpenChange={(open) => {
+                  setBlastRadiusDialogOpen(open);
+                  if (!open) setSelectedVPCForDeletion(null);
+                }}
+                vpc={selectedVPCForDeletion}
+                subnets={subnets}
+                securityGroups={securityGroups}
+                ec2Instances={ec2Instances}
+                rdsDatabases={rdsDatabases}
+                vpcPeeringConnections={vpcPeeringConnections}
+                onConfirmDelete={handleConfirmDelete}
+                isDeleting={actionLoading !== null}
               />
 
               {/* Error/Empty State Banner */}
@@ -306,11 +336,11 @@ const VPCNetworking = () => {
                                           <DropdownMenuItem>Manage Route Tables</DropdownMenuItem>
                                           <DropdownMenuItem 
                                             className="text-destructive"
-                                            onClick={() => handleDeleteVPC(vpc.id, vpc.name)}
+                                            onClick={() => handleOpenBlastRadius(vpc)}
                                             disabled={vpc.isDefault || actionLoading !== null}
                                           >
-                                            {actionLoading === `delete-${vpc.id}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                            {vpc.isDefault ? "Cannot delete default" : "Delete VPC"}
+                                            <AlertTriangle className="mr-2 h-4 w-4" />
+                                            {vpc.isDefault ? "Cannot delete default" : "Delete VPC..."}
                                           </DropdownMenuItem>
                                         </DropdownMenuContent>
                                       </DropdownMenu>
