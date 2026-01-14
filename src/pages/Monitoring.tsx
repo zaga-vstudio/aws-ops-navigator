@@ -22,6 +22,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, AreaChart, Area } from "recharts";
 import { useAWSData } from "@/hooks/useAWSData";
+import { ComplianceDashboard } from "@/components/ComplianceDashboard";
 
 export default function Monitoring() {
   const { data, loading, error, refetch } = useAWSData();
@@ -373,6 +374,14 @@ export default function Monitoring() {
                   </ResponsiveContainer>
                 </CardContent>
               </Card>
+
+              {/* Compliance Dashboard */}
+              <ComplianceDashboard
+                complianceChecks={data?.complianceChecks || []}
+                securityGroups={securityGroups}
+                iamUsers={data?.iamUsers || []}
+                loading={loading}
+              />
 
               {/* EC2 Instance Details */}
               <Card>
