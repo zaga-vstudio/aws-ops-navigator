@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { NotificationBadge } from "@/components/NotificationBadge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
@@ -20,6 +19,7 @@ import {
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { RightsizingRecommendations } from "@/components/RightsizingRecommendations";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, PieChart as RechartsPieChart, Pie, Cell } from "recharts";
 
 
@@ -223,6 +223,13 @@ export default function CostManagement() {
                   )}
                 </CardContent>
               </Card>
+
+              {/* Rightsizing Recommendations - Shows when idle/underutilized instances detected */}
+              <RightsizingRecommendations 
+                ec2Instances={awsData?.ec2Instances || []}
+                costAnomalies={costAlerts}
+                loading={loading}
+              />
 
               {/* Charts and Details */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
