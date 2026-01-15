@@ -21,7 +21,9 @@ import {
   Database,
   Cloud,
   Save,
-  RefreshCw
+  RefreshCw,
+  FileCode,
+  Download
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -29,8 +31,10 @@ import { useTheme } from "next-themes";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { Enable2FADialog } from "@/components/Enable2FADialog";
 import { AWSCredentialsDialog } from "@/components/AWSCredentialsDialog";
+import { IaCExportDialog } from "@/components/IaCExportDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useAWSData } from "@/hooks/useAWSData";
 
 export default function Settings() {
   const [saving, setSaving] = useState(false);
@@ -48,6 +52,10 @@ export default function Settings() {
   const [awsCredentialsOpen, setAWSCredentialsOpen] = useState(false);
   const [awsCredentialsMode, setAWSCredentialsMode] = useState<"update" | "test">("update");
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+  const [iacExportOpen, setIaCExportOpen] = useState(false);
+
+  // Fetch AWS data for IaC export
+  const { data: awsData } = useAWSData();
 
   // Check if 2FA is enabled
   useEffect(() => {
@@ -115,9 +123,10 @@ export default function Settings() {
               </div>
 
               <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-5">
+                <TabsList className="grid w-full grid-cols-6">
                   <TabsTrigger value="profile">Profile</TabsTrigger>
                   <TabsTrigger value="aws">AWS Config</TabsTrigger>
+                  <TabsTrigger value="export">Export</TabsTrigger>
                   <TabsTrigger value="appearance">Appearance</TabsTrigger>
                   <TabsTrigger value="notifications">Notifications</TabsTrigger>
                   <TabsTrigger value="security">Security</TabsTrigger>
@@ -222,6 +231,90 @@ export default function Settings() {
                           <div className="space-y-2">
                             <Label htmlFor="networkThreshold">Network Threshold (MB/s)</Label>
                             <Input id="networkThreshold" type="number" defaultValue="1000" />
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="export" className="space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <FileCode className="h-5 w-5" />
+                        Infrastructure as Code Export
+                      </CardTitle>
+                      <CardDescription>
+                        Export your current AWS infrastructure configuration as Terraform or CloudFormation code
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="p-6 border-2 border-dashed border-muted-foreground/25 rounded-lg text-center">
+                        <FileCode className="h-12 w-12 mx-auto mb-4 text-muted-foreground/50" />
+                        <h3 className="text-lg font-medium mb-2">Generate IaC from Your Infrastructure</h3>
+                        <p className="text-muted-foreground mb-4 max-w-md mx-auto">
+                          Convert your current AWS setup (EC2 instances, VPCs, RDS databases, Security Groups) 
+                          into reusable Infrastructure as Code templates.
+                        </p>
+                        <div className="flex flex-wrap gap-2 justify-center mb-4">
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-muted rounded-full text-sm">
+                            <img 
+                              src="https://www.terraform.io/favicon.ico" 
+                              alt="Terraform" 
+                              className="h-4 w-4"
+                              onError={(e) => (e.currentTarget.style.display = 'none')}
+                            />
+                            Terraform (.tf)
+                          </div>
+                          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-muted rounded-full text-sm">
+                            <img 
+                              src="https://aws.amazon.com/favicon.ico" 
+                              alt="AWS" 
+                              className="h-4 w-4"
+                              onError={(e) => (e.currentTarget.style.display = 'none')}
+                            />
+                            CloudFormation (.json)
+                          </div>
+                        </div>
+                        <Button onClick={() => setIaCExportOpen(true)} size="lg">
+                          <Download className="h-4 w-4 mr-2" />
+                          Open Export Dialog
+                        </Button>
+                      </div>
+
+                      <Separator />
+
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-medium">What Gets Exported</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="flex items-start gap-3 p-3 border rounded-lg">
+                            <Cloud className="h-5 w-5 text-blue-500 mt-0.5" />
+                            <div>
+                              <p className="font-medium">VPCs & Subnets</p>
+                              <p className="text-sm text-muted-foreground">Network configuration with CIDR blocks</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3 p-3 border rounded-lg">
+                            <Shield className="h-5 w-5 text-amber-500 mt-0.5" />
+                            <div>
+                              <p className="font-medium">Security Groups</p>
+                              <p className="text-sm text-muted-foreground">Firewall rules and access policies</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3 p-3 border rounded-lg">
+                            <Cloud className="h-5 w-5 text-green-500 mt-0.5" />
+                            <div>
+                              <p className="font-medium">EC2 Instances</p>
+                              <p className="text-sm text-muted-foreground">Instance types and configurations</p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3 p-3 border rounded-lg">
+                            <Database className="h-5 w-5 text-purple-500 mt-0.5" />
+                            <div>
+                              <p className="font-medium">RDS Databases</p>
+                              <p className="text-sm text-muted-foreground">Engine, storage, and instance class</p>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -489,6 +582,15 @@ export default function Settings() {
         open={awsCredentialsOpen} 
         onOpenChange={setAWSCredentialsOpen}
         mode={awsCredentialsMode}
+      />
+      <IaCExportDialog
+        open={iacExportOpen}
+        onOpenChange={setIaCExportOpen}
+        ec2Instances={awsData?.ec2Instances || []}
+        rdsDatabases={awsData?.rdsDatabases || []}
+        vpcs={awsData?.vpcs || []}
+        subnets={awsData?.subnets || []}
+        securityGroups={awsData?.securityGroups || []}
       />
     </SidebarProvider>
   );
