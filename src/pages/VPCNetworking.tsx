@@ -540,8 +540,8 @@ const VPCNetworking = () => {
                                   <TableCell className="font-medium">{sg.name}</TableCell>
                                   <TableCell>{sg.description}</TableCell>
                                   <TableCell className="font-mono text-sm">{sg.vpcId}</TableCell>
-                                  <TableCell>{sg.inboundRules}</TableCell>
-                                  <TableCell>{sg.outboundRules}</TableCell>
+                                  <TableCell>{sg.inboundRules.length}</TableCell>
+                                  <TableCell>{sg.outboundRules.length}</TableCell>
                                   <TableCell className="text-right">
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>

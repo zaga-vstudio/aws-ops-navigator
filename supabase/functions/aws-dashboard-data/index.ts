@@ -68,13 +68,24 @@ interface Subnet {
   availableIps: number;
 }
 
+interface SecurityGroupRule {
+  ipProtocol: string;
+  fromPort?: number;
+  toPort?: number;
+  cidrIpv4?: string;
+  cidrIpv6?: string;
+  sourceSecurityGroupId?: string;
+  prefixListId?: string;
+  description?: string;
+}
+
 interface SecurityGroup {
   id: string;
   name: string;
   description: string;
   vpcId: string;
-  inboundRules: number;
-  outboundRules: number;
+  inboundRules: SecurityGroupRule[];
+  outboundRules: SecurityGroupRule[];
 }
 
 interface VPCPeeringConnection {
@@ -540,6 +551,72 @@ async function getVpcPeeringConnections(config: AWSConfig): Promise<VPCPeeringCo
   }
 }
 
+function parseSecurityGroupRules(ipPermissions: any[] | undefined): SecurityGroupRule[] {
+  if (!ipPermissions) return [];
+  
+  const rules: SecurityGroupRule[] = [];
+  
+  for (const permission of ipPermissions) {
+    const baseRule = {
+      ipProtocol: permission.IpProtocol || '-1',
+      fromPort: permission.FromPort,
+      toPort: permission.ToPort,
+    };
+    
+    // Handle IPv4 CIDR ranges
+    if (permission.IpRanges) {
+      for (const range of permission.IpRanges) {
+        rules.push({
+          ...baseRule,
+          cidrIpv4: range.CidrIp,
+          description: range.Description,
+        });
+      }
+    }
+    
+    // Handle IPv6 CIDR ranges
+    if (permission.Ipv6Ranges) {
+      for (const range of permission.Ipv6Ranges) {
+        rules.push({
+          ...baseRule,
+          cidrIpv6: range.CidrIpv6,
+          description: range.Description,
+        });
+      }
+    }
+    
+    // Handle security group references
+    if (permission.UserIdGroupPairs) {
+      for (const pair of permission.UserIdGroupPairs) {
+        rules.push({
+          ...baseRule,
+          sourceSecurityGroupId: pair.GroupId,
+          description: pair.Description,
+        });
+      }
+    }
+    
+    // Handle prefix lists
+    if (permission.PrefixListIds) {
+      for (const prefix of permission.PrefixListIds) {
+        rules.push({
+          ...baseRule,
+          prefixListId: prefix.PrefixListId,
+          description: prefix.Description,
+        });
+      }
+    }
+    
+    // If no sources defined, add the base rule with protocol info
+    if (!permission.IpRanges?.length && !permission.Ipv6Ranges?.length && 
+        !permission.UserIdGroupPairs?.length && !permission.PrefixListIds?.length) {
+      rules.push(baseRule);
+    }
+  }
+  
+  return rules;
+}
+
 async function getSecurityGroups(config: AWSConfig): Promise<SecurityGroup[]> {
   console.log(`Fetching Security Groups for region: ${config.aws_region}`);
   
@@ -568,8 +645,8 @@ async function getSecurityGroups(config: AWSConfig): Promise<SecurityGroup[]> {
           name: sg.GroupName || '',
           description: sg.Description || '',
           vpcId: sg.VpcId || '',
-          inboundRules: sg.IpPermissions?.length || 0,
-          outboundRules: sg.IpPermissionsEgress?.length || 0,
+          inboundRules: parseSecurityGroupRules(sg.IpPermissions),
+          outboundRules: parseSecurityGroupRules(sg.IpPermissionsEgress),
         });
       }
     }

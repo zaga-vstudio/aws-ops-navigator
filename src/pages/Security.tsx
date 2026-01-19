@@ -62,7 +62,7 @@ export default function Security() {
     let score = 100;
     
     // Deduct points for overly permissive security groups (>10 inbound rules)
-    const permissiveGroups = securityGroups.filter(sg => sg.inboundRules > 10);
+    const permissiveGroups = securityGroups.filter(sg => sg.inboundRules.length > 10);
     score -= permissiveGroups.length * 10;
     
     // Deduct points for default security groups (potential misconfiguration)
@@ -372,10 +372,10 @@ export default function Security() {
                                 <TableCell className="font-medium">{group.name}</TableCell>
                                 <TableCell className="font-mono text-sm">{group.vpcId}</TableCell>
                                 <TableCell>
-                                  <Badge variant="secondary">{group.inboundRules}</Badge>
+                                  <Badge variant="secondary">{group.inboundRules.length}</Badge>
                                 </TableCell>
                                 <TableCell>
-                                  <Badge variant="secondary">{group.outboundRules}</Badge>
+                                  <Badge variant="secondary">{group.outboundRules.length}</Badge>
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex gap-1">

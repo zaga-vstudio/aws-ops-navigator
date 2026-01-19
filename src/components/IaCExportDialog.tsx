@@ -62,13 +62,24 @@ interface Subnet {
   availabilityZone: string;
 }
 
+interface SecurityGroupRule {
+  ipProtocol: string;
+  fromPort?: number;
+  toPort?: number;
+  cidrIpv4?: string;
+  cidrIpv6?: string;
+  sourceSecurityGroupId?: string;
+  prefixListId?: string;
+  description?: string;
+}
+
 interface SecurityGroup {
   id: string;
   name: string;
   description: string;
   vpcId: string;
-  inboundRules: number;
-  outboundRules: number;
+  inboundRules: SecurityGroupRule[];
+  outboundRules: SecurityGroupRule[];
 }
 
 interface IaCExportDialogProps {
@@ -186,10 +197,86 @@ provider "aws" {
   description = "${sg.description || 'Managed by Terraform'}"
   vpc_id      = ${vpcRef}
 
-  # Note: Inbound and outbound rules should be defined separately
-  # This is a placeholder - actual rules need to be retrieved from AWS
+`;
+        // Generate ingress rules
+        if (sg.inboundRules.length > 0) {
+          sg.inboundRules.forEach((rule) => {
+            const protocol = rule.ipProtocol === "-1" ? "-1" : rule.ipProtocol.toLowerCase();
+            const fromPort = rule.ipProtocol === "-1" ? 0 : (rule.fromPort ?? 0);
+            const toPort = rule.ipProtocol === "-1" ? 0 : (rule.toPort ?? 0);
+            
+            code += `  ingress {
+`;
+            if (rule.description) {
+              code += `    description = "${rule.description}"
+`;
+            }
+            code += `    from_port   = ${fromPort}
+    to_port     = ${toPort}
+    protocol    = "${protocol}"
+`;
+            if (rule.cidrIpv4) {
+              code += `    cidr_blocks = ["${rule.cidrIpv4}"]
+`;
+            }
+            if (rule.cidrIpv6) {
+              code += `    ipv6_cidr_blocks = ["${rule.cidrIpv6}"]
+`;
+            }
+            if (rule.sourceSecurityGroupId) {
+              code += `    security_groups = ["${rule.sourceSecurityGroupId}"]
+`;
+            }
+            if (rule.prefixListId) {
+              code += `    prefix_list_ids = ["${rule.prefixListId}"]
+`;
+            }
+            code += `  }
 
-  tags = {
+`;
+          });
+        }
+
+        // Generate egress rules
+        if (sg.outboundRules.length > 0) {
+          sg.outboundRules.forEach((rule) => {
+            const protocol = rule.ipProtocol === "-1" ? "-1" : rule.ipProtocol.toLowerCase();
+            const fromPort = rule.ipProtocol === "-1" ? 0 : (rule.fromPort ?? 0);
+            const toPort = rule.ipProtocol === "-1" ? 0 : (rule.toPort ?? 0);
+            
+            code += `  egress {
+`;
+            if (rule.description) {
+              code += `    description = "${rule.description}"
+`;
+            }
+            code += `    from_port   = ${fromPort}
+    to_port     = ${toPort}
+    protocol    = "${protocol}"
+`;
+            if (rule.cidrIpv4) {
+              code += `    cidr_blocks = ["${rule.cidrIpv4}"]
+`;
+            }
+            if (rule.cidrIpv6) {
+              code += `    ipv6_cidr_blocks = ["${rule.cidrIpv6}"]
+`;
+            }
+            if (rule.sourceSecurityGroupId) {
+              code += `    security_groups = ["${rule.sourceSecurityGroupId}"]
+`;
+            }
+            if (rule.prefixListId) {
+              code += `    prefix_list_ids = ["${rule.prefixListId}"]
+`;
+            }
+            code += `  }
+
+`;
+          });
+        }
+
+        code += `  tags = {
     Name = "${sg.name}"
   }
 }
@@ -301,14 +388,79 @@ provider "aws" {
       securityGroups.forEach((sg) => {
         const resourceName = sanitizeName(sg.name || sg.id);
         const vpcLogicalId = getVpcLogicalId(sg.vpcId, vpcs);
+        
+        // Generate ingress rules
+        const ingressRules = sg.inboundRules.map((rule) => {
+          const ruleObj: Record<string, any> = {
+            IpProtocol: rule.ipProtocol === "-1" ? "-1" : rule.ipProtocol.toLowerCase(),
+          };
+          
+          if (rule.ipProtocol !== "-1") {
+            ruleObj.FromPort = rule.fromPort ?? 0;
+            ruleObj.ToPort = rule.toPort ?? 0;
+          }
+          
+          if (rule.cidrIpv4) {
+            ruleObj.CidrIp = rule.cidrIpv4;
+          }
+          if (rule.cidrIpv6) {
+            ruleObj.CidrIpv6 = rule.cidrIpv6;
+          }
+          if (rule.sourceSecurityGroupId) {
+            ruleObj.SourceSecurityGroupId = rule.sourceSecurityGroupId;
+          }
+          if (rule.description) {
+            ruleObj.Description = rule.description;
+          }
+          
+          return ruleObj;
+        });
+        
+        // Generate egress rules
+        const egressRules = sg.outboundRules.map((rule) => {
+          const ruleObj: Record<string, any> = {
+            IpProtocol: rule.ipProtocol === "-1" ? "-1" : rule.ipProtocol.toLowerCase(),
+          };
+          
+          if (rule.ipProtocol !== "-1") {
+            ruleObj.FromPort = rule.fromPort ?? 0;
+            ruleObj.ToPort = rule.toPort ?? 0;
+          }
+          
+          if (rule.cidrIpv4) {
+            ruleObj.CidrIp = rule.cidrIpv4;
+          }
+          if (rule.cidrIpv6) {
+            ruleObj.CidrIpv6 = rule.cidrIpv6;
+          }
+          if (rule.sourceSecurityGroupId) {
+            ruleObj.DestinationSecurityGroupId = rule.sourceSecurityGroupId;
+          }
+          if (rule.description) {
+            ruleObj.Description = rule.description;
+          }
+          
+          return ruleObj;
+        });
+        
+        const sgProperties: Record<string, any> = {
+          GroupDescription: sg.description || "Managed by CloudFormation",
+          GroupName: sg.name,
+          VpcId: vpcLogicalId ? { Ref: vpcLogicalId } : sg.vpcId,
+          Tags: [{ Key: "Name", Value: sg.name }],
+        };
+        
+        if (ingressRules.length > 0) {
+          sgProperties.SecurityGroupIngress = ingressRules;
+        }
+        
+        if (egressRules.length > 0) {
+          sgProperties.SecurityGroupEgress = egressRules;
+        }
+        
         resources[`SecurityGroup${resourceName}`] = {
           Type: "AWS::EC2::SecurityGroup",
-          Properties: {
-            GroupDescription: sg.description || "Managed by CloudFormation",
-            GroupName: sg.name,
-            VpcId: vpcLogicalId ? { Ref: vpcLogicalId } : sg.vpcId,
-            Tags: [{ Key: "Name", Value: sg.name }],
-          },
+          Properties: sgProperties,
         };
       });
     }

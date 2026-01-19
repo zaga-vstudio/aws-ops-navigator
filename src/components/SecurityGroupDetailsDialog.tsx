@@ -5,11 +5,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertTriangle, Shield, Lock, Unlock, Info, CheckCircle } from "lucide-react";
+import { useMemo } from "react";
 
 interface SecurityGroupRule {
-  protocol: string;
-  port: string;
-  source: string;
+  ipProtocol: string;
+  fromPort?: number;
+  toPort?: number;
+  cidrIpv4?: string;
+  cidrIpv6?: string;
+  sourceSecurityGroupId?: string;
+  prefixListId?: string;
   description?: string;
 }
 
@@ -21,49 +26,101 @@ interface SecurityGroupDetailsDialogProps {
     name: string;
     description: string;
     vpcId: string;
-    inboundRules: number;
-    outboundRules: number;
+    inboundRules: SecurityGroupRule[];
+    outboundRules: SecurityGroupRule[];
   };
 }
+
+// Helper function to format protocol
+const formatProtocol = (protocol: string): string => {
+  if (protocol === "-1") return "All";
+  return protocol.toUpperCase();
+};
+
+// Helper function to format port range
+const formatPortRange = (rule: SecurityGroupRule): string => {
+  if (rule.ipProtocol === "-1") return "All";
+  if (rule.fromPort === undefined && rule.toPort === undefined) return "All";
+  if (rule.fromPort === rule.toPort) return String(rule.fromPort);
+  return `${rule.fromPort}-${rule.toPort}`;
+};
+
+// Helper function to get source/destination
+const getSource = (rule: SecurityGroupRule): string => {
+  if (rule.cidrIpv4) return rule.cidrIpv4;
+  if (rule.cidrIpv6) return rule.cidrIpv6;
+  if (rule.sourceSecurityGroupId) return rule.sourceSecurityGroupId;
+  if (rule.prefixListId) return rule.prefixListId;
+  return "Unknown";
+};
 
 export function SecurityGroupDetailsDialog({ 
   open, 
   onOpenChange, 
   securityGroup 
 }: SecurityGroupDetailsDialogProps) {
-  // Mock data for demonstration - In production, this would come from AWS SDK
-  const inboundRules: SecurityGroupRule[] = [
-    { protocol: "TCP", port: "22", source: "0.0.0.0/0", description: "SSH access from anywhere" },
-    { protocol: "TCP", port: "443", source: "0.0.0.0/0", description: "HTTPS access" },
-    { protocol: "TCP", port: "80", source: "10.0.0.0/16", description: "HTTP from VPC" },
-  ];
+  // Use actual rules from the security group
+  const inboundRules = securityGroup.inboundRules;
+  const outboundRules = securityGroup.outboundRules;
 
-  const outboundRules: SecurityGroupRule[] = [
-    { protocol: "All", port: "All", source: "0.0.0.0/0", description: "Allow all outbound traffic" },
-  ];
-
-  // Security analysis
-  const vulnerabilities = [
-    {
-      severity: "high" as const,
-      rule: "SSH (Port 22) open to 0.0.0.0/0",
-      recommendation: "Restrict SSH access to specific IP ranges or use AWS Systems Manager Session Manager",
-      protocol: "TCP",
-      port: "22"
-    },
-  ];
+  // Security analysis based on actual rules
+  const vulnerabilities = useMemo(() => {
+    const vulns: { severity: "high" | "medium"; rule: string; recommendation: string; protocol: string; port: string }[] = [];
+    
+    for (const rule of inboundRules) {
+      const port = formatPortRange(rule);
+      const source = getSource(rule);
+      
+      // Check for SSH open to the world
+      if ((rule.fromPort === 22 || port === "22") && source === "0.0.0.0/0") {
+        vulns.push({
+          severity: "high",
+          rule: "SSH (Port 22) open to 0.0.0.0/0",
+          recommendation: "Restrict SSH access to specific IP ranges or use AWS Systems Manager Session Manager",
+          protocol: formatProtocol(rule.ipProtocol),
+          port: "22"
+        });
+      }
+      
+      // Check for RDP open to the world
+      if ((rule.fromPort === 3389 || port === "3389") && source === "0.0.0.0/0") {
+        vulns.push({
+          severity: "high",
+          rule: "RDP (Port 3389) open to 0.0.0.0/0",
+          recommendation: "Restrict RDP access to specific IP ranges or use a bastion host",
+          protocol: formatProtocol(rule.ipProtocol),
+          port: "3389"
+        });
+      }
+      
+      // Check for all traffic open to the world
+      if (rule.ipProtocol === "-1" && source === "0.0.0.0/0") {
+        vulns.push({
+          severity: "high",
+          rule: "All traffic open to 0.0.0.0/0",
+          recommendation: "Restrict inbound access to only necessary ports and specific IP ranges",
+          protocol: "All",
+          port: "All"
+        });
+      }
+    }
+    
+    return vulns;
+  }, [inboundRules]);
 
   const hasPublicSSH = inboundRules.some(rule => 
-    rule.port === "22" && rule.source === "0.0.0.0/0"
+    (rule.fromPort === 22 || formatPortRange(rule) === "22") && getSource(rule) === "0.0.0.0/0"
   );
 
   const hasPublicRDP = inboundRules.some(rule => 
-    rule.port === "3389" && rule.source === "0.0.0.0/0"
+    (rule.fromPort === 3389 || formatPortRange(rule) === "3389") && getSource(rule) === "0.0.0.0/0"
   );
 
-  const hasUnrestrictedPorts = inboundRules.some(rule => 
-    rule.source === "0.0.0.0/0" && !["443", "80"].includes(rule.port)
-  );
+  const hasUnrestrictedPorts = inboundRules.some(rule => {
+    const source = getSource(rule);
+    const port = formatPortRange(rule);
+    return source === "0.0.0.0/0" && !["443", "80"].includes(port);
+  });
 
   const securityScore = hasPublicSSH || hasPublicRDP ? 40 : hasUnrestrictedPorts ? 60 : 85;
 
@@ -102,7 +159,7 @@ export function SecurityGroupDetailsDialog({
                 <CardTitle className="text-sm font-medium">Inbound Rules</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{securityGroup.inboundRules}</div>
+                <div className="text-2xl font-bold">{securityGroup.inboundRules.length}</div>
               </CardContent>
             </Card>
             <Card>
@@ -110,7 +167,7 @@ export function SecurityGroupDetailsDialog({
                 <CardTitle className="text-sm font-medium">Outbound Rules</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{securityGroup.outboundRules}</div>
+                <div className="text-2xl font-bold">{securityGroup.outboundRules.length}</div>
               </CardContent>
             </Card>
           </div>
@@ -158,51 +215,57 @@ export function SecurityGroupDetailsDialog({
           {/* Rules Tabs */}
           <Tabs defaultValue="inbound" className="w-full">
             <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="inbound">Inbound Rules</TabsTrigger>
-              <TabsTrigger value="outbound">Outbound Rules</TabsTrigger>
+              <TabsTrigger value="inbound">Inbound Rules ({inboundRules.length})</TabsTrigger>
+              <TabsTrigger value="outbound">Outbound Rules ({outboundRules.length})</TabsTrigger>
               <TabsTrigger value="analysis">Security Analysis</TabsTrigger>
             </TabsList>
 
             <TabsContent value="inbound" className="space-y-4">
               <Card>
                 <CardContent className="pt-6">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Protocol</TableHead>
-                        <TableHead>Port Range</TableHead>
-                        <TableHead>Source</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Risk</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {inboundRules.map((rule, index) => {
-                        const isRisky = rule.source === "0.0.0.0/0" && !["443", "80"].includes(rule.port);
-                        return (
-                          <TableRow key={index}>
-                            <TableCell><Badge variant="outline">{rule.protocol}</Badge></TableCell>
-                            <TableCell className="font-mono">{rule.port}</TableCell>
-                            <TableCell className="font-mono text-sm">{rule.source}</TableCell>
-                            <TableCell className="text-sm">{rule.description || "-"}</TableCell>
-                            <TableCell>
-                              {isRisky ? (
-                                <Badge variant="destructive" className="gap-1">
-                                  <Unlock className="h-3 w-3" />
-                                  High Risk
-                                </Badge>
-                              ) : (
-                                <Badge variant="secondary" className="gap-1">
-                                  <Lock className="h-3 w-3" />
-                                  Secure
-                                </Badge>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                  {inboundRules.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">No inbound rules configured</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Protocol</TableHead>
+                          <TableHead>Port Range</TableHead>
+                          <TableHead>Source</TableHead>
+                          <TableHead>Description</TableHead>
+                          <TableHead>Risk</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {inboundRules.map((rule, index) => {
+                          const source = getSource(rule);
+                          const port = formatPortRange(rule);
+                          const isRisky = source === "0.0.0.0/0" && !["443", "80"].includes(port);
+                          return (
+                            <TableRow key={index}>
+                              <TableCell><Badge variant="outline">{formatProtocol(rule.ipProtocol)}</Badge></TableCell>
+                              <TableCell className="font-mono">{port}</TableCell>
+                              <TableCell className="font-mono text-sm">{source}</TableCell>
+                              <TableCell className="text-sm">{rule.description || "-"}</TableCell>
+                              <TableCell>
+                                {isRisky ? (
+                                  <Badge variant="destructive" className="gap-1">
+                                    <Unlock className="h-3 w-3" />
+                                    High Risk
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="secondary" className="gap-1">
+                                    <Lock className="h-3 w-3" />
+                                    Secure
+                                  </Badge>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -210,26 +273,30 @@ export function SecurityGroupDetailsDialog({
             <TabsContent value="outbound" className="space-y-4">
               <Card>
                 <CardContent className="pt-6">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Protocol</TableHead>
-                        <TableHead>Port Range</TableHead>
-                        <TableHead>Destination</TableHead>
-                        <TableHead>Description</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {outboundRules.map((rule, index) => (
-                        <TableRow key={index}>
-                          <TableCell><Badge variant="outline">{rule.protocol}</Badge></TableCell>
-                          <TableCell className="font-mono">{rule.port}</TableCell>
-                          <TableCell className="font-mono text-sm">{rule.source}</TableCell>
-                          <TableCell className="text-sm">{rule.description || "-"}</TableCell>
+                  {outboundRules.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-4">No outbound rules configured</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Protocol</TableHead>
+                          <TableHead>Port Range</TableHead>
+                          <TableHead>Destination</TableHead>
+                          <TableHead>Description</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {outboundRules.map((rule, index) => (
+                          <TableRow key={index}>
+                            <TableCell><Badge variant="outline">{formatProtocol(rule.ipProtocol)}</Badge></TableCell>
+                            <TableCell className="font-mono">{formatPortRange(rule)}</TableCell>
+                            <TableCell className="font-mono text-sm">{getSource(rule)}</TableCell>
+                            <TableCell className="text-sm">{rule.description || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

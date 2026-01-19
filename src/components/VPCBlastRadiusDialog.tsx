@@ -272,7 +272,7 @@ export function VPCBlastRadiusDialog({
                   {affectedSecurityGroups.map(sg => (
                     <div key={sg.id} className="flex items-center justify-between bg-muted/50 rounded px-3 py-2 text-sm">
                       <span className="font-mono text-xs">{sg.name}</span>
-                      <span className="text-muted-foreground text-xs">{sg.inboundRules + sg.outboundRules} rules</span>
+                      <span className="text-muted-foreground text-xs">{sg.inboundRules.length + sg.outboundRules.length} rules</span>
                     </div>
                   ))}
                 </div>
