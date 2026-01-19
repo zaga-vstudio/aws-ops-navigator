@@ -56,13 +56,24 @@ export interface Subnet {
   availableIps: number;
 }
 
+export interface SecurityGroupRule {
+  ipProtocol: string;
+  fromPort?: number;
+  toPort?: number;
+  cidrIpv4?: string;
+  cidrIpv6?: string;
+  sourceSecurityGroupId?: string;
+  prefixListId?: string;
+  description?: string;
+}
+
 export interface SecurityGroup {
   id: string;
   name: string;
   description: string;
   vpcId: string;
-  inboundRules: number;
-  outboundRules: number;
+  inboundRules: SecurityGroupRule[];
+  outboundRules: SecurityGroupRule[];
 }
 
 export interface VPCPeeringConnection {

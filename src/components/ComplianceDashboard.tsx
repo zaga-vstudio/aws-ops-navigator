@@ -33,13 +33,24 @@ interface ComplianceCheck {
   resourceId?: string;
 }
 
+interface SecurityGroupRule {
+  ipProtocol: string;
+  fromPort?: number;
+  toPort?: number;
+  cidrIpv4?: string;
+  cidrIpv6?: string;
+  sourceSecurityGroupId?: string;
+  prefixListId?: string;
+  description?: string;
+}
+
 interface SecurityGroup {
   id: string;
   name: string;
   vpcId: string;
   description: string;
-  inboundRules: number;
-  outboundRules: number;
+  inboundRules: SecurityGroupRule[];
+  outboundRules: SecurityGroupRule[];
 }
 
 interface IAMUser {
@@ -87,7 +98,7 @@ export function ComplianceDashboard({
   const mfaCompliance = totalUsers > 0 ? (mfaEnabledUsers / totalUsers) * 100 : 100;
 
   // Check for overly permissive security groups (0.0.0.0/0 on sensitive ports)
-  const hasOpenSecurityGroups = securityGroups.some(sg => sg.inboundRules > 5);
+  const hasOpenSecurityGroups = securityGroups.some(sg => sg.inboundRules.length > 5);
   
   // Analyze compliance checks
   const failedChecks = complianceChecks.filter(c => c.status === "NON_COMPLIANT");
