@@ -2,42 +2,44 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, TrendingUp } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useAWSData } from "@/hooks/useAWSData";
+import { useMemo } from "react";
 
 export const CostChart = () => {
   const { data, loading } = useAWSData();
   
   const currentCost = data?.metrics.estimatedCost || 0;
   
-  // Generate cost data based on current estimated cost (showing progression to current month)
-  const generateCostData = (currentEstimate: number) => {
+  // Use real historical data if available, otherwise generate from current cost
+  const costData = useMemo(() => {
+    if (data?.costData?.historicalCosts && data.costData.historicalCosts.length > 0) {
+      return data.costData.historicalCosts;
+    }
+    
+    // Fallback: Generate cost data based on current estimated cost
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-    const data = [];
+    const fallbackData = [];
     
     for (let i = 0; i < months.length; i++) {
-      // Generate realistic cost progression leading to current estimate
       let cost = 0;
-      if (currentEstimate > 0) {
-        // Create a slight variation around the current cost
-        const baseVariation = currentEstimate * 0.8; // 80% of current as base
-        const randomVariation = (Math.random() - 0.5) * currentEstimate * 0.4; // ±20% variation
+      if (currentCost > 0) {
+        const baseVariation = currentCost * 0.8;
+        const randomVariation = (Math.random() - 0.5) * currentCost * 0.4;
         cost = Math.max(0, baseVariation + randomVariation);
         
-        // Make the last month the actual current estimate
         if (i === months.length - 1) {
-          cost = currentEstimate;
+          cost = currentCost;
         }
       }
       
-      data.push({
+      fallbackData.push({
         month: months[i],
         cost: Math.round(cost * 100) / 100
       });
     }
     
-    return data;
-  };
+    return fallbackData;
+  }, [currentCost, data?.costData?.historicalCosts]);
   
-  const costData = generateCostData(currentCost);
   const previousCost = costData.length > 1 ? costData[costData.length - 2].cost : 0;
   const changePercent = previousCost > 0 ? ((currentCost - previousCost) / previousCost * 100).toFixed(1) : '0.0';
 
