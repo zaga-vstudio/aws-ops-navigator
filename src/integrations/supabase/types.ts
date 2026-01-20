@@ -134,6 +134,48 @@ export type Database = {
         }
         Relationships: []
       }
+      cost_data_cache: {
+        Row: {
+          anomalies: Json | null
+          cached_at: string | null
+          created_at: string | null
+          expires_at: string | null
+          historical_costs: Json | null
+          historical_expires_at: string | null
+          id: string
+          service_breakdown: Json | null
+          total_cost: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          anomalies?: Json | null
+          cached_at?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          historical_costs?: Json | null
+          historical_expires_at?: string | null
+          id?: string
+          service_breakdown?: Json | null
+          total_cost?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          anomalies?: Json | null
+          cached_at?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          historical_costs?: Json | null
+          historical_expires_at?: string | null
+          id?: string
+          service_breakdown?: Json | null
+          total_cost?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       drift_events: {
         Row: {
           acknowledged: boolean

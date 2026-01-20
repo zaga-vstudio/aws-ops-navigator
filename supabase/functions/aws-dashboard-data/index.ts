@@ -164,6 +164,20 @@ interface CloudWatchMetrics {
   networkOut: MetricDataPoint[];
 }
 
+interface HistoricalCostPoint {
+  month: string;
+  cost: number;
+}
+
+interface CostDataWithCache {
+  serviceBreakdown: ServiceCost[];
+  topResources: TopSpendingResource[];
+  anomalies: CostAnomaly[];
+  historicalCosts: HistoricalCostPoint[];
+  cachedAt?: string;
+  fromCache: boolean;
+}
+
 interface DashboardData {
   ec2Instances: EC2Instance[];
   rdsDatabases: RDSDatabase[];
@@ -175,11 +189,7 @@ interface DashboardData {
   alarms: CloudWatchAlarm[];
   iamUsers: IAMUser[];
   complianceChecks: ComplianceCheck[];
-  costData: {
-    serviceBreakdown: ServiceCost[];
-    topResources: TopSpendingResource[];
-    anomalies: CostAnomaly[];
-  };
+  costData: CostDataWithCache;
   cloudWatchMetrics: CloudWatchMetrics;
   metrics: {
     totalInstances: number;
@@ -905,12 +915,152 @@ async function getComplianceChecks(config: AWSConfig): Promise<ComplianceCheck[]
   }
 }
 
-async function getCostData(config: AWSConfig): Promise<{
-  serviceBreakdown: ServiceCost[];
-  topResources: TopSpendingResource[];
-  anomalies: CostAnomaly[];
-}> {
-  console.log('Fetching AWS cost data from Cost Explorer');
+// Check if cached cost data is valid
+async function getCachedCostData(supabase: any, userId: string): Promise<CostDataWithCache | null> {
+  try {
+    const { data, error } = await supabase
+      .from('cost_data_cache')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !data) {
+      console.log('No cached cost data found');
+      return null;
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(data.expires_at);
+    const historicalExpiresAt = new Date(data.historical_expires_at);
+
+    // Check if cache is expired
+    if (now > expiresAt) {
+      console.log('Cost data cache expired');
+      return null;
+    }
+
+    console.log('Using cached cost data');
+    return {
+      serviceBreakdown: data.service_breakdown || [],
+      topResources: (data.service_breakdown || []).slice(0, 5).map((s: ServiceCost) => ({
+        resourceId: s.service,
+        resourceType: s.service,
+        cost: s.amount,
+        trend: 'stable' as const,
+      })),
+      anomalies: data.anomalies || [],
+      historicalCosts: data.historical_costs || [],
+      cachedAt: data.cached_at,
+      fromCache: true,
+    };
+  } catch (err: any) {
+    console.error('Error checking cost cache:', err.message);
+    return null;
+  }
+}
+
+// Save cost data to cache
+async function saveCostDataToCache(
+  supabase: any, 
+  userId: string, 
+  costData: { serviceBreakdown: ServiceCost[]; anomalies: CostAnomaly[]; historicalCosts: HistoricalCostPoint[]; totalCost: number }
+): Promise<void> {
+  try {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 6 * 60 * 60 * 1000); // 6 hours
+    const historicalExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
+
+    const { error } = await supabase
+      .from('cost_data_cache')
+      .upsert({
+        user_id: userId,
+        service_breakdown: costData.serviceBreakdown,
+        anomalies: costData.anomalies,
+        historical_costs: costData.historicalCosts,
+        total_cost: costData.totalCost,
+        cached_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        historical_expires_at: historicalExpiresAt.toISOString(),
+      }, { onConflict: 'user_id' });
+
+    if (error) {
+      console.error('Error saving cost data to cache:', error);
+    } else {
+      console.log('Cost data cached successfully');
+    }
+  } catch (err: any) {
+    console.error('Error saving cost cache:', err.message);
+  }
+}
+
+// Fetch historical cost data (last 6 months)
+async function getHistoricalCosts(config: AWSConfig): Promise<HistoricalCostPoint[]> {
+  console.log('Fetching historical cost data from Cost Explorer');
+  
+  try {
+    const costExplorerClient = new CostExplorerClient({
+      region: 'us-east-1',
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      },
+      credentialDefaultProvider: () => async () => ({
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+      }),
+    });
+
+    const now = new Date();
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    const command = new GetCostAndUsageCommand({
+      TimePeriod: {
+        Start: sixMonthsAgo.toISOString().split('T')[0],
+        End: endOfMonth.toISOString().split('T')[0],
+      },
+      Granularity: 'MONTHLY',
+      Metrics: ['UnblendedCost'],
+    });
+
+    const response = await costExplorerClient.send(command);
+    const historicalCosts: HistoricalCostPoint[] = [];
+
+    if (response.ResultsByTime) {
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      
+      for (const period of response.ResultsByTime) {
+        const startDate = new Date(period.TimePeriod?.Start || '');
+        const monthName = monthNames[startDate.getMonth()];
+        const cost = parseFloat(period.Total?.UnblendedCost?.Amount || '0');
+        
+        historicalCosts.push({
+          month: monthName,
+          cost: Math.round(cost * 100) / 100,
+        });
+      }
+    }
+
+    console.log(`Found ${historicalCosts.length} months of historical cost data`);
+    return historicalCosts;
+  } catch (error: any) {
+    console.error('Error fetching historical costs:', error.message);
+    return [];
+  }
+}
+
+async function getCostData(config: AWSConfig, supabase: any, userId: string, forceRefresh: boolean = false): Promise<CostDataWithCache> {
+  console.log(`Fetching AWS cost data (forceRefresh: ${forceRefresh})`);
+  
+  // Check cache first if not forcing refresh
+  if (!forceRefresh) {
+    const cachedData = await getCachedCostData(supabase, userId);
+    if (cachedData) {
+      return cachedData;
+    }
+  }
+  
+  console.log('Fetching fresh cost data from AWS Cost Explorer');
   
   try {
     const costExplorerClient = new CostExplorerClient({
@@ -929,23 +1079,24 @@ async function getCostData(config: AWSConfig): Promise<{
     const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     
-    // Fetch cost and usage by service
-    const costCommand = new GetCostAndUsageCommand({
-      TimePeriod: {
-        Start: startDate.toISOString().split('T')[0],
-        End: endDate.toISOString().split('T')[0],
-      },
-      Granularity: 'MONTHLY',
-      Metrics: ['UnblendedCost'],
-      GroupBy: [
-        {
-          Type: 'DIMENSION',
-          Key: 'SERVICE',
+    // Fetch cost and usage by service AND historical costs in parallel
+    const [costResponse, historicalCosts] = await Promise.all([
+      costExplorerClient.send(new GetCostAndUsageCommand({
+        TimePeriod: {
+          Start: startDate.toISOString().split('T')[0],
+          End: endDate.toISOString().split('T')[0],
         },
-      ],
-    });
-
-    const costResponse = await costExplorerClient.send(costCommand);
+        Granularity: 'MONTHLY',
+        Metrics: ['UnblendedCost'],
+        GroupBy: [
+          {
+            Type: 'DIMENSION',
+            Key: 'SERVICE',
+          },
+        ],
+      })),
+      getHistoricalCosts(config),
+    ]);
     
     let serviceBreakdown: ServiceCost[] = [];
     let totalCost = 0;
@@ -1021,10 +1172,21 @@ async function getCostData(config: AWSConfig): Promise<{
       trend: 'stable' as const,
     }));
 
+    // Save to cache
+    await saveCostDataToCache(supabase, userId, {
+      serviceBreakdown,
+      anomalies,
+      historicalCosts,
+      totalCost,
+    });
+
     return {
       serviceBreakdown,
       topResources,
       anomalies,
+      historicalCosts,
+      cachedAt: new Date().toISOString(),
+      fromCache: false,
     };
   } catch (error: any) {
     console.error('Error fetching cost data:', error.message);
@@ -1038,6 +1200,8 @@ async function getCostData(config: AWSConfig): Promise<{
       serviceBreakdown: [],
       topResources: [],
       anomalies: [],
+      historicalCosts: [],
+      fromCache: false,
     };
   }
 }
@@ -1049,6 +1213,17 @@ serve(async (req) => {
   }
 
   try {
+    // Parse request body for forceRefresh flag
+    let forceRefreshCost = false;
+    try {
+      if (req.method === 'POST') {
+        const body = await req.json();
+        forceRefreshCost = body.forceRefreshCost === true;
+      }
+    } catch {
+      // No body or invalid JSON, use defaults
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -1072,7 +1247,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Fetching AWS data for user: ${user.id}`);
+    console.log(`Fetching AWS data for user: ${user.id} (forceRefreshCost: ${forceRefreshCost})`);
 
     // Get AWS credentials for the user
     const awsConfig = await getAWSCredentials(supabaseClient, user.id);
@@ -1101,10 +1276,12 @@ serve(async (req) => {
     let iamUsers: IAMUser[] = [];
     let complianceChecks: ComplianceCheck[] = [];
     let cloudWatchMetrics: CloudWatchMetrics = { cpu: [], networkIn: [], networkOut: [] };
-    let costData = {
+    let costData: CostDataWithCache = {
       serviceBreakdown: [] as ServiceCost[],
       topResources: [] as TopSpendingResource[],
       anomalies: [] as CostAnomaly[],
+      historicalCosts: [],
+      fromCache: false,
     };
     
     try {
@@ -1116,7 +1293,7 @@ serve(async (req) => {
         .filter(i => i.state === 'running')
         .map(i => i.id);
 
-      // Fetch remaining data in parallel
+      // Fetch remaining data in parallel (cost data uses caching)
       [rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, vpcPeeringConnections, alarms, iamUsers, complianceChecks, costData, cloudWatchMetrics] = await Promise.all([
         getRDSDatabases(awsConfig),
         getS3Buckets(awsConfig),
@@ -1127,7 +1304,7 @@ serve(async (req) => {
         getCloudWatchAlarms(awsConfig),
         getIAMUsers(awsConfig),
         getComplianceChecks(awsConfig),
-        getCostData(awsConfig),
+        getCostData(awsConfig, supabaseClient, user.id, forceRefreshCost),
         getCloudWatchMetrics(awsConfig, runningInstanceIds)
       ]);
     } catch (awsError: any) {

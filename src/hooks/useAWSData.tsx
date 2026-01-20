@@ -141,6 +141,20 @@ export interface TopSpendingResource {
   trend: 'up' | 'down' | 'stable';
 }
 
+export interface HistoricalCostPoint {
+  month: string;
+  cost: number;
+}
+
+export interface CostDataWithCache {
+  serviceBreakdown: ServiceCost[];
+  topResources: TopSpendingResource[];
+  anomalies: CostAnomaly[];
+  historicalCosts?: HistoricalCostPoint[];
+  cachedAt?: string;
+  fromCache?: boolean;
+}
+
 export interface MetricDataPoint {
   timestamp: string;
   value: number;
@@ -172,11 +186,7 @@ export interface AWSData {
   alarms: CloudWatchAlarm[];
   iamUsers: IAMUser[];
   complianceChecks: ComplianceCheck[];
-  costData: {
-    serviceBreakdown: ServiceCost[];
-    topResources: TopSpendingResource[];
-    anomalies: CostAnomaly[];
-  };
+  costData: CostDataWithCache;
   cloudWatchMetrics?: CloudWatchMetrics;
   metrics: AWSMetrics;
 }
@@ -261,7 +271,8 @@ export const useAWSData = () => {
     toast(toastConfig);
   };
 
-  const fetchAWSData = useCallback(async (isRetry: boolean = false) => {
+  const fetchAWSData = useCallback(async (options: { isRetry?: boolean; forceRefreshCost?: boolean } = {}) => {
+    const { isRetry = false, forceRefreshCost = false } = options;
     try {
       setLoading(true);
       if (!isRetry) {
@@ -278,9 +289,11 @@ export const useAWSData = () => {
       const { data: response, error: functionError } = await supabase.functions.invoke(
         'aws-dashboard-data',
         {
+          method: 'POST',
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
+          body: { forceRefreshCost },
         }
       );
 
@@ -304,7 +317,7 @@ export const useAWSData = () => {
         showErrorToast(awsError);
         
         setTimeout(() => {
-          fetchAWSData(true);
+          fetchAWSData({ isRetry: true });
         }, RETRY_DELAY * (retryCount + 1)); // Exponential backoff
       } else {
         showErrorToast(awsError);
@@ -315,7 +328,11 @@ export const useAWSData = () => {
   }, [toast, retryCount]);
 
   const refetch = () => {
-    fetchAWSData();
+    fetchAWSData({});
+  };
+
+  const refetchWithForceRefreshCost = () => {
+    fetchAWSData({ forceRefreshCost: true });
   };
 
   useEffect(() => {
@@ -326,6 +343,7 @@ export const useAWSData = () => {
     data,
     loading,
     error,
-    refetch
+    refetch,
+    refetchWithForceRefreshCost,
   };
 };

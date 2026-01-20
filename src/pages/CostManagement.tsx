@@ -28,18 +28,22 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accen
 export default function CostManagement() {
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState("6months");
-  const { data: awsData, loading, refetch } = useAWSData();
+  const { data: awsData, loading, refetch, refetchWithForceRefreshCost } = useAWSData();
 
   const currentCost = awsData?.metrics.estimatedCost || 0;
   
-  // Generate historical data based on current cost
+  // Use real historical data if available, otherwise generate from current cost
   const monthlySpendData = useMemo(() => {
+    if (awsData?.costData?.historicalCosts && awsData.costData.historicalCosts.length > 0) {
+      return awsData.costData.historicalCosts;
+    }
+    // Fallback to generated data
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
     return months.map((month, index) => ({
       month,
       cost: Math.round(currentCost * (0.7 + (index * 0.05)))
     }));
-  }, [currentCost]);
+  }, [currentCost, awsData?.costData?.historicalCosts]);
 
   // Transform real cost data
   const serviceBreakdown = useMemo(() => {
@@ -63,9 +67,28 @@ export default function CostManagement() {
     return awsData?.costData?.anomalies || [];
   }, [awsData?.costData?.anomalies]);
 
+  // Cache info
+  const costCacheInfo = useMemo(() => {
+    if (awsData?.costData?.cachedAt) {
+      const cachedAt = new Date(awsData.costData.cachedAt);
+      return {
+        cachedAt,
+        fromCache: awsData.costData.fromCache ?? false,
+        formattedTime: cachedAt.toLocaleTimeString()
+      };
+    }
+    return null;
+  }, [awsData?.costData?.cachedAt, awsData?.costData?.fromCache]);
+
   const handleRefresh = () => {
     setRefreshing(true);
     refetch();
+    setTimeout(() => setRefreshing(false), 2000);
+  };
+
+  const handleForceRefreshCost = () => {
+    setRefreshing(true);
+    refetchWithForceRefreshCost();
     setTimeout(() => setRefreshing(false), 2000);
   };
 
@@ -101,6 +124,23 @@ export default function CostManagement() {
                       <SelectItem value="1year">1 Year</SelectItem>
                     </SelectContent>
                   </Select>
+                  {costCacheInfo && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>
+                        {costCacheInfo.fromCache ? "Cached" : "Fresh"} at {costCacheInfo.formattedTime}
+                      </span>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={handleForceRefreshCost}
+                        disabled={refreshing}
+                        title="Force refresh cost data from AWS (bypasses cache)"
+                      >
+                        <RefreshCw className={`h-3 w-3 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+                        Force Refresh
+                      </Button>
+                    </div>
+                  )}
                   <Button onClick={handleRefresh} disabled={refreshing}>
                     <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
                     Refresh
