@@ -15,12 +15,16 @@ import {
   PieChart,
   BarChart3,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Power,
+  Loader2,
+  Info
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { RightsizingRecommendations } from "@/components/RightsizingRecommendations";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, PieChart as RechartsPieChart, Pie, Cell } from "recharts";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
 const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--muted))', 'hsl(var(--border))'];
@@ -28,7 +32,9 @@ const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accen
 export default function CostManagement() {
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState("6months");
-  const { data: awsData, loading, refetch, refetchWithForceRefreshCost } = useAWSData();
+  const { data: awsData, loading, refetch, refetchWithForceRefreshCost, costExplorerState, enableCostExplorer, disableCostExplorer } = useAWSData();
+
+  const isCostExplorerDisabled = awsData?.costData?.costExplorerDisabled === true;
 
   const currentCost = awsData?.metrics.estimatedCost || 0;
   
@@ -92,6 +98,18 @@ export default function CostManagement() {
     setTimeout(() => setRefreshing(false), 2000);
   };
 
+  const handleEnableCostExplorer = async () => {
+    const success = await enableCostExplorer();
+    if (success) {
+      refetchWithForceRefreshCost();
+    }
+  };
+
+  const handleDisableCostExplorer = async () => {
+    await disableCostExplorer();
+    refetch();
+  };
+
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full bg-background">
@@ -147,6 +165,90 @@ export default function CostManagement() {
                   </Button>
                 </div>
               </div>
+
+              {/* Cost Explorer Enable/Disable Banner */}
+              {isCostExplorerDisabled && (
+                <Card className="border-2 border-dashed border-primary/30 bg-primary/5">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <DollarSign className="h-5 w-5 text-primary" />
+                      AWS Cost Explorer
+                    </CardTitle>
+                    <CardDescription>
+                      Get detailed insights into your AWS spending
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Features</h4>
+                        <ul className="text-sm text-muted-foreground space-y-1">
+                          <li>• Service-by-service cost breakdown</li>
+                          <li>• 6-month spending trends</li>
+                          <li>• Automatic cost anomaly detection</li>
+                          <li>• Top spending resources</li>
+                        </ul>
+                      </div>
+                      <div className="space-y-2">
+                        <h4 className="font-medium">Caching</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Cost data is cached for 6 hours to minimize API calls. 
+                          Historical trends are cached for 24 hours.
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <Alert variant="default" className="border-warning/50 bg-warning/10">
+                      <Info className="h-4 w-4 text-warning" />
+                      <AlertDescription className="text-sm">
+                        <strong>Note:</strong> AWS charges ~$0.01 per Cost Explorer API request. 
+                        With caching enabled, typical usage costs less than $1/month.
+                      </AlertDescription>
+                    </Alert>
+                    
+                    <Button 
+                      onClick={handleEnableCostExplorer}
+                      disabled={costExplorerState.loading}
+                      className="w-full md:w-auto"
+                    >
+                      {costExplorerState.loading ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Power className="h-4 w-4 mr-2" />
+                      )}
+                      Enable Cost Explorer
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Cost Explorer Status when enabled */}
+              {!isCostExplorerDisabled && costExplorerState.enabled && (
+                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg border">
+                  <div className="flex items-center gap-2 text-sm">
+                    <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
+                    <span className="text-muted-foreground">Cost Explorer is active</span>
+                    {costCacheInfo && (
+                      <span className="text-xs text-muted-foreground">
+                        • Last updated: {costCacheInfo.formattedTime} {costCacheInfo.fromCache && "(cached)"}
+                      </span>
+                    )}
+                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={handleDisableCostExplorer}
+                    disabled={costExplorerState.loading}
+                    className="text-xs"
+                  >
+                    {costExplorerState.loading ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      "Disable"
+                    )}
+                  </Button>
+                </div>
+              )}
 
               {/* Cost Overview Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
