@@ -153,6 +153,12 @@ export interface CostDataWithCache {
   historicalCosts?: HistoricalCostPoint[];
   cachedAt?: string;
   fromCache?: boolean;
+  costExplorerDisabled?: boolean;
+}
+
+export interface CostExplorerState {
+  enabled: boolean;
+  loading: boolean;
 }
 
 export interface MetricDataPoint {
@@ -196,7 +202,73 @@ export const useAWSData = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<AWSError | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [costExplorerState, setCostExplorerState] = useState<CostExplorerState>({ enabled: false, loading: false });
   const { toast } = useToast();
+
+  const enableCostExplorer = async (): Promise<boolean> => {
+    try {
+      setCostExplorerState(prev => ({ ...prev, loading: true }));
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert({
+          user_id: user.id,
+          cost_explorer_enabled: true,
+        }, { onConflict: 'user_id' });
+
+      if (error) throw error;
+
+      setCostExplorerState({ enabled: true, loading: false });
+      toast({
+        title: 'Cost Explorer Enabled',
+        description: 'AWS Cost Explorer has been activated. Data will load shortly.',
+      });
+      
+      return true;
+    } catch (err: any) {
+      console.error('Error enabling cost explorer:', err);
+      setCostExplorerState(prev => ({ ...prev, loading: false }));
+      toast({
+        title: 'Error',
+        description: 'Failed to enable Cost Explorer',
+        variant: 'destructive',
+      });
+      return false;
+    }
+  };
+
+  const disableCostExplorer = async (): Promise<boolean> => {
+    try {
+      setCostExplorerState(prev => ({ ...prev, loading: true }));
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('notification_preferences')
+        .update({ cost_explorer_enabled: false })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setCostExplorerState({ enabled: false, loading: false });
+      toast({
+        title: 'Cost Explorer Disabled',
+        description: 'AWS Cost Explorer has been deactivated.',
+      });
+      return true;
+    } catch (err: any) {
+      console.error('Error disabling cost explorer:', err);
+      setCostExplorerState(prev => ({ ...prev, loading: false }));
+      toast({
+        title: 'Error',
+        description: 'Failed to disable Cost Explorer',
+        variant: 'destructive',
+      });
+      return false;
+    }
+  };
 
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 1000; // 1 second
@@ -306,7 +378,14 @@ export const useAWSData = () => {
       }
 
       setData(response);
-      setRetryCount(0); // Reset retry count on success
+      setRetryCount(0);
+      
+      // Update cost explorer state based on response
+      if (response?.costData?.costExplorerDisabled) {
+        setCostExplorerState({ enabled: false, loading: false });
+      } else if (response?.costData?.serviceBreakdown?.length > 0) {
+        setCostExplorerState({ enabled: true, loading: false });
+      }
     } catch (err) {
       const awsError = categorizeError(err);
       setError(awsError);
@@ -345,5 +424,8 @@ export const useAWSData = () => {
     error,
     refetch,
     refetchWithForceRefreshCost,
+    costExplorerState,
+    enableCostExplorer,
+    disableCostExplorer,
   };
 };

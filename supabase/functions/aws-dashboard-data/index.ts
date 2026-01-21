@@ -176,6 +176,7 @@ interface CostDataWithCache {
   historicalCosts: HistoricalCostPoint[];
   cachedAt?: string;
   fromCache: boolean;
+  costExplorerDisabled?: boolean;
 }
 
 interface DashboardData {
@@ -1051,6 +1052,25 @@ async function getHistoricalCosts(config: AWSConfig): Promise<HistoricalCostPoin
 
 async function getCostData(config: AWSConfig, supabase: any, userId: string, forceRefresh: boolean = false): Promise<CostDataWithCache> {
   console.log(`Fetching AWS cost data (forceRefresh: ${forceRefresh})`);
+  
+  // Check if user has enabled Cost Explorer
+  const { data: prefs } = await supabase
+    .from('notification_preferences')
+    .select('cost_explorer_enabled')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!prefs?.cost_explorer_enabled) {
+    console.log('Cost Explorer is disabled for user');
+    return {
+      serviceBreakdown: [],
+      topResources: [],
+      anomalies: [],
+      historicalCosts: [],
+      fromCache: false,
+      costExplorerDisabled: true,
+    };
+  }
   
   // Check cache first if not forcing refresh
   if (!forceRefresh) {

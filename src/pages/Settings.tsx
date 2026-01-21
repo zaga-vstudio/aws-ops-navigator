@@ -55,7 +55,7 @@ export default function Settings() {
   const [iacExportOpen, setIaCExportOpen] = useState(false);
 
   // Fetch AWS data for IaC export
-  const { data: awsData } = useAWSData();
+  const { data: awsData, costExplorerState, enableCostExplorer, disableCostExplorer } = useAWSData();
 
   // Check if 2FA is enabled
   useEffect(() => {
@@ -232,6 +232,34 @@ export default function Settings() {
                             <Label htmlFor="networkThreshold">Network Threshold (MB/s)</Label>
                             <Input id="networkThreshold" type="number" defaultValue="1000" />
                           </div>
+                        </div>
+                      </div>
+
+                      <Separator />
+
+                      <div className="space-y-4">
+                        <h3 className="text-lg font-medium">Cost & Billing</h3>
+                        <div className="flex items-center justify-between p-4 border rounded-lg">
+                          <div className="space-y-1">
+                            <Label>AWS Cost Explorer</Label>
+                            <p className="text-sm text-muted-foreground">
+                              Enable detailed cost analysis and spending trends
+                            </p>
+                            <p className="text-xs text-warning">
+                              ⚠️ AWS charges ~$0.01 per API request (cached for 6h)
+                            </p>
+                          </div>
+                          <Switch 
+                            checked={costExplorerState.enabled}
+                            disabled={costExplorerState.loading}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                enableCostExplorer();
+                              } else {
+                                disableCostExplorer();
+                              }
+                            }}
+                          />
                         </div>
                       </div>
                     </CardContent>

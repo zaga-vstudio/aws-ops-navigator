@@ -223,6 +223,8 @@ export type Database = {
       }
       notification_preferences: {
         Row: {
+          cost_explorer_enabled: boolean | null
+          cost_explorer_last_charged_at: string | null
           created_at: string
           discord_webhook: string | null
           drift_scan_enabled: boolean | null
@@ -240,6 +242,8 @@ export type Database = {
           webhook_url: string | null
         }
         Insert: {
+          cost_explorer_enabled?: boolean | null
+          cost_explorer_last_charged_at?: string | null
           created_at?: string
           discord_webhook?: string | null
           drift_scan_enabled?: boolean | null
@@ -257,6 +261,8 @@ export type Database = {
           webhook_url?: string | null
         }
         Update: {
+          cost_explorer_enabled?: boolean | null
+          cost_explorer_last_charged_at?: string | null
           created_at?: string
           discord_webhook?: string | null
           drift_scan_enabled?: boolean | null
