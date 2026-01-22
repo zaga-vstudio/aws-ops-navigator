@@ -18,7 +18,9 @@ import {
   AlertTriangle,
   Power,
   Loader2,
-  Info
+  Info,
+  Clock,
+  History
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -35,8 +37,25 @@ export default function CostManagement() {
   const { data: awsData, loading, refetch, refetchWithForceRefreshCost, costExplorerState, enableCostExplorer, disableCostExplorer } = useAWSData();
 
   const isCostExplorerDisabled = awsData?.costData?.costExplorerDisabled === true;
+  const isHistoricalData = awsData?.costData?.isHistoricalData === true;
+  const noCachedDataExists = awsData?.costData?.noCachedDataExists === true;
+  const hasRealCostData = (awsData?.costData?.serviceBreakdown?.length ?? 0) > 0 || (awsData?.costData?.totalCost ?? 0) > 0;
 
-  const currentCost = awsData?.metrics.estimatedCost || 0;
+  // Prefer actual cached cost data over resource-based estimation
+  const currentCost = useMemo(() => {
+    // First priority: total_cost from cache
+    if (awsData?.costData?.totalCost && awsData.costData.totalCost > 0) {
+      return awsData.costData.totalCost;
+    }
+    // Second priority: sum of service breakdown
+    if (awsData?.costData?.serviceBreakdown && awsData.costData.serviceBreakdown.length > 0) {
+      return awsData.costData.serviceBreakdown.reduce((sum, s) => sum + s.amount, 0);
+    }
+    // Fallback: estimated cost from metrics
+    return awsData?.metrics?.estimatedCost || 0;
+  }, [awsData?.costData?.totalCost, awsData?.costData?.serviceBreakdown, awsData?.metrics?.estimatedCost]);
+  
+  const isEstimatedCost = !awsData?.costData?.totalCost && !awsData?.costData?.serviceBreakdown?.length;
   
   // Use real historical data if available, otherwise generate from current cost
   const monthlySpendData = useMemo(() => {
@@ -73,18 +92,33 @@ export default function CostManagement() {
     return awsData?.costData?.anomalies || [];
   }, [awsData?.costData?.anomalies]);
 
-  // Cache info
+  // Cache info with human-readable formatting
   const costCacheInfo = useMemo(() => {
     if (awsData?.costData?.cachedAt) {
       const cachedAt = new Date(awsData.costData.cachedAt);
+      const now = new Date();
+      const hoursSinceUpdate = Math.floor((now.getTime() - cachedAt.getTime()) / (1000 * 60 * 60));
+      const daysSinceUpdate = Math.floor(hoursSinceUpdate / 24);
+      
+      let formattedAge: string;
+      if (daysSinceUpdate > 0) {
+        formattedAge = `${daysSinceUpdate} day${daysSinceUpdate > 1 ? 's' : ''} ago`;
+      } else if (hoursSinceUpdate > 0) {
+        formattedAge = `${hoursSinceUpdate} hour${hoursSinceUpdate > 1 ? 's' : ''} ago`;
+      } else {
+        formattedAge = 'Just now';
+      }
+      
       return {
         cachedAt,
         fromCache: awsData.costData.fromCache ?? false,
-        formattedTime: cachedAt.toLocaleTimeString()
+        formattedTime: cachedAt.toLocaleString(),
+        formattedAge,
+        isHistorical: isHistoricalData,
       };
     }
     return null;
-  }, [awsData?.costData?.cachedAt, awsData?.costData?.fromCache]);
+  }, [awsData?.costData?.cachedAt, awsData?.costData?.fromCache, isHistoricalData]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -142,29 +176,81 @@ export default function CostManagement() {
                       <SelectItem value="1year">1 Year</SelectItem>
                     </SelectContent>
                   </Select>
-                  {costCacheInfo && (
+                  {/* Show cache info / Last Updated */}
+                  {costCacheInfo && hasRealCostData && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>
-                        {costCacheInfo.fromCache ? "Cached" : "Fresh"} at {costCacheInfo.formattedTime}
-                      </span>
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={handleForceRefreshCost}
-                        disabled={refreshing}
-                        title="Force refresh cost data from AWS (bypasses cache)"
-                      >
-                        <RefreshCw className={`h-3 w-3 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
-                        Force Refresh
-                      </Button>
+                      <Clock className="h-3 w-3" />
+                      <span>Last updated: {costCacheInfo.formattedAge}</span>
+                      {costCacheInfo.isHistorical && (
+                        <Badge variant="secondary" className="text-xs gap-1">
+                          <History className="h-3 w-3" />
+                          Historical Data
+                        </Badge>
+                      )}
                     </div>
                   )}
+                  
+                  {/* Refresh Data Button - only show when Cost Explorer is disabled but has historical data */}
+                  {isCostExplorerDisabled && hasRealCostData && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={handleEnableCostExplorer}
+                      disabled={costExplorerState.loading}
+                      title="This will enable Cost Explorer and make a new API call (~$0.01)"
+                    >
+                      {costExplorerState.loading ? (
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                      )}
+                      Refresh Data
+                    </Button>
+                  )}
+                  
+                  {/* Force Refresh for when Cost Explorer is enabled */}
+                  {!isCostExplorerDisabled && costCacheInfo && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={handleForceRefreshCost}
+                      disabled={refreshing}
+                      title="Force refresh cost data from AWS (bypasses cache)"
+                    >
+                      <RefreshCw className={`h-3 w-3 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+                      Force Refresh
+                    </Button>
+                  )}
+                  
                   <Button onClick={handleRefresh} disabled={refreshing}>
                     <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
                 </div>
               </div>
+
+              {/* Historical Data Notice - when disabled but has cached data */}
+              {isCostExplorerDisabled && hasRealCostData && costCacheInfo && (
+                <Alert className="border-primary/30 bg-primary/5">
+                  <History className="h-4 w-4" />
+                  <AlertDescription className="text-sm">
+                    <span className="font-medium">Viewing historical data</span> from {costCacheInfo.formattedTime}. 
+                    Cost Explorer is currently disabled. Click "Refresh Data" above to fetch fresh data 
+                    <span className="text-muted-foreground"> (incurs ~$0.01 AWS API charge)</span>.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {/* No Historical Data - when disabled and never had data */}
+              {isCostExplorerDisabled && noCachedDataExists && (
+                <Alert variant="default" className="border-warning/50 bg-warning/10">
+                  <Info className="h-4 w-4 text-warning" />
+                  <AlertDescription className="text-sm">
+                    <span className="font-medium">No historical data found.</span> You haven't enabled Cost Explorer before, 
+                    so there's no cached cost data to display. Enable Cost Explorer below to fetch your AWS spending data.
+                  </AlertDescription>
+                </Alert>
+              )}
 
               {/* Cost Explorer Enable/Disable Banner */}
               {isCostExplorerDisabled && (
@@ -254,7 +340,9 @@ export default function CostManagement() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">This Month (Estimated)</CardTitle>
+                    <CardTitle className="text-sm font-medium">
+                      This Month {isEstimatedCost ? "(Estimated)" : ""}
+                    </CardTitle>
                     <DollarSign className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
@@ -263,7 +351,14 @@ export default function CostManagement() {
                     ) : (
                       <>
                         <div className="text-2xl font-bold">${currentCost.toFixed(2)}</div>
-                        <p className="text-xs text-muted-foreground">Real-time estimate</p>
+                        <p className="text-xs text-muted-foreground">
+                          {isEstimatedCost 
+                            ? "Estimated from resources" 
+                            : isHistoricalData 
+                              ? `From ${costCacheInfo?.formattedAge || 'cache'}`
+                              : "From AWS Cost Explorer"
+                          }
+                        </p>
                       </>
                     )}
                   </CardContent>
@@ -339,12 +434,6 @@ export default function CostManagement() {
                         <div key={i} className="h-12 bg-muted animate-pulse rounded" />
                       ))}
                     </div>
-                  ) : isCostExplorerDisabled ? (
-                    <div className="text-center text-muted-foreground py-8">
-                      <AlertTriangle className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                      <p>Cost Explorer disabled</p>
-                      <p className="text-xs mt-1">Enable above to view cost anomalies</p>
-                    </div>
                   ) : costAlerts.length > 0 ? (
                     <div className="space-y-3">
                       {costAlerts.map((alert) => (
@@ -361,6 +450,12 @@ export default function CostManagement() {
                           </Badge>
                         </div>
                       ))}
+                    </div>
+                  ) : noCachedDataExists ? (
+                    <div className="text-center text-muted-foreground py-8">
+                      <AlertTriangle className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>No historical data found</p>
+                      <p className="text-xs mt-1">Enable Cost Explorer to fetch anomaly data</p>
                     </div>
                   ) : (
                     <div className="text-center text-muted-foreground py-8">
@@ -391,14 +486,6 @@ export default function CostManagement() {
                       <div className="h-[300px] flex items-center justify-center">
                         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                       </div>
-                    ) : isCostExplorerDisabled ? (
-                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
-                        <div>
-                          <TrendingUp className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                          <p>Cost Explorer disabled</p>
-                          <p className="text-xs mt-1">Enable above to view spending trends</p>
-                        </div>
-                      </div>
                     ) : monthlySpendData.length > 0 ? (
                       <ResponsiveContainer width="100%" height={300}>
                         <AreaChart data={monthlySpendData}>
@@ -422,6 +509,14 @@ export default function CostManagement() {
                           />
                         </AreaChart>
                       </ResponsiveContainer>
+                    ) : noCachedDataExists ? (
+                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                        <div>
+                          <TrendingUp className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                          <p>No historical data found</p>
+                          <p className="text-xs mt-1">Enable Cost Explorer to fetch spending trends</p>
+                        </div>
+                      </div>
                     ) : (
                       <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
                         <div>
@@ -443,14 +538,6 @@ export default function CostManagement() {
                     {loading ? (
                       <div className="h-[300px] flex items-center justify-center">
                         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                      </div>
-                    ) : isCostExplorerDisabled ? (
-                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
-                        <div>
-                          <PieChart className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                          <p>Cost Explorer disabled</p>
-                          <p className="text-xs mt-1">Enable above to view service breakdown</p>
-                        </div>
                       </div>
                     ) : serviceBreakdown.length > 0 ? (
                       <ResponsiveContainer width="100%" height={300}>
@@ -478,6 +565,14 @@ export default function CostManagement() {
                           />
                         </RechartsPieChart>
                       </ResponsiveContainer>
+                    ) : noCachedDataExists ? (
+                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                        <div>
+                          <PieChart className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                          <p>No historical data found</p>
+                          <p className="text-xs mt-1">Enable Cost Explorer to fetch service breakdown</p>
+                        </div>
+                      </div>
                     ) : (
                       <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
                         <div>
@@ -503,12 +598,6 @@ export default function CostManagement() {
                       {[1, 2, 3, 4].map((i) => (
                         <div key={i} className="h-12 bg-muted animate-pulse rounded" />
                       ))}
-                    </div>
-                  ) : isCostExplorerDisabled ? (
-                    <div className="text-center text-muted-foreground py-8">
-                      <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                      <p>Cost Explorer disabled</p>
-                      <p className="text-xs mt-1">Enable above to view top spending resources</p>
                     </div>
                   ) : topResources.length > 0 ? (
                     <Table>
@@ -541,6 +630,12 @@ export default function CostManagement() {
                         ))}
                       </TableBody>
                     </Table>
+                  ) : noCachedDataExists ? (
+                    <div className="text-center text-muted-foreground py-8">
+                      <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>No historical data found</p>
+                      <p className="text-xs mt-1">Enable Cost Explorer to fetch resource costs</p>
+                    </div>
                   ) : (
                     <div className="text-center text-muted-foreground py-8">
                       <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-20" />

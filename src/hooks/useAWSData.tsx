@@ -154,6 +154,9 @@ export interface CostDataWithCache {
   cachedAt?: string;
   fromCache?: boolean;
   costExplorerDisabled?: boolean;
+  isHistoricalData?: boolean;
+  noCachedDataExists?: boolean;
+  totalCost?: number;
 }
 
 export interface CostExplorerState {

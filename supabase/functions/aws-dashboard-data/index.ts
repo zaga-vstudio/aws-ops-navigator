@@ -917,7 +917,8 @@ async function getComplianceChecks(config: AWSConfig): Promise<ComplianceCheck[]
 }
 
 // Check if cached cost data is valid
-async function getCachedCostData(supabase: any, userId: string): Promise<CostDataWithCache | null> {
+// Get cached cost data - can optionally ignore expiration for historical view
+async function getCachedCostData(supabase: any, userId: string, ignoreExpiration: boolean = false): Promise<CostDataWithCache | null> {
   try {
     const { data, error } = await supabase
       .from('cost_data_cache')
@@ -932,15 +933,15 @@ async function getCachedCostData(supabase: any, userId: string): Promise<CostDat
 
     const now = new Date();
     const expiresAt = new Date(data.expires_at);
-    const historicalExpiresAt = new Date(data.historical_expires_at);
-
-    // Check if cache is expired
-    if (now > expiresAt) {
+    const isExpired = now > expiresAt;
+    
+    // Check if cache is expired (unless we're ignoring expiration for historical view)
+    if (isExpired && !ignoreExpiration) {
       console.log('Cost data cache expired');
       return null;
     }
 
-    console.log('Using cached cost data');
+    console.log(ignoreExpiration ? 'Using historical cached cost data (ignoring expiration)' : 'Using cached cost data');
     return {
       serviceBreakdown: data.service_breakdown || [],
       topResources: (data.service_breakdown || []).slice(0, 5).map((s: ServiceCost) => ({
@@ -953,6 +954,8 @@ async function getCachedCostData(supabase: any, userId: string): Promise<CostDat
       historicalCosts: data.historical_costs || [],
       cachedAt: data.cached_at,
       fromCache: true,
+      isHistoricalData: isExpired, // Flag if data is older than TTL
+      totalCost: data.total_cost || 0,
     };
   } catch (err: any) {
     console.error('Error checking cost cache:', err.message);
@@ -1060,8 +1063,26 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
     .eq('user_id', userId)
     .maybeSingle();
 
-  if (!prefs?.cost_explorer_enabled) {
-    console.log('Cost Explorer is disabled for user');
+  const costExplorerEnabled = prefs?.cost_explorer_enabled === true;
+
+  // If Cost Explorer is disabled, try to return any cached data (even if expired)
+  if (!costExplorerEnabled) {
+    console.log('Cost Explorer is disabled - checking for historical cached data');
+    
+    // Get cached data, ignoring expiration (historical view)
+    const historicalData = await getCachedCostData(supabase, userId, true);
+    
+    if (historicalData) {
+      console.log('Returning historical cached cost data');
+      return {
+        ...historicalData,
+        costExplorerDisabled: true,
+        isHistoricalData: true, // Always mark as historical when disabled
+      };
+    }
+    
+    // No cached data exists - user has never enabled Cost Explorer
+    console.log('No historical cost data found - user has never enabled Cost Explorer');
     return {
       serviceBreakdown: [],
       topResources: [],
@@ -1069,6 +1090,7 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
       historicalCosts: [],
       fromCache: false,
       costExplorerDisabled: true,
+      noCachedDataExists: true,
     };
   }
   
