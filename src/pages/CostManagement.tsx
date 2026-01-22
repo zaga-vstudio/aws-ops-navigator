@@ -339,6 +339,12 @@ export default function CostManagement() {
                         <div key={i} className="h-12 bg-muted animate-pulse rounded" />
                       ))}
                     </div>
+                  ) : isCostExplorerDisabled ? (
+                    <div className="text-center text-muted-foreground py-8">
+                      <AlertTriangle className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>Cost Explorer disabled</p>
+                      <p className="text-xs mt-1">Enable above to view cost anomalies</p>
+                    </div>
                   ) : costAlerts.length > 0 ? (
                     <div className="space-y-3">
                       {costAlerts.map((alert) => (
@@ -360,7 +366,7 @@ export default function CostManagement() {
                     <div className="text-center text-muted-foreground py-8">
                       <AlertTriangle className="h-12 w-12 mx-auto mb-2 opacity-20" />
                       <p>No cost anomalies detected</p>
-                      <p className="text-xs mt-1">Enable AWS Cost Anomaly Detection for alerts</p>
+                      <p className="text-xs mt-1">Anomaly detection runs automatically</p>
                     </div>
                   )}
                 </CardContent>
@@ -385,13 +391,28 @@ export default function CostManagement() {
                       <div className="h-[300px] flex items-center justify-center">
                         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                       </div>
-                    ) : (
+                    ) : isCostExplorerDisabled ? (
+                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                        <div>
+                          <TrendingUp className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                          <p>Cost Explorer disabled</p>
+                          <p className="text-xs mt-1">Enable above to view spending trends</p>
+                        </div>
+                      </div>
+                    ) : monthlySpendData.length > 0 ? (
                       <ResponsiveContainer width="100%" height={300}>
                         <AreaChart data={monthlySpendData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="month" />
-                          <YAxis />
-                          <Tooltip formatter={(value) => [`$${value}`, 'Cost']} />
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                          <XAxis dataKey="month" className="text-muted-foreground" fontSize={12} />
+                          <YAxis className="text-muted-foreground" fontSize={12} tickFormatter={(v) => `$${v}`} />
+                          <Tooltip 
+                            contentStyle={{
+                              backgroundColor: 'hsl(var(--card))',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: 'var(--radius)',
+                            }}
+                            formatter={(value) => [`$${value}`, 'Cost']} 
+                          />
                           <Area 
                             type="monotone" 
                             dataKey="cost" 
@@ -401,6 +422,14 @@ export default function CostManagement() {
                           />
                         </AreaChart>
                       </ResponsiveContainer>
+                    ) : (
+                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                        <div>
+                          <TrendingUp className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                          <p>No historical cost data</p>
+                          <p className="text-xs mt-1">Data will appear after first API sync</p>
+                        </div>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
@@ -415,6 +444,14 @@ export default function CostManagement() {
                       <div className="h-[300px] flex items-center justify-center">
                         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                       </div>
+                    ) : isCostExplorerDisabled ? (
+                      <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
+                        <div>
+                          <PieChart className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                          <p>Cost Explorer disabled</p>
+                          <p className="text-xs mt-1">Enable above to view service breakdown</p>
+                        </div>
+                      </div>
                     ) : serviceBreakdown.length > 0 ? (
                       <ResponsiveContainer width="100%" height={300}>
                         <RechartsPieChart>
@@ -423,7 +460,7 @@ export default function CostManagement() {
                             cx="50%"
                             cy="50%"
                             outerRadius={80}
-                            fill="#8884d8"
+                            fill="hsl(var(--primary))"
                             dataKey="value"
                             label={({ name, value }) => `${name}: ${value.toFixed(1)}%`}
                           >
@@ -431,15 +468,22 @@ export default function CostManagement() {
                               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => [`${value.toFixed(2)}%`, 'Percentage']} />
+                          <Tooltip 
+                            contentStyle={{
+                              backgroundColor: 'hsl(var(--card))',
+                              border: '1px solid hsl(var(--border))',
+                              borderRadius: 'var(--radius)',
+                            }}
+                            formatter={(value: number) => [`${value.toFixed(2)}%`, 'Percentage']} 
+                          />
                         </RechartsPieChart>
                       </ResponsiveContainer>
                     ) : (
                       <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
                         <div>
                           <PieChart className="h-12 w-12 mx-auto mb-2 opacity-20" />
-                          <p>No cost data available</p>
-                          <p className="text-xs mt-1">Requires AWS Cost Explorer API access</p>
+                          <p>No service cost data</p>
+                          <p className="text-xs mt-1">Data will appear after first API sync</p>
                         </div>
                       </div>
                     )}
@@ -459,6 +503,12 @@ export default function CostManagement() {
                       {[1, 2, 3, 4].map((i) => (
                         <div key={i} className="h-12 bg-muted animate-pulse rounded" />
                       ))}
+                    </div>
+                  ) : isCostExplorerDisabled ? (
+                    <div className="text-center text-muted-foreground py-8">
+                      <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                      <p>Cost Explorer disabled</p>
+                      <p className="text-xs mt-1">Enable above to view top spending resources</p>
                     </div>
                   ) : topResources.length > 0 ? (
                     <Table>
@@ -495,7 +545,7 @@ export default function CostManagement() {
                     <div className="text-center text-muted-foreground py-8">
                       <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-20" />
                       <p>No resource cost data available</p>
-                      <p className="text-xs mt-1">Requires AWS Cost Explorer API access</p>
+                      <p className="text-xs mt-1">Data will appear after first API sync</p>
                     </div>
                   )}
                 </CardContent>
