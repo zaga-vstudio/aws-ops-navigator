@@ -1353,14 +1353,30 @@ serve(async (req) => {
       );
     }
 
-    // Calculate metrics with real cost calculation
+    // Calculate metrics - prefer actual Cost Explorer data over estimation
+    // Get actual total cost from Cost Explorer if available (sum of service breakdown)
+    let actualCostFromExplorer = 0;
+    if (costData.serviceBreakdown && costData.serviceBreakdown.length > 0) {
+      actualCostFromExplorer = costData.serviceBreakdown.reduce((sum, s) => sum + s.amount, 0);
+    }
+    // Also check historical costs for current month
+    if (actualCostFromExplorer === 0 && costData.historicalCosts && costData.historicalCosts.length > 0) {
+      const currentMonth = costData.historicalCosts[costData.historicalCosts.length - 1];
+      if (currentMonth) {
+        actualCostFromExplorer = currentMonth.cost;
+      }
+    }
+    
     const metrics = {
       totalInstances: ec2Instances.length,
       runningInstances: ec2Instances.filter(i => i.state === 'running').length,
       stoppedInstances: ec2Instances.filter(i => i.state === 'stopped').length,
       totalDatabases: rdsDatabases.length,
       totalBuckets: s3Buckets.length,
-      estimatedCost: calculateEstimatedCost(ec2Instances, rdsDatabases, s3Buckets)
+      // Use actual Cost Explorer data if available, otherwise fall back to estimation
+      estimatedCost: actualCostFromExplorer > 0 
+        ? Math.round(actualCostFromExplorer * 100) / 100 
+        : calculateEstimatedCost(ec2Instances, rdsDatabases, s3Buckets)
     };
 
     const dashboardData: DashboardData = {
