@@ -29,7 +29,26 @@ import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tool
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
-const COLORS = ['hsl(var(--primary))', 'hsl(var(--secondary))', 'hsl(var(--accent))', 'hsl(var(--muted))', 'hsl(var(--border))'];
+const COLORS = ['hsl(var(--primary))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
+
+// Get available time periods from historical data
+const getAvailableTimePeriods = (historicalCosts?: { month: string; cost: number }[]) => {
+  if (!historicalCosts || historicalCosts.length === 0) return [];
+  return historicalCosts.map(h => h.month);
+};
+
+// Filter historical data based on selected range
+const filterHistoricalByRange = (historicalCosts: { month: string; cost: number }[], range: string) => {
+  if (!historicalCosts || historicalCosts.length === 0) return [];
+  
+  const monthsToShow = range === "1month" ? 1 
+    : range === "3months" ? 3 
+    : range === "6months" ? 6 
+    : 12;
+  
+  // Return the last N months of data
+  return historicalCosts.slice(-monthsToShow);
+};
 
 export default function CostManagement() {
   const [refreshing, setRefreshing] = useState(false);
@@ -57,26 +76,29 @@ export default function CostManagement() {
   
   const isEstimatedCost = !awsData?.costData?.totalCost && !awsData?.costData?.serviceBreakdown?.length;
   
-  // Use real historical data if available, otherwise generate from current cost
+  // Use real historical data if available, filtered by time range
   const monthlySpendData = useMemo(() => {
     if (awsData?.costData?.historicalCosts && awsData.costData.historicalCosts.length > 0) {
-      return awsData.costData.historicalCosts;
+      return filterHistoricalByRange(awsData.costData.historicalCosts, timeRange);
     }
-    // Fallback to generated data
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-    return months.map((month, index) => ({
-      month,
-      cost: Math.round(currentCost * (0.7 + (index * 0.05)))
-    }));
-  }, [currentCost, awsData?.costData?.historicalCosts]);
+    // No fallback - only show real data
+    return [];
+  }, [awsData?.costData?.historicalCosts, timeRange]);
 
-  // Transform real cost data
+  // Check if we have historical data to show time range options
+  const hasHistoricalData = (awsData?.costData?.historicalCosts?.length ?? 0) > 0;
+  const maxMonthsAvailable = awsData?.costData?.historicalCosts?.length ?? 0;
+
+  // Transform real cost data - filter out services with zero or negligible cost
   const serviceBreakdown = useMemo(() => {
-    return awsData?.costData?.serviceBreakdown?.map(s => ({
+    const breakdown = awsData?.costData?.serviceBreakdown?.map(s => ({
       name: s.service,
       value: s.percentage,
       cost: s.amount
     })) || [];
+    
+    // Filter out services with essentially zero cost (less than $0.01)
+    return breakdown.filter(s => s.cost >= 0.01);
   }, [awsData?.costData?.serviceBreakdown]);
 
   const topResources = useMemo(() => {
@@ -165,15 +187,23 @@ export default function CostManagement() {
                   <p className="text-muted-foreground">Monitor and optimize your AWS spending</p>
                 </div>
                 <div className="flex items-center gap-3">
-                  <Select value={timeRange} onValueChange={setTimeRange}>
+                  <Select value={timeRange} onValueChange={setTimeRange} disabled={!hasHistoricalData}>
                     <SelectTrigger className="w-32">
-                      <SelectValue />
+                      <SelectValue placeholder="Time range" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1month">1 Month</SelectItem>
-                      <SelectItem value="3months">3 Months</SelectItem>
-                      <SelectItem value="6months">6 Months</SelectItem>
-                      <SelectItem value="1year">1 Year</SelectItem>
+                      <SelectItem value="1month" disabled={maxMonthsAvailable < 1}>
+                        1 Month
+                      </SelectItem>
+                      <SelectItem value="3months" disabled={maxMonthsAvailable < 3}>
+                        3 Months
+                      </SelectItem>
+                      <SelectItem value="6months" disabled={maxMonthsAvailable < 6}>
+                        6 Months
+                      </SelectItem>
+                      <SelectItem value="1year" disabled={maxMonthsAvailable < 12}>
+                        1 Year
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                   {/* Show cache info / Last Updated */}
@@ -540,31 +570,57 @@ export default function CostManagement() {
                         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
                       </div>
                     ) : serviceBreakdown.length > 0 ? (
-                      <ResponsiveContainer width="100%" height={300}>
-                        <RechartsPieChart>
-                          <Pie
-                            data={serviceBreakdown}
-                            cx="50%"
-                            cy="50%"
-                            outerRadius={80}
-                            fill="hsl(var(--primary))"
-                            dataKey="value"
-                            label={({ name, value }) => `${name}: ${value.toFixed(1)}%`}
-                          >
-                            {serviceBreakdown.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip 
-                            contentStyle={{
-                              backgroundColor: 'hsl(var(--card))',
-                              border: '1px solid hsl(var(--border))',
-                              borderRadius: 'var(--radius)',
-                            }}
-                            formatter={(value: number) => [`${value.toFixed(2)}%`, 'Percentage']} 
-                          />
-                        </RechartsPieChart>
-                      </ResponsiveContainer>
+                      <div className="flex items-center gap-4">
+                        <ResponsiveContainer width="50%" height={220}>
+                          <RechartsPieChart>
+                            <Pie
+                              data={serviceBreakdown}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={40}
+                              outerRadius={70}
+                              fill="hsl(var(--primary))"
+                              dataKey="value"
+                              paddingAngle={2}
+                            >
+                              {serviceBreakdown.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              contentStyle={{
+                                backgroundColor: 'hsl(var(--card))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: 'var(--radius)',
+                              }}
+                              formatter={(value: number, name: string, props: any) => [
+                                `$${props.payload.cost.toFixed(2)} (${value.toFixed(1)}%)`, 
+                                props.payload.name
+                              ]} 
+                            />
+                          </RechartsPieChart>
+                        </ResponsiveContainer>
+                        {/* Legend */}
+                        <div className="flex-1 space-y-2 overflow-auto max-h-[220px]">
+                          {serviceBreakdown.map((entry, index) => (
+                            <div key={entry.name} className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-3 h-3 rounded-full shrink-0" 
+                                  style={{ backgroundColor: COLORS[index % COLORS.length] }} 
+                                />
+                                <span className="truncate max-w-[120px]" title={entry.name}>
+                                  {entry.name}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-medium">${entry.cost.toFixed(2)}</span>
+                                <span className="text-muted-foreground ml-1">({entry.value.toFixed(1)}%)</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     ) : noCachedDataExists ? (
                       <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">
                         <div>
