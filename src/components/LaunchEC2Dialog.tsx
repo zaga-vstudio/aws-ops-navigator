@@ -1,13 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Server, AlertTriangle } from "lucide-react";
+import { Loader2, Server, AlertTriangle, DollarSign, ExternalLink, Search, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 
 interface LaunchEC2DialogProps {
   open: boolean;
@@ -15,22 +20,254 @@ interface LaunchEC2DialogProps {
   onSuccess: () => void;
 }
 
+interface OSOption {
+  id: string;
+  name: string;
+  description: string;
+  owner: string;
+  namePattern: string;
+  icon: string;
+  freeTier: boolean;
+  estimatedCost?: string;
+  category: 'standard' | 'marketplace';
+}
+
+interface MarketplaceAMI {
+  amiId: string;
+  name: string;
+  description: string;
+  hourlyPrice?: string;
+  hasProductCode: boolean;
+}
+
 const INSTANCE_TYPES = [
-  { value: 't2.micro', label: 't2.micro (1 vCPU, 1 GB) - Free Tier', freeTier: true },
-  { value: 't2.small', label: 't2.small (1 vCPU, 2 GB)', freeTier: false },
-  { value: 't2.medium', label: 't2.medium (2 vCPU, 4 GB)', freeTier: false },
-  { value: 't3.micro', label: 't3.micro (2 vCPU, 1 GB) - Free Tier', freeTier: true },
-  { value: 't3.small', label: 't3.small (2 vCPU, 2 GB)', freeTier: false },
-  { value: 't3.medium', label: 't3.medium (2 vCPU, 4 GB)', freeTier: false },
+  { value: 't2.micro', label: 't2.micro (1 vCPU, 1 GB) - Free Tier', freeTier: true, hourlyRate: 0.0116 },
+  { value: 't2.small', label: 't2.small (1 vCPU, 2 GB)', freeTier: false, hourlyRate: 0.023 },
+  { value: 't2.medium', label: 't2.medium (2 vCPU, 4 GB)', freeTier: false, hourlyRate: 0.0464 },
+  { value: 't3.micro', label: 't3.micro (2 vCPU, 1 GB) - Free Tier', freeTier: true, hourlyRate: 0.0104 },
+  { value: 't3.small', label: 't3.small (2 vCPU, 2 GB)', freeTier: false, hourlyRate: 0.0208 },
+  { value: 't3.medium', label: 't3.medium (2 vCPU, 4 GB)', freeTier: false, hourlyRate: 0.0416 },
+  { value: 'm5.large', label: 'm5.large (2 vCPU, 8 GB)', freeTier: false, hourlyRate: 0.096 },
+  { value: 'm5.xlarge', label: 'm5.xlarge (4 vCPU, 16 GB)', freeTier: false, hourlyRate: 0.192 },
+];
+
+const STANDARD_OS_OPTIONS: OSOption[] = [
+  {
+    id: 'amazon-linux-2023',
+    name: 'Amazon Linux 2023',
+    description: 'AWS-optimized Linux distribution',
+    owner: 'amazon',
+    namePattern: 'al2023-ami-2023*-x86_64',
+    icon: '🟠',
+    freeTier: true,
+    category: 'standard',
+  },
+  {
+    id: 'amazon-linux-2',
+    name: 'Amazon Linux 2',
+    description: 'Previous generation AWS Linux',
+    owner: 'amazon',
+    namePattern: 'amzn2-ami-hvm-*-x86_64-gp2',
+    icon: '🟠',
+    freeTier: true,
+    category: 'standard',
+  },
+  {
+    id: 'ubuntu-22',
+    name: 'Ubuntu Server 22.04 LTS',
+    description: 'Canonical Ubuntu LTS release',
+    owner: '099720109477',
+    namePattern: 'ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*',
+    icon: '🟣',
+    freeTier: true,
+    category: 'standard',
+  },
+  {
+    id: 'ubuntu-24',
+    name: 'Ubuntu Server 24.04 LTS',
+    description: 'Latest Canonical Ubuntu LTS',
+    owner: '099720109477',
+    namePattern: 'ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*',
+    icon: '🟣',
+    freeTier: true,
+    category: 'standard',
+  },
+  {
+    id: 'debian-12',
+    name: 'Debian 12 (Bookworm)',
+    description: 'Stable Debian release',
+    owner: '136693071363',
+    namePattern: 'debian-12-amd64-*',
+    icon: '🔴',
+    freeTier: true,
+    category: 'standard',
+  },
+  {
+    id: 'rhel-9',
+    name: 'Red Hat Enterprise Linux 9',
+    description: 'Enterprise Linux with support',
+    owner: '309956199498',
+    namePattern: 'RHEL-9*_HVM-*-x86_64-*',
+    icon: '🔴',
+    freeTier: false,
+    estimatedCost: '~$0.06/hr license',
+    category: 'standard',
+  },
+  {
+    id: 'windows-2022',
+    name: 'Windows Server 2022',
+    description: 'Microsoft Windows Server',
+    owner: 'amazon',
+    namePattern: 'Windows_Server-2022-English-Full-Base-*',
+    icon: '🔵',
+    freeTier: false,
+    estimatedCost: '~$0.046/hr license',
+    category: 'standard',
+  },
+  {
+    id: 'windows-2019',
+    name: 'Windows Server 2019',
+    description: 'Previous Windows Server version',
+    owner: 'amazon',
+    namePattern: 'Windows_Server-2019-English-Full-Base-*',
+    icon: '🔵',
+    freeTier: false,
+    estimatedCost: '~$0.046/hr license',
+    category: 'standard',
+  },
+];
+
+const MARKETPLACE_OS_OPTIONS: OSOption[] = [
+  {
+    id: 'kali-linux',
+    name: 'Kali Linux',
+    description: 'Penetration testing & security auditing',
+    owner: '679593333241',
+    namePattern: 'kali-linux-*',
+    icon: '🐉',
+    freeTier: false,
+    estimatedCost: 'Free AMI + instance cost',
+    category: 'marketplace',
+  },
+  {
+    id: 'centos-stream-9',
+    name: 'CentOS Stream 9',
+    description: 'Community Enterprise OS',
+    owner: '125523088429',
+    namePattern: 'CentOS Stream 9*',
+    icon: '🟢',
+    freeTier: true,
+    category: 'marketplace',
+  },
+  {
+    id: 'rocky-linux-9',
+    name: 'Rocky Linux 9',
+    description: 'RHEL-compatible enterprise Linux',
+    owner: '792107900819',
+    namePattern: 'Rocky-9-EC2-Base-*',
+    icon: '🟢',
+    freeTier: true,
+    category: 'marketplace',
+  },
+  {
+    id: 'alma-linux-9',
+    name: 'AlmaLinux OS 9',
+    description: 'Enterprise-grade Linux',
+    owner: '764336703387',
+    namePattern: 'AlmaLinux OS 9*',
+    icon: '🟢',
+    freeTier: true,
+    category: 'marketplace',
+  },
+  {
+    id: 'suse-15',
+    name: 'SUSE Linux Enterprise 15',
+    description: 'Enterprise Linux for mission-critical apps',
+    owner: '013907871322',
+    namePattern: 'suse-sles-15-sp5-*',
+    icon: '🟢',
+    freeTier: false,
+    estimatedCost: '~$0.04/hr license',
+    category: 'marketplace',
+  },
 ];
 
 export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2DialogProps) {
   const [loading, setLoading] = useState(false);
+  const [searchingAMI, setSearchingAMI] = useState(false);
   const [name, setName] = useState('');
   const [instanceType, setInstanceType] = useState('t2.micro');
+  const [selectedOS, setSelectedOS] = useState<string>('amazon-linux-2023');
+  const [customAmiId, setCustomAmiId] = useState('');
+  const [marketplaceSearch, setMarketplaceSearch] = useState('');
+  const [marketplaceResults, setMarketplaceResults] = useState<MarketplaceAMI[]>([]);
+  const [openConsoleOnLaunch, setOpenConsoleOnLaunch] = useState(false);
+  const [resolvedAmiId, setResolvedAmiId] = useState<string | null>(null);
+  const [osTab, setOsTab] = useState<string>('standard');
   const { toast } = useToast();
 
-  const selectedType = INSTANCE_TYPES.find(t => t.value === instanceType);
+  const allOSOptions = [...STANDARD_OS_OPTIONS, ...MARKETPLACE_OS_OPTIONS];
+  const selectedOSOption = allOSOptions.find(os => os.id === selectedOS);
+  const selectedInstanceType = INSTANCE_TYPES.find(t => t.value === instanceType);
+
+  // Calculate estimated costs
+  const calculateEstimatedCost = () => {
+    let hourlyTotal = selectedInstanceType?.hourlyRate || 0;
+    let additionalCosts: string[] = [];
+
+    if (selectedOSOption?.estimatedCost) {
+      additionalCosts.push(selectedOSOption.estimatedCost);
+    }
+
+    return {
+      instanceHourly: hourlyTotal,
+      additionalCosts,
+      monthlyEstimate: hourlyTotal * 730, // Average hours per month
+    };
+  };
+
+  const costEstimate = calculateEstimatedCost();
+
+  // Search marketplace AMIs
+  const searchMarketplaceAMIs = async () => {
+    if (!marketplaceSearch.trim()) return;
+    
+    setSearchingAMI(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No active session');
+
+      const { data, error } = await supabase.functions.invoke('manage-ec2-instances', {
+        body: {
+          action: 'searchAMIs',
+          params: { searchTerm: marketplaceSearch },
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+
+      setMarketplaceResults(data?.amis || []);
+      
+      if (!data?.amis?.length) {
+        toast({
+          title: "No AMIs Found",
+          description: "No marketplace AMIs matched your search. Try different keywords.",
+        });
+      }
+    } catch (error: any) {
+      console.error('Error searching AMIs:', error);
+      toast({
+        variant: "destructive",
+        title: "Search Failed",
+        description: error.message || "Failed to search marketplace AMIs.",
+      });
+    } finally {
+      setSearchingAMI(false);
+    }
+  };
 
   const handleLaunch = async () => {
     if (!name.trim()) {
@@ -42,6 +279,19 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
       return;
     }
 
+    // Show cost warning for non-free tier
+    const hasAdditionalCosts = !selectedOSOption?.freeTier || !selectedInstanceType?.freeTier;
+    if (hasAdditionalCosts) {
+      const confirmed = window.confirm(
+        `⚠️ Cost Warning\n\n` +
+        `This configuration will incur charges:\n` +
+        `• Instance: ~$${costEstimate.instanceHourly.toFixed(4)}/hr ($${costEstimate.monthlyEstimate.toFixed(2)}/month)\n` +
+        `${costEstimate.additionalCosts.length > 0 ? `• OS License: ${costEstimate.additionalCosts.join(', ')}\n` : ''}` +
+        `\nDo you want to proceed?`
+      );
+      if (!confirmed) return;
+    }
+
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -50,12 +300,18 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
         throw new Error('No active session');
       }
 
+      const osOption = allOSOptions.find(os => os.id === selectedOS);
+      
       const { data, error } = await supabase.functions.invoke('manage-ec2-instances', {
         body: {
           action: 'launch',
           params: {
             name: name.trim(),
             instanceType,
+            osType: selectedOS,
+            customAmiId: customAmiId || undefined,
+            osOwner: osOption?.owner,
+            osNamePattern: osOption?.namePattern,
           },
         },
         headers: {
@@ -74,9 +330,14 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
         description: `Instance ${data.instanceId} is being launched. It will be available shortly.`,
       });
 
+      // Open console if requested
+      if (openConsoleOnLaunch && data?.instanceId && data?.region) {
+        const consoleUrl = `https://${data.region}.console.aws.amazon.com/ec2/v2/home?region=${data.region}#InstanceDetails:instanceId=${data.instanceId}`;
+        window.open(consoleUrl, '_blank');
+      }
+
       onOpenChange(false);
-      setName('');
-      setInstanceType('t2.micro');
+      resetForm();
       onSuccess();
     } catch (error: any) {
       console.error('Error launching instance:', error);
@@ -90,9 +351,29 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
     }
   };
 
+  const resetForm = () => {
+    setName('');
+    setInstanceType('t2.micro');
+    setSelectedOS('amazon-linux-2023');
+    setCustomAmiId('');
+    setMarketplaceSearch('');
+    setMarketplaceResults([]);
+    setOpenConsoleOnLaunch(false);
+    setOsTab('standard');
+  };
+
+  const selectMarketplaceAMI = (ami: MarketplaceAMI) => {
+    setCustomAmiId(ami.amiId);
+    setSelectedOS('custom');
+    toast({
+      title: "AMI Selected",
+      description: `Selected ${ami.name}`,
+    });
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Server className="h-5 w-5" />
@@ -103,54 +384,248 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Instance Name</Label>
-            <Input
-              id="name"
-              placeholder="e.g., web-server-1"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={loading}
-            />
+        <ScrollArea className="flex-1 pr-4">
+          <div className="space-y-6 py-4">
+            {/* Instance Name */}
+            <div className="space-y-2">
+              <Label htmlFor="name">Instance Name</Label>
+              <Input
+                id="name"
+                placeholder="e.g., web-server-1"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={loading}
+              />
+            </div>
+
+            {/* Operating System Selection */}
+            <div className="space-y-3">
+              <Label>Operating System</Label>
+              <Tabs value={osTab} onValueChange={setOsTab}>
+                <TabsList className="grid w-full grid-cols-3">
+                  <TabsTrigger value="standard">Standard</TabsTrigger>
+                  <TabsTrigger value="marketplace">Marketplace</TabsTrigger>
+                  <TabsTrigger value="custom">Custom AMI</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="standard" className="mt-3">
+                  <div className="grid gap-2 max-h-[200px] overflow-y-auto pr-2">
+                    {STANDARD_OS_OPTIONS.map((os) => (
+                      <div
+                        key={os.id}
+                        className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                          selectedOS === os.id 
+                            ? 'border-primary bg-primary/5' 
+                            : 'border-border hover:border-primary/50'
+                        }`}
+                        onClick={() => {
+                          setSelectedOS(os.id);
+                          setCustomAmiId('');
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl">{os.icon}</span>
+                          <div>
+                            <div className="font-medium text-sm">{os.name}</div>
+                            <div className="text-xs text-muted-foreground">{os.description}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {os.freeTier ? (
+                            <Badge variant="secondary" className="text-xs">Free Tier</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-destructive">
+                              {os.estimatedCost}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="marketplace" className="mt-3 space-y-4">
+                  <div className="grid gap-2 max-h-[150px] overflow-y-auto pr-2">
+                    {MARKETPLACE_OS_OPTIONS.map((os) => (
+                      <div
+                        key={os.id}
+                        className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                          selectedOS === os.id 
+                            ? 'border-primary bg-primary/5' 
+                            : 'border-border hover:border-primary/50'
+                        }`}
+                        onClick={() => {
+                          setSelectedOS(os.id);
+                          setCustomAmiId('');
+                        }}
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="text-xl">{os.icon}</span>
+                          <div>
+                            <div className="font-medium text-sm">{os.name}</div>
+                            <div className="text-xs text-muted-foreground">{os.description}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {os.freeTier ? (
+                            <Badge variant="secondary" className="text-xs">Free Tier</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-destructive">
+                              {os.estimatedCost}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <Label className="text-sm">Search AWS Marketplace</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Search for AMIs (e.g., security, database)..."
+                        value={marketplaceSearch}
+                        onChange={(e) => setMarketplaceSearch(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && searchMarketplaceAMIs()}
+                        disabled={loading || searchingAMI}
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={searchMarketplaceAMIs}
+                        disabled={loading || searchingAMI || !marketplaceSearch.trim()}
+                      >
+                        {searchingAMI ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Search className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                    
+                    {marketplaceResults.length > 0 && (
+                      <div className="mt-2 max-h-[120px] overflow-y-auto border rounded-lg">
+                        {marketplaceResults.map((ami) => (
+                          <div
+                            key={ami.amiId}
+                            className="flex items-center justify-between p-2 hover:bg-muted cursor-pointer border-b last:border-b-0"
+                            onClick={() => selectMarketplaceAMI(ami)}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">{ami.name}</div>
+                              <div className="text-xs text-muted-foreground truncate">{ami.amiId}</div>
+                            </div>
+                            {ami.hasProductCode && (
+                              <Badge variant="outline" className="ml-2 text-xs text-destructive">
+                                <DollarSign className="h-3 w-3 mr-1" />
+                                Paid
+                              </Badge>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="custom" className="mt-3 space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="customAmi">AMI ID</Label>
+                    <Input
+                      id="customAmi"
+                      placeholder="ami-0123456789abcdef0"
+                      value={customAmiId}
+                      onChange={(e) => {
+                        setCustomAmiId(e.target.value);
+                        if (e.target.value) setSelectedOS('custom');
+                      }}
+                      disabled={loading}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Enter a specific AMI ID from your region. You can find AMI IDs in the AWS Console.
+                    </p>
+                  </div>
+                  
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription className="text-xs">
+                      Custom AMIs may have software costs. Check the AWS Marketplace for pricing details.
+                    </AlertDescription>
+                  </Alert>
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            {/* Instance Type */}
+            <div className="space-y-2">
+              <Label htmlFor="instanceType">Instance Type</Label>
+              <Select value={instanceType} onValueChange={setInstanceType} disabled={loading}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select instance type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INSTANCE_TYPES.map((type) => (
+                    <SelectItem key={type.value} value={type.value}>
+                      <span className={type.freeTier ? 'text-green-600' : ''}>
+                        {type.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Open Console Toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <Label className="text-base">Open in AWS Console</Label>
+                <div className="text-sm text-muted-foreground">
+                  Opens the instance details in a new window after launch
+                </div>
+              </div>
+              <Switch
+                checked={openConsoleOnLaunch}
+                onCheckedChange={setOpenConsoleOnLaunch}
+                disabled={loading}
+              />
+            </div>
+
+            {/* Cost Estimate */}
+            <Alert className={costEstimate.additionalCosts.length > 0 || !selectedInstanceType?.freeTier ? 'border-destructive/50' : ''}>
+              <DollarSign className="h-4 w-4" />
+              <AlertDescription>
+                <div className="space-y-1">
+                  <div className="font-medium">Estimated Costs</div>
+                  <div className="text-sm">
+                    <div>Instance: ~${costEstimate.instanceHourly.toFixed(4)}/hr (${costEstimate.monthlyEstimate.toFixed(2)}/month)</div>
+                    {costEstimate.additionalCosts.map((cost, i) => (
+                      <div key={i} className="text-destructive">+ {cost}</div>
+                    ))}
+                    {selectedInstanceType?.freeTier && selectedOSOption?.freeTier && (
+                      <div className="text-primary font-medium mt-1">
+                        ✓ Eligible for Free Tier (750 hrs/month for first 12 months)
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </AlertDescription>
+            </Alert>
+
+            {/* Permissions Info */}
+            <Alert>
+              <Server className="h-4 w-4" />
+              <AlertDescription className="text-xs">
+                Requires <code className="bg-muted px-1 rounded">ec2:RunInstances</code> and{' '}
+                <code className="bg-muted px-1 rounded">ec2:DescribeImages</code> permissions.
+                The instance will be launched in your default VPC.
+              </AlertDescription>
+            </Alert>
           </div>
+        </ScrollArea>
 
-          <div className="space-y-2">
-            <Label htmlFor="instanceType">Instance Type</Label>
-            <Select value={instanceType} onValueChange={setInstanceType} disabled={loading}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select instance type" />
-              </SelectTrigger>
-              <SelectContent>
-                {INSTANCE_TYPES.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
-                    <span className={type.freeTier ? 'text-green-600' : ''}>
-                      {type.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedType && !selectedType.freeTier && (
-              <Alert className="mt-2">
-                <AlertTriangle className="h-4 w-4" />
-                <AlertDescription>
-                  This instance type is not covered by the AWS Free Tier and will incur charges.
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
-
-          <Alert>
-            <Server className="h-4 w-4" />
-            <AlertDescription>
-              The instance will be launched with Amazon Linux 2023 AMI in your default VPC. 
-              Ensure your IAM user has <code className="text-xs bg-muted px-1 rounded">ec2:RunInstances</code> permission.
-            </AlertDescription>
-          </Alert>
-        </div>
-
-        <DialogFooter>
+        <DialogFooter className="pt-4 border-t">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
