@@ -7,7 +7,8 @@ import {
   StopInstancesCommand, 
   RebootInstancesCommand,
   TerminateInstancesCommand,
-  DescribeImagesCommand
+  DescribeImagesCommand,
+  DescribeKeyPairsCommand
 } from "npm:@aws-sdk/client-ec2@3.451.0";
 
 const corsHeaders = {
@@ -33,6 +34,46 @@ interface LaunchInstanceParams {
   securityGroupIds?: string[];
   keyName?: string;
 }
+
+interface KeyPairInfo {
+  name: string;
+  fingerprint: string;
+  keyType?: string;
+}
+
+// OS to SSH user mapping for the Connect feature
+const OS_SSH_USERS: Record<string, string> = {
+  'amazon-linux-2023': 'ec2-user',
+  'amazon-linux-2': 'ec2-user',
+  'ubuntu-22': 'ubuntu',
+  'ubuntu-24': 'ubuntu',
+  'debian-12': 'admin',
+  'rhel-9': 'ec2-user',
+  'centos-stream-9': 'centos',
+  'rocky-linux-9': 'rocky',
+  'alma-linux-9': 'almalinux',
+  'kali-linux': 'kali',
+  'suse-15': 'ec2-user',
+  'windows-2022': 'Administrator',
+  'windows-2019': 'Administrator',
+};
+
+// Human-readable platform names
+const OS_PLATFORM_NAMES: Record<string, string> = {
+  'amazon-linux-2023': 'Amazon Linux 2023',
+  'amazon-linux-2': 'Amazon Linux 2',
+  'ubuntu-22': 'Ubuntu 22.04',
+  'ubuntu-24': 'Ubuntu 24.04',
+  'debian-12': 'Debian 12',
+  'rhel-9': 'RHEL 9',
+  'centos-stream-9': 'CentOS Stream 9',
+  'rocky-linux-9': 'Rocky Linux 9',
+  'alma-linux-9': 'AlmaLinux 9',
+  'kali-linux': 'Kali Linux',
+  'suse-15': 'SUSE Linux 15',
+  'windows-2022': 'Windows Server 2022',
+  'windows-2019': 'Windows Server 2019',
+};
 
 interface SearchAMIsParams {
   searchTerm: string;
@@ -126,6 +167,36 @@ async function getAWSCredentials(supabase: any, userId: string): Promise<AWSConf
     console.error('Error in getAWSCredentials:', error);
     return null;
   }
+}
+
+async function listKeyPairs(config: AWSConfig): Promise<KeyPairInfo[]> {
+  console.log(`Fetching key pairs for region: ${config.aws_region}`);
+  
+  const ec2Client = new EC2Client({
+    region: config.aws_region,
+    credentials: {
+      accessKeyId: config.access_key_id,
+      secretAccessKey: config.secret_access_key,
+    },
+  });
+
+  const command = new DescribeKeyPairsCommand({});
+  const response = await ec2Client.send(command);
+  
+  const keyPairs: KeyPairInfo[] = [];
+  
+  if (response.KeyPairs) {
+    for (const keyPair of response.KeyPairs) {
+      keyPairs.push({
+        name: keyPair.KeyName || '',
+        fingerprint: keyPair.KeyFingerprint || '',
+        keyType: keyPair.KeyType || 'rsa',
+      });
+    }
+  }
+  
+  console.log(`Found ${keyPairs.length} key pairs`);
+  return keyPairs;
 }
 
 async function getLatestAMI(ec2Client: EC2Client, osType: string, customOwner?: string, customPattern?: string): Promise<string> {
@@ -242,6 +313,11 @@ async function launchInstance(config: AWSConfig, params: LaunchInstanceParams): 
   
   console.log('Final AMI ID:', amiId);
 
+  // Determine OS-specific tags for Connect feature
+  const osType = params.osType || 'amazon-linux-2023';
+  const platformName = OS_PLATFORM_NAMES[osType] || 'Custom';
+  const sshUser = OS_SSH_USERS[osType] || 'ec2-user';
+
   const command = new RunInstancesCommand({
     ImageId: amiId,
     InstanceType: params.instanceType || 't2.micro',
@@ -253,7 +329,10 @@ async function launchInstance(config: AWSConfig, params: LaunchInstanceParams): 
         Tags: [
           { Key: 'Name', Value: params.name || 'CloudHub-Instance' },
           { Key: 'CreatedBy', Value: 'CloudHub' },
-          { Key: 'OS', Value: params.osType || 'amazon-linux-2023' },
+          { Key: 'OS', Value: osType },
+          { Key: 'Platform', Value: platformName },
+          { Key: 'PlatformId', Value: osType },
+          { Key: 'SSHUser', Value: sshUser },
         ],
       },
     ],
@@ -428,15 +507,20 @@ serve(async (req) => {
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-        const ec2Client = new EC2Client({
+        const searchEc2Client = new EC2Client({
           region: awsConfig.aws_region,
           credentials: {
             accessKeyId: awsConfig.access_key_id,
             secretAccessKey: awsConfig.secret_access_key,
           },
         });
-        const amis = await searchMarketplaceAMIs(ec2Client, params.searchTerm);
+        const amis = await searchMarketplaceAMIs(searchEc2Client, params.searchTerm);
         result = { amis };
+        break;
+
+      case 'listKeyPairs':
+        const keyPairs = await listKeyPairs(awsConfig);
+        result = { keyPairs };
         break;
 
       case 'start':
@@ -481,7 +565,7 @@ serve(async (req) => {
 
       default:
         return new Response(
-          JSON.stringify({ error: 'Invalid action. Valid actions: launch, searchAMIs, start, stop, reboot, terminate' }),
+          JSON.stringify({ error: 'Invalid action. Valid actions: launch, searchAMIs, listKeyPairs, start, stop, reboot, terminate' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
     }

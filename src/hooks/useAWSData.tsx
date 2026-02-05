@@ -18,6 +18,11 @@ export interface EC2Instance {
   launchTime: string;
   publicIp?: string;
   privateIp?: string;
+  platform?: string;
+  platformId?: string;
+  sshUser?: string;
+  securityGroupIds?: string[];
+  keyName?: string;
 }
 
 export interface RDSDatabase {

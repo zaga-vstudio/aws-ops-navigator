@@ -4,7 +4,7 @@ import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSData, EC2Instance, SecurityGroup } from "@/hooks/useAWSData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { LaunchEC2Dialog } from "@/components/LaunchEC2Dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   Server, 
   Play, 
@@ -21,7 +22,9 @@ import {
   Plus,
   Filter,
   RefreshCw,
-  Loader2
+  Loader2,
+  Terminal,
+  AlertTriangle
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -50,6 +53,67 @@ const getStateIcon = (state: string) => {
   }
 };
 
+// OS to SSH user mapping for EC2 Instance Connect
+const getDefaultSSHUser = (platformId?: string, sshUser?: string): { user: string; isDefault: boolean } => {
+  // If we have an explicit SSH user from the tag, use it
+  if (sshUser) {
+    return { user: sshUser, isDefault: false };
+  }
+  
+  // Map known platform IDs to SSH users
+  const platformUserMap: Record<string, string> = {
+    'amazon-linux-2023': 'ec2-user',
+    'amazon-linux-2': 'ec2-user',
+    'ubuntu-22': 'ubuntu',
+    'ubuntu-24': 'ubuntu',
+    'debian-12': 'admin',
+    'rhel-9': 'ec2-user',
+    'centos-stream-9': 'centos',
+    'rocky-linux-9': 'rocky',
+    'alma-linux-9': 'almalinux',
+    'kali-linux': 'kali',
+    'suse-15': 'ec2-user',
+  };
+  
+  if (platformId && platformUserMap[platformId]) {
+    return { user: platformUserMap[platformId], isDefault: false };
+  }
+  
+  // Default fallback for custom/unknown AMIs
+  return { user: 'ec2-user', isDefault: true };
+};
+
+// Check if Port 22 is open in any of the instance's security groups
+const isPort22Open = (instance: EC2Instance, securityGroups: SecurityGroup[]): boolean => {
+  if (!instance.securityGroupIds || instance.securityGroupIds.length === 0) {
+    return false;
+  }
+  
+  // Find security groups attached to this instance
+  const instanceSecurityGroups = securityGroups.filter(sg => 
+    instance.securityGroupIds?.includes(sg.id)
+  );
+  
+  // Check if any security group has an inbound rule allowing port 22
+  for (const sg of instanceSecurityGroups) {
+    for (const rule of sg.inboundRules) {
+      // Check for SSH port (22) or all traffic (-1)
+      const isAllTraffic = rule.ipProtocol === '-1';
+      const isTCPPort22 = rule.ipProtocol === 'tcp' && 
+        rule.fromPort !== undefined && 
+        rule.toPort !== undefined &&
+        rule.fromPort <= 22 && 
+        rule.toPort >= 22;
+      
+      if (isAllTraffic || isTCPPort22) {
+        return true;
+      }
+    }
+  }
+  
+  return false;
+};
+
 const EC2Instances = () => {
   const { user, loading } = useAuth();
   const { data: awsData, loading: awsLoading, refetch } = useAWSData();
@@ -59,6 +123,24 @@ const EC2Instances = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const instances = awsData?.ec2Instances || [];
+  const securityGroups = awsData?.securityGroups || [];
+
+  // Handle connecting to an instance via EC2 Instance Connect
+  const handleConnect = (instance: EC2Instance) => {
+    const { user: sshUser, isDefault } = getDefaultSSHUser(instance.platformId, instance.sshUser);
+    const region = instance.availabilityZone.slice(0, -1); // e.g., "us-east-1a" -> "us-east-1"
+    
+    const url = `https://${region}.console.aws.amazon.com/ec2-instance-connect/ssh?region=${region}&instanceId=${instance.id}&osUser=${sshUser}`;
+    
+    window.open(url, '_blank');
+    
+    if (isDefault) {
+      toast({
+        title: "Using default username",
+        description: `Trying ec2-user. If connection fails, the correct username may vary for custom AMIs.`,
+      });
+    }
+  };
 
   const handleInstanceAction = async (action: 'start' | 'stop' | 'reboot' | 'terminate', instanceId: string, instanceName: string) => {
     if (action === 'terminate') {
@@ -318,7 +400,36 @@ const EC2Instances = () => {
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
-                                      <DropdownMenuItem disabled>Connect</DropdownMenuItem>
+                                      {/* Connect button - only show for running non-Windows instances */}
+                                      {instance.state === 'running' && 
+                                       !instance.platform?.toLowerCase().includes('windows') && 
+                                       !instance.platformId?.toLowerCase().includes('windows') && (
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <DropdownMenuItem
+                                                onClick={() => handleConnect(instance)}
+                                                disabled={!instance.publicIp}
+                                                className={!isPort22Open(instance, securityGroups) ? 'text-amber-500' : ''}
+                                              >
+                                                <Terminal className="h-4 w-4 mr-2" />
+                                                Connect
+                                                {!isPort22Open(instance, securityGroups) && instance.publicIp && (
+                                                  <AlertTriangle className="h-3 w-3 ml-1 text-amber-500" />
+                                                )}
+                                              </DropdownMenuItem>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="left">
+                                              {!instance.publicIp 
+                                                ? "No public IP - cannot connect via browser"
+                                                : !isPort22Open(instance, securityGroups)
+                                                  ? "Port 22 may be closed in security group"
+                                                  : `Connect as ${getDefaultSSHUser(instance.platformId, instance.sshUser).user}`
+                                              }
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
                                       {instance.state === 'running' ? (
                                         <DropdownMenuItem onClick={() => handleInstanceAction('stop', instance.id, instance.name)}>
                                           <Square className="h-4 w-4 mr-2" />
