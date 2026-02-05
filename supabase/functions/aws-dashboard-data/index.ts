@@ -30,6 +30,11 @@ interface EC2Instance {
   launchTime: string;
   publicIp?: string;
   privateIp?: string;
+  platform?: string;
+  platformId?: string;
+  sshUser?: string;
+  securityGroupIds?: string[];
+  keyName?: string;
 }
 
 interface RDSDatabase {
@@ -258,6 +263,13 @@ async function getEC2Instances(config: AWSConfig): Promise<EC2Instance[]> {
         if (reservation.Instances) {
           for (const instance of reservation.Instances) {
             const nameTag = instance.Tags?.find(tag => tag.Key === 'Name');
+            const platformTag = instance.Tags?.find(tag => tag.Key === 'Platform');
+            const platformIdTag = instance.Tags?.find(tag => tag.Key === 'PlatformId');
+            const sshUserTag = instance.Tags?.find(tag => tag.Key === 'SSHUser');
+            
+            // Extract security group IDs
+            const securityGroupIds = instance.SecurityGroups?.map(sg => sg.GroupId || '').filter(Boolean) || [];
+            
             instances.push({
               id: instance.InstanceId || '',
               name: nameTag?.Value || instance.InstanceId || 'Unnamed Instance',
@@ -268,6 +280,11 @@ async function getEC2Instances(config: AWSConfig): Promise<EC2Instance[]> {
               launchTime: instance.LaunchTime?.toISOString() || '',
               publicIp: instance.PublicIpAddress,
               privateIp: instance.PrivateIpAddress,
+              platform: platformTag?.Value,
+              platformId: platformIdTag?.Value,
+              sshUser: sshUserTag?.Value,
+              securityGroupIds,
+              keyName: instance.KeyName,
             });
           }
         }

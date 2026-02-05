@@ -40,6 +40,12 @@ interface MarketplaceAMI {
   hasProductCode: boolean;
 }
 
+interface KeyPairInfo {
+  name: string;
+  fingerprint: string;
+  keyType?: string;
+}
+
 const INSTANCE_TYPES = [
   { value: 't2.micro', label: 't2.micro (1 vCPU, 1 GB) - Free Tier', freeTier: true, hourlyRate: 0.0116 },
   { value: 't2.small', label: 't2.small (1 vCPU, 2 GB)', freeTier: false, hourlyRate: 0.023 },
@@ -204,7 +210,41 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
   const [openConsoleOnLaunch, setOpenConsoleOnLaunch] = useState(false);
   const [resolvedAmiId, setResolvedAmiId] = useState<string | null>(null);
   const [osTab, setOsTab] = useState<string>('standard');
+  const [keyPairs, setKeyPairs] = useState<KeyPairInfo[]>([]);
+  const [selectedKeyPair, setSelectedKeyPair] = useState<string>('');
+  const [loadingKeyPairs, setLoadingKeyPairs] = useState(false);
   const { toast } = useToast();
+
+  // Fetch key pairs when dialog opens
+  useEffect(() => {
+    if (open) {
+      fetchKeyPairs();
+    }
+  }, [open]);
+
+  const fetchKeyPairs = async () => {
+    setLoadingKeyPairs(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const { data, error } = await supabase.functions.invoke('manage-ec2-instances', {
+        body: { action: 'listKeyPairs' },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+
+      setKeyPairs(data?.keyPairs || []);
+    } catch (error: any) {
+      console.error('Error fetching key pairs:', error);
+      // Don't show error toast - key pairs are optional
+    } finally {
+      setLoadingKeyPairs(false);
+    }
+  };
 
   const allOSOptions = [...STANDARD_OS_OPTIONS, ...MARKETPLACE_OS_OPTIONS];
   const selectedOSOption = allOSOptions.find(os => os.id === selectedOS);
@@ -312,6 +352,7 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
             customAmiId: customAmiId || undefined,
             osOwner: osOption?.owner,
             osNamePattern: osOption?.namePattern,
+            keyName: selectedKeyPair || undefined,
           },
         },
         headers: {
@@ -360,6 +401,7 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
     setMarketplaceResults([]);
     setOpenConsoleOnLaunch(false);
     setOsTab('standard');
+    setSelectedKeyPair('');
   };
 
   const selectMarketplaceAMI = (ami: MarketplaceAMI) => {
@@ -575,6 +617,53 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Key Pair Selection */}
+            <div className="space-y-2">
+              <Label htmlFor="keyPair">SSH Key Pair (Optional)</Label>
+              <Select 
+                value={selectedKeyPair} 
+                onValueChange={setSelectedKeyPair} 
+                disabled={loading || loadingKeyPairs}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={loadingKeyPairs ? "Loading key pairs..." : "Select a key pair..."} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Proceed without key pair</SelectItem>
+                  {keyPairs.map((kp) => (
+                    <SelectItem key={kp.name} value={kp.name}>
+                      {kp.name} ({kp.keyType || 'rsa'})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">
+                  SSH key for traditional terminal access
+                </p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => {
+                    window.open('https://console.aws.amazon.com/ec2/v2/home#KeyPairs:', '_blank');
+                  }}
+                  type="button"
+                >
+                  <ExternalLink className="h-3 w-3 mr-1" />
+                  Create in AWS
+                </Button>
+              </div>
+              {(!selectedKeyPair || selectedKeyPair === 'none') && (
+                <Alert className="border-amber-500/50 bg-amber-500/10">
+                  <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  <AlertDescription className="text-xs text-amber-700 dark:text-amber-400">
+                    Without a key pair, you can only connect via EC2 Instance Connect (requires public IP and Port 22 open).
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
 
             {/* Open Console Toggle */}
