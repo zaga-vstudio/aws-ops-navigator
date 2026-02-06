@@ -643,18 +643,15 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
                 <p className="text-xs text-muted-foreground">
                   SSH key for traditional terminal access
                 </p>
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-xs"
-                  onClick={() => {
-                    window.open('https://console.aws.amazon.com/ec2/v2/home#KeyPairs:', '_blank');
-                  }}
-                  type="button"
-                >
-                  <ExternalLink className="h-3 w-3 mr-1" />
-                  Create in AWS
-                </Button>
+                <a
+                   href="https://console.aws.amazon.com/ec2/v2/home#KeyPairs:"
+                   target="_blank"
+                   rel="noopener noreferrer"
+                   className="inline-flex items-center gap-1 text-xs text-link hover:underline"
+                 >
+                   <ExternalLink className="h-3 w-3" />
+                   Create in AWS
+                 </a>
               </div>
               {(!selectedKeyPair || selectedKeyPair === 'none') && (
                 <Alert className="border-amber-500/50 bg-amber-500/10">
