@@ -125,15 +125,21 @@ const EC2Instances = () => {
   const instances = awsData?.ec2Instances || [];
   const securityGroups = awsData?.securityGroups || [];
 
-  // Handle connecting to an instance via EC2 Instance Connect
-  const handleConnect = (instance: EC2Instance) => {
-    const { user: sshUser, isDefault } = getDefaultSSHUser(instance.platformId, instance.sshUser);
-    const region = instance.availabilityZone.slice(0, -1); // e.g., "us-east-1a" -> "us-east-1"
-    
-    const url = `https://${region}.console.aws.amazon.com/ec2-instance-connect/ssh?region=${region}&instanceId=${instance.id}&osUser=${sshUser}`;
-    
-    window.open(url, '_blank');
-    
+  // Generate EC2 Instance Connect URL with all required parameters
+  const getConnectUrl = (instance: EC2Instance): string => {
+    const { user } = getDefaultSSHUser(instance.platformId, instance.sshUser);
+    const region = instance.availabilityZone.slice(0, -1);
+    return `https://${region}.console.aws.amazon.com/ec2-instance-connect/ssh?region=${region}&connType=standard&instanceId=${instance.id}&osUser=${user}&sshPort=22&addressFamily=ipv4`;
+  };
+
+  // Generate AWS Console "Connect to Instance" URL (for SSH key pair instructions)
+  const getSSHConnectUrl = (instance: EC2Instance): string => {
+    const region = instance.availabilityZone.slice(0, -1);
+    return `https://${region}.console.aws.amazon.com/ec2/home?region=${region}#ConnectToInstance:instanceId=${instance.id}`;
+  };
+
+  const handleConnectClick = (instance: EC2Instance) => {
+    const { isDefault } = getDefaultSSHUser(instance.platformId, instance.sshUser);
     if (isDefault) {
       toast({
         title: "Using default username",
@@ -404,31 +410,61 @@ const EC2Instances = () => {
                                       {instance.state === 'running' && 
                                        !instance.platform?.toLowerCase().includes('windows') && 
                                        !instance.platformId?.toLowerCase().includes('windows') && (
-                                        <TooltipProvider>
-                                          <Tooltip>
-                                            <TooltipTrigger asChild>
-                                              <DropdownMenuItem
-                                                onClick={() => handleConnect(instance)}
-                                                disabled={!instance.publicIp}
-                                                className={!isPort22Open(instance, securityGroups) ? 'text-amber-500' : ''}
-                                              >
-                                                <Terminal className="h-4 w-4 mr-2" />
-                                                Connect
-                                                {!isPort22Open(instance, securityGroups) && instance.publicIp && (
-                                                  <AlertTriangle className="h-3 w-3 ml-1 text-amber-500" />
-                                                )}
-                                              </DropdownMenuItem>
-                                            </TooltipTrigger>
-                                            <TooltipContent side="left">
-                                              {!instance.publicIp 
-                                                ? "No public IP - cannot connect via browser"
-                                                : !isPort22Open(instance, securityGroups)
-                                                  ? "Port 22 may be closed in security group"
-                                                  : `Connect as ${getDefaultSSHUser(instance.platformId, instance.sshUser).user}`
-                                              }
-                                            </TooltipContent>
-                                          </Tooltip>
-                                        </TooltipProvider>
+                                        <>
+                                          <TooltipProvider>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <DropdownMenuItem
+                                                  asChild
+                                                  disabled={!instance.publicIp}
+                                                  className={!isPort22Open(instance, securityGroups) ? 'text-amber-500' : ''}
+                                                >
+                                                  <a
+                                                    href={getConnectUrl(instance)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    onClick={() => handleConnectClick(instance)}
+                                                  >
+                                                    <Terminal className="h-4 w-4 mr-2" />
+                                                    Connect
+                                                    {!isPort22Open(instance, securityGroups) && instance.publicIp && (
+                                                      <AlertTriangle className="h-3 w-3 ml-1 text-amber-500" />
+                                                    )}
+                                                  </a>
+                                                </DropdownMenuItem>
+                                              </TooltipTrigger>
+                                              <TooltipContent side="left">
+                                                {!instance.publicIp 
+                                                  ? "No public IP - cannot connect via browser"
+                                                  : !isPort22Open(instance, securityGroups)
+                                                    ? "Port 22 may be closed in security group"
+                                                    : `Connect as ${getDefaultSSHUser(instance.platformId, instance.sshUser).user}`
+                                                }
+                                              </TooltipContent>
+                                            </Tooltip>
+                                          </TooltipProvider>
+                                          {instance.keyName && instance.publicIp && (
+                                            <TooltipProvider>
+                                              <Tooltip>
+                                                <TooltipTrigger asChild>
+                                                  <DropdownMenuItem asChild>
+                                                    <a
+                                                      href={getSSHConnectUrl(instance)}
+                                                      target="_blank"
+                                                      rel="noopener noreferrer"
+                                                    >
+                                                      <Terminal className="h-4 w-4 mr-2" />
+                                                      Connect with SSH
+                                                    </a>
+                                                  </DropdownMenuItem>
+                                                </TooltipTrigger>
+                                                <TooltipContent side="left">
+                                                  {`SSH with key pair: ${instance.keyName}`}
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            </TooltipProvider>
+                                          )}
+                                        </>
                                       )}
                                       {instance.state === 'running' ? (
                                         <DropdownMenuItem onClick={() => handleInstanceAction('stop', instance.id, instance.name)}>
