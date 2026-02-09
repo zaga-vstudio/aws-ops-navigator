@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { LaunchEC2Dialog } from "@/components/LaunchEC2Dialog";
+import { SSHCommandDialog } from "@/components/SSHCommandDialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   Server, 
@@ -121,6 +122,7 @@ const EC2Instances = () => {
   const { toast } = useToast();
   const [launchDialogOpen, setLaunchDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [sshDialogInstance, setSSHDialogInstance] = useState<EC2Instance | null>(null);
 
   const instances = awsData?.ec2Instances || [];
   const securityGroups = awsData?.securityGroups || [];
@@ -447,15 +449,9 @@ const EC2Instances = () => {
                                             <TooltipProvider>
                                               <Tooltip>
                                                 <TooltipTrigger asChild>
-                                                  <DropdownMenuItem asChild>
-                                                    <a
-                                                      href={getSSHConnectUrl(instance)}
-                                                      target="_blank"
-                                                      rel="noopener noreferrer"
-                                                    >
-                                                      <Terminal className="h-4 w-4 mr-2" />
-                                                      Connect with SSH
-                                                    </a>
+                                                  <DropdownMenuItem onClick={() => setSSHDialogInstance(instance)}>
+                                                    <Terminal className="h-4 w-4 mr-2" />
+                                                    Connect with SSH
                                                   </DropdownMenuItem>
                                                 </TooltipTrigger>
                                                 <TooltipContent side="left">
@@ -511,6 +507,17 @@ const EC2Instances = () => {
         onOpenChange={setLaunchDialogOpen}
         onSuccess={refetch}
       />
+
+      {sshDialogInstance && (
+        <SSHCommandDialog
+          open={!!sshDialogInstance}
+          onOpenChange={(open) => !open && setSSHDialogInstance(null)}
+          instanceName={sshDialogInstance.name}
+          publicIp={sshDialogInstance.publicIp || ''}
+          keyName={sshDialogInstance.keyName || ''}
+          sshUser={getDefaultSSHUser(sshDialogInstance.platformId, sshDialogInstance.sshUser).user}
+        />
+      )}
     </SidebarProvider>
   );
 };
