@@ -38,3 +38,12 @@ verify_jwt = true
 
 [functions.scheduled-drift-scan]
 verify_jwt = false
+
+[functions.vpc-advanced-data]
+verify_jwt = true
+
+[functions.manage-flow-logs]
+verify_jwt = true
+
+[functions.reachability-analyzer]
+verify_jwt = true
