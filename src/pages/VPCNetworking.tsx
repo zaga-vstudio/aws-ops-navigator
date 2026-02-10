@@ -5,6 +5,7 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { useAWSData, VPC, Subnet } from "@/hooks/useAWSData";
+import { useVPCAdvancedData } from "@/hooks/useVPCAdvancedData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,41 +13,39 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  Network, 
-  Shield, 
-  Globe,
-  Plus,
-  MoreVertical,
-  RefreshCw,
-  Link2,
-  Loader2,
-  AlertTriangle
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Network, Shield, Globe, Plus, MoreVertical, RefreshCw, Link2, Loader2, AlertTriangle, ShieldAlert
 } from "lucide-react";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CreateVPCDialog } from "@/components/CreateVPCDialog";
 import { VPCBlastRadiusDialog } from "@/components/VPCBlastRadiusDialog";
 import { SubnetBlastRadiusDialog } from "@/components/SubnetBlastRadiusDialog";
+import { SubnetConnectivityAnalyzer } from "@/components/vpc/SubnetConnectivityAnalyzer";
+import { FlowLogExplorer } from "@/components/vpc/FlowLogExplorer";
+import { SecurityNACLAuditor } from "@/components/vpc/SecurityNACLAuditor";
+import { ConnectivityTroubleshooter } from "@/components/vpc/ConnectivityTroubleshooter";
+import { GlobalResourceView } from "@/components/vpc/GlobalResourceView";
 
 const VPCNetworking = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { data: awsData, loading: dataLoading, error, refetch } = useAWSData();
+  const { data: advancedData, loading: advancedLoading, refetch: refetchAdvanced } = useVPCAdvancedData();
   const [createVPCDialogOpen, setCreateVPCDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [blastRadiusDialogOpen, setBlastRadiusDialogOpen] = useState(false);
   const [selectedVPCForDeletion, setSelectedVPCForDeletion] = useState<VPC | null>(null);
   const [subnetBlastRadiusDialogOpen, setSubnetBlastRadiusDialogOpen] = useState(false);
   const [selectedSubnetForDeletion, setSelectedSubnetForDeletion] = useState<Subnet | null>(null);
-  
+  const [safetyMode, setSafetyMode] = useState(false);
+
   const vpcs = awsData?.vpcs || [];
   const subnets = awsData?.subnets || [];
   const securityGroups = awsData?.securityGroups || [];
@@ -67,35 +66,21 @@ const VPCNetworking = () => {
 
   const handleConfirmDelete = async () => {
     if (!selectedVPCForDeletion) return;
-
     const vpcId = selectedVPCForDeletion.id;
     const vpcName = selectedVPCForDeletion.name;
-    
     setActionLoading(`delete-${vpcId}`);
-
     try {
       const { data, error } = await supabase.functions.invoke('manage-vpcs', {
         body: { action: 'delete-vpc', vpcId },
       });
-
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-
-      toast({
-        title: "VPC deleted",
-        description: `${vpcName || vpcId} has been deleted.`,
-      });
-
+      toast({ title: "VPC deleted", description: `${vpcName || vpcId} has been deleted.` });
       setBlastRadiusDialogOpen(false);
       setSelectedVPCForDeletion(null);
       setTimeout(() => refetch(), 1000);
     } catch (error: any) {
-      console.error('Delete VPC error:', error);
-      toast({
-        title: "Failed to delete VPC",
-        description: error.message || "An unexpected error occurred",
-        variant: "destructive",
-      });
+      toast({ title: "Failed to delete VPC", description: error.message, variant: "destructive" });
     } finally {
       setActionLoading(null);
     }
@@ -103,60 +88,47 @@ const VPCNetworking = () => {
 
   const handleConfirmSubnetDelete = async () => {
     if (!selectedSubnetForDeletion) return;
-
     const subnetId = selectedSubnetForDeletion.id;
     const subnetName = selectedSubnetForDeletion.name;
-    
     setActionLoading(`delete-subnet-${subnetId}`);
-
     try {
       const { data, error } = await supabase.functions.invoke('manage-vpcs', {
         body: { action: 'delete-subnet', subnetId },
       });
-
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-
-      toast({
-        title: "Subnet deleted",
-        description: `${subnetName || subnetId} has been deleted.`,
-      });
-
+      toast({ title: "Subnet deleted", description: `${subnetName || subnetId} has been deleted.` });
       setSubnetBlastRadiusDialogOpen(false);
       setSelectedSubnetForDeletion(null);
       setTimeout(() => refetch(), 1000);
     } catch (error: any) {
-      console.error('Delete subnet error:', error);
-      toast({
-        title: "Failed to delete subnet",
-        description: error.message || "An unexpected error occurred",
-        variant: "destructive",
-      });
+      toast({ title: "Failed to delete subnet", description: error.message, variant: "destructive" });
     } finally {
       setActionLoading(null);
     }
   };
 
+  const handleRefreshAll = () => {
+    refetch();
+    refetchAdvanced();
+  };
+
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate('/auth');
-    }
+    if (!authLoading && !user) navigate('/auth');
   }, [user, authLoading, navigate]);
 
   if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
           <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
   }
 
-  if (!user) {
-    return null;
-  }
+  if (!user) return null;
 
   const hasData = vpcs.length > 0 || subnets.length > 0 || securityGroups.length > 0 || vpcPeeringConnections.length > 0;
 
@@ -172,52 +144,47 @@ const VPCNetworking = () => {
 
         <div className="flex w-full">
           <AppSidebar />
-          
+
           <main className="flex-1 p-4 lg:p-6 overflow-auto">
             <div className="max-w-7xl mx-auto space-y-6">
               {/* Header Section */}
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">
-                    VPC Networking
-                  </h1>
-                  <p className="text-muted-foreground">
-                    Manage your Virtual Private Clouds, subnets, and security groups
-                  </p>
+                  <h1 className="text-2xl lg:text-3xl font-bold text-foreground mb-2">VPC Networking</h1>
+                  <p className="text-muted-foreground">Manage your Virtual Private Clouds, subnets, and security groups</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={refetch}
-                    disabled={loading}
-                  >
+                <div className="flex items-center gap-3">
+                  {/* Safety Mode Toggle */}
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-2 rounded-lg border border-border px-3 py-1.5">
+                          <ShieldAlert className={`h-4 w-4 ${safetyMode ? 'text-amber-500' : 'text-muted-foreground'}`} />
+                          <span className="text-xs font-medium hidden sm:inline">Safety Mode</span>
+                          <Switch checked={safetyMode} onCheckedChange={setSafetyMode} />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>When enabled, disables all paid AWS operations (Flow Logs, Reachability Analysis) to prevent accidental charges</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
+                  <Button variant="outline" size="sm" onClick={handleRefreshAll} disabled={loading}>
                     <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
-                  <Button 
-                    size="sm" 
-                    className="bg-gradient-to-r from-primary to-primary-glow"
-                    onClick={() => setCreateVPCDialogOpen(true)}
-                  >
+                  <Button size="sm" className="bg-gradient-to-r from-primary to-primary-glow" onClick={() => setCreateVPCDialogOpen(true)}>
                     <Plus className="h-4 w-4 mr-2" />
                     Create VPC
                   </Button>
                 </div>
               </div>
 
-              <CreateVPCDialog
-                open={createVPCDialogOpen}
-                onOpenChange={setCreateVPCDialogOpen}
-                onSuccess={refetch}
-              />
-
+              <CreateVPCDialog open={createVPCDialogOpen} onOpenChange={setCreateVPCDialogOpen} onSuccess={handleRefreshAll} />
               <VPCBlastRadiusDialog
                 open={blastRadiusDialogOpen}
-                onOpenChange={(open) => {
-                  setBlastRadiusDialogOpen(open);
-                  if (!open) setSelectedVPCForDeletion(null);
-                }}
+                onOpenChange={(open) => { setBlastRadiusDialogOpen(open); if (!open) setSelectedVPCForDeletion(null); }}
                 vpc={selectedVPCForDeletion}
                 subnets={subnets}
                 securityGroups={securityGroups}
@@ -227,37 +194,28 @@ const VPCNetworking = () => {
                 onConfirmDelete={handleConfirmDelete}
                 isDeleting={actionLoading !== null}
               />
-
               <SubnetBlastRadiusDialog
                 open={subnetBlastRadiusDialogOpen}
-                onOpenChange={(open) => {
-                  setSubnetBlastRadiusDialogOpen(open);
-                  if (!open) setSelectedSubnetForDeletion(null);
-                }}
+                onOpenChange={(open) => { setSubnetBlastRadiusDialogOpen(open); if (!open) setSelectedSubnetForDeletion(null); }}
                 subnet={selectedSubnetForDeletion}
                 ec2Instances={ec2Instances}
                 onConfirmDelete={handleConfirmSubnetDelete}
                 isDeleting={actionLoading !== null}
               />
 
-              {/* Error/Empty State Banner */}
               {error && (
                 <Alert variant="destructive">
-                  <AlertDescription>
-                    {error.message}
-                  </AlertDescription>
-                </Alert>
-              )}
-              
-              {!error && !hasData && !loading && (
-                <Alert>
-                  <AlertDescription>
-                    No VPC resources found. Make sure your AWS credentials are configured correctly.
-                  </AlertDescription>
+                  <AlertDescription>{error.message}</AlertDescription>
                 </Alert>
               )}
 
-              {/* Overview Cards */}
+              {!error && !hasData && !loading && (
+                <Alert>
+                  <AlertDescription>No VPC resources found. Make sure your AWS credentials are configured correctly.</AlertDescription>
+                </Alert>
+              )}
+
+              {/* Resource Quotas + Overview Cards */}
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -265,11 +223,7 @@ const VPCNetworking = () => {
                     <Network className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    {loading ? (
-                      <Skeleton className="h-8 w-12" />
-                    ) : (
-                      <div className="text-2xl font-bold">{vpcs.length}</div>
-                    )}
+                    {loading ? <Skeleton className="h-8 w-12" /> : <div className="text-2xl font-bold">{vpcs.length}</div>}
                   </CardContent>
                 </Card>
                 <Card>
@@ -278,11 +232,7 @@ const VPCNetworking = () => {
                     <Globe className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    {loading ? (
-                      <Skeleton className="h-8 w-12" />
-                    ) : (
-                      <div className="text-2xl font-bold">{subnets.length}</div>
-                    )}
+                    {loading ? <Skeleton className="h-8 w-12" /> : <div className="text-2xl font-bold">{subnets.length}</div>}
                   </CardContent>
                 </Card>
                 <Card>
@@ -291,11 +241,7 @@ const VPCNetworking = () => {
                     <Shield className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    {loading ? (
-                      <Skeleton className="h-8 w-12" />
-                    ) : (
-                      <div className="text-2xl font-bold">{securityGroups.length}</div>
-                    )}
+                    {loading ? <Skeleton className="h-8 w-12" /> : <div className="text-2xl font-bold">{securityGroups.length}</div>}
                   </CardContent>
                 </Card>
                 <Card>
@@ -304,29 +250,36 @@ const VPCNetworking = () => {
                     <Link2 className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    {loading ? (
-                      <Skeleton className="h-8 w-12" />
-                    ) : (
-                      <div className="text-2xl font-bold">{vpcPeeringConnections.length}</div>
-                    )}
+                    {loading ? <Skeleton className="h-8 w-12" /> : <div className="text-2xl font-bold">{vpcPeeringConnections.length}</div>}
                   </CardContent>
                 </Card>
               </div>
 
+              {/* Global Resource Quotas */}
+              <GlobalResourceView
+                vpcs={vpcs}
+                quotas={advancedData?.quotas || null}
+                natGateways={advancedData?.natGateways || []}
+                loading={advancedLoading}
+              />
+
               {/* Tabs Content */}
               <Tabs defaultValue="vpcs" className="space-y-4">
-                <TabsList>
+                <TabsList className="flex-wrap h-auto gap-1">
                   <TabsTrigger value="vpcs">VPCs</TabsTrigger>
                   <TabsTrigger value="subnets">Subnets</TabsTrigger>
                   <TabsTrigger value="security">Security Groups</TabsTrigger>
                   <TabsTrigger value="peering">Peering</TabsTrigger>
+                  <TabsTrigger value="connectivity">Connectivity</TabsTrigger>
+                  <TabsTrigger value="flowlogs">Flow Logs</TabsTrigger>
+                  <TabsTrigger value="auditor">SG/NACL Audit</TabsTrigger>
+                  <TabsTrigger value="troubleshoot">Troubleshoot</TabsTrigger>
                 </TabsList>
 
+                {/* ===== VPCs Tab ===== */}
                 <TabsContent value="vpcs">
                   <Card>
-                    <CardHeader>
-                      <CardTitle>Virtual Private Clouds</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle>Virtual Private Clouds</CardTitle></CardHeader>
                     <CardContent>
                       <div className="overflow-x-auto">
                         <Table>
@@ -345,20 +298,12 @@ const VPCNetworking = () => {
                             {loading ? (
                               Array(3).fill(0).map((_, i) => (
                                 <TableRow key={i}>
-                                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-12" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                  {Array(7).fill(0).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>)}
                                 </TableRow>
                               ))
                             ) : vpcs.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                                  No VPCs found
-                                </TableCell>
+                                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No VPCs found</TableCell>
                               </TableRow>
                             ) : (
                               vpcs.map((vpc) => {
@@ -369,28 +314,22 @@ const VPCNetworking = () => {
                                     <TableCell className="font-medium">{vpc.name}</TableCell>
                                     <TableCell className="font-mono">{vpc.cidrBlock}</TableCell>
                                     <TableCell>
-                                      <Badge variant={vpc.state === 'available' ? 'default' : 'secondary'}>
-                                        {vpc.state}
-                                      </Badge>
+                                      <Badge variant={vpc.state === 'available' ? 'default' : 'secondary'}>{vpc.state}</Badge>
                                     </TableCell>
                                     <TableCell>
-                                      <Badge variant={vpc.isDefault ? 'default' : 'outline'}>
-                                        {vpc.isDefault ? 'Yes' : 'No'}
-                                      </Badge>
+                                      <Badge variant={vpc.isDefault ? 'default' : 'outline'}>{vpc.isDefault ? 'Yes' : 'No'}</Badge>
                                     </TableCell>
                                     <TableCell>{vpcSubnetCount}</TableCell>
                                     <TableCell className="text-right">
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" className="h-8 w-8 p-0">
-                                            <MoreVertical className="h-4 w-4" />
-                                          </Button>
+                                          <Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                           <DropdownMenuItem>View Details</DropdownMenuItem>
                                           <DropdownMenuItem>Create Subnet</DropdownMenuItem>
                                           <DropdownMenuItem>Manage Route Tables</DropdownMenuItem>
-                                          <DropdownMenuItem 
+                                          <DropdownMenuItem
                                             className="text-destructive"
                                             onClick={() => handleOpenBlastRadius(vpc)}
                                             disabled={vpc.isDefault || actionLoading !== null}
@@ -412,11 +351,10 @@ const VPCNetworking = () => {
                   </Card>
                 </TabsContent>
 
+                {/* ===== Subnets Tab ===== */}
                 <TabsContent value="subnets">
                   <Card>
-                    <CardHeader>
-                      <CardTitle>Subnets</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle>Subnets</CardTitle></CardHeader>
                     <CardContent>
                       <div className="overflow-x-auto">
                         <Table>
@@ -436,57 +374,68 @@ const VPCNetworking = () => {
                             {loading ? (
                               Array(3).fill(0).map((_, i) => (
                                 <TableRow key={i}>
-                                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-12" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                  {Array(8).fill(0).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>)}
                                 </TableRow>
                               ))
                             ) : subnets.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                                  No subnets found
-                                </TableCell>
+                                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">No subnets found</TableCell>
                               </TableRow>
                             ) : (
-                              subnets.map((subnet) => (
-                                <TableRow key={subnet.id}>
-                                  <TableCell className="font-mono text-sm">{subnet.id}</TableCell>
-                                  <TableCell className="font-medium">{subnet.name}</TableCell>
-                                  <TableCell className="font-mono text-sm">{subnet.vpcId}</TableCell>
-                                  <TableCell className="font-mono">{subnet.cidrBlock}</TableCell>
-                                  <TableCell>{subnet.availabilityZone}</TableCell>
-                                  <TableCell>
-                                    <Badge variant="outline">N/A</Badge>
-                                  </TableCell>
-                                  <TableCell>{subnet.availableIps.toLocaleString()}</TableCell>
-                                  <TableCell className="text-right">
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" className="h-8 w-8 p-0">
-                                          <MoreVertical className="h-4 w-4" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end">
-                                        <DropdownMenuItem>View Details</DropdownMenuItem>
-                                        <DropdownMenuItem>Manage Route Table</DropdownMenuItem>
-                                        <DropdownMenuItem>Network ACLs</DropdownMenuItem>
-                                        <DropdownMenuItem 
-                                          className="text-destructive"
-                                          onClick={() => handleOpenSubnetBlastRadius(subnet)}
-                                          disabled={actionLoading !== null}
-                                        >
-                                          <AlertTriangle className="mr-2 h-4 w-4" />
-                                          Delete Subnet...
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
-                                  </TableCell>
-                                </TableRow>
-                              ))
+                              subnets.map((subnet) => {
+                                // Determine subnet type from route tables
+                                const rt = advancedData?.routeTables.find(r =>
+                                  r.associations.some(a => a.subnetId === subnet.id)
+                                ) || advancedData?.routeTables.find(r =>
+                                  r.vpcId === subnet.vpcId && r.associations.some(a => a.main)
+                                );
+                                const igwIds = (advancedData?.internetGateways || [])
+                                  .filter(igw => igw.attachments.some(a => a.vpcId === subnet.vpcId))
+                                  .map(igw => igw.id);
+                                const isPublic = rt?.routes.some(r =>
+                                  r.gatewayId && igwIds.includes(r.gatewayId) && r.destinationCidr === '0.0.0.0/0'
+                                ) || false;
+
+                                return (
+                                  <TableRow key={subnet.id}>
+                                    <TableCell className="font-mono text-sm">{subnet.id}</TableCell>
+                                    <TableCell className="font-medium">{subnet.name}</TableCell>
+                                    <TableCell className="font-mono text-sm">{subnet.vpcId}</TableCell>
+                                    <TableCell className="font-mono">{subnet.cidrBlock}</TableCell>
+                                    <TableCell>{subnet.availabilityZone}</TableCell>
+                                    <TableCell>
+                                      {advancedLoading ? (
+                                        <Skeleton className="h-5 w-16" />
+                                      ) : (
+                                        <Badge variant={isPublic ? 'default' : 'secondary'}>
+                                          {isPublic ? 'Public' : 'Private'}
+                                        </Badge>
+                                      )}
+                                    </TableCell>
+                                    <TableCell>{subnet.availableIps.toLocaleString()}</TableCell>
+                                    <TableCell className="text-right">
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent align="end">
+                                          <DropdownMenuItem>View Details</DropdownMenuItem>
+                                          <DropdownMenuItem>Manage Route Table</DropdownMenuItem>
+                                          <DropdownMenuItem>Network ACLs</DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            className="text-destructive"
+                                            onClick={() => handleOpenSubnetBlastRadius(subnet)}
+                                            disabled={actionLoading !== null}
+                                          >
+                                            <AlertTriangle className="mr-2 h-4 w-4" />
+                                            Delete Subnet...
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })
                             )}
                           </TableBody>
                         </Table>
@@ -495,11 +444,10 @@ const VPCNetworking = () => {
                   </Card>
                 </TabsContent>
 
+                {/* ===== Security Groups Tab ===== */}
                 <TabsContent value="security">
                   <Card>
-                    <CardHeader>
-                      <CardTitle>Security Groups</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle>Security Groups</CardTitle></CardHeader>
                     <CardContent>
                       <div className="overflow-x-auto">
                         <Table>
@@ -518,20 +466,12 @@ const VPCNetworking = () => {
                             {loading ? (
                               Array(3).fill(0).map((_, i) => (
                                 <TableRow key={i}>
-                                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-40" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                  {Array(7).fill(0).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>)}
                                 </TableRow>
                               ))
                             ) : securityGroups.length === 0 ? (
                               <TableRow>
-                                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                                  No security groups found
-                                </TableCell>
+                                <TableCell colSpan={7} className="text-center text-muted-foreground py-8">No security groups found</TableCell>
                               </TableRow>
                             ) : (
                               securityGroups.map((sg) => (
@@ -545,17 +485,13 @@ const VPCNetworking = () => {
                                   <TableCell className="text-right">
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" className="h-8 w-8 p-0">
-                                          <MoreVertical className="h-4 w-4" />
-                                        </Button>
+                                        <Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
                                       </DropdownMenuTrigger>
                                       <DropdownMenuContent align="end">
                                         <DropdownMenuItem>Edit Rules</DropdownMenuItem>
                                         <DropdownMenuItem>Copy Security Group</DropdownMenuItem>
                                         <DropdownMenuItem>View References</DropdownMenuItem>
-                                        <DropdownMenuItem className="text-destructive">
-                                          Delete
-                                        </DropdownMenuItem>
+                                        <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
                                       </DropdownMenuContent>
                                     </DropdownMenu>
                                   </TableCell>
@@ -569,11 +505,10 @@ const VPCNetworking = () => {
                   </Card>
                 </TabsContent>
 
+                {/* ===== Peering Tab ===== */}
                 <TabsContent value="peering">
                   <Card>
-                    <CardHeader>
-                      <CardTitle>VPC Peering Connections</CardTitle>
-                    </CardHeader>
+                    <CardHeader><CardTitle>VPC Peering Connections</CardTitle></CardHeader>
                     <CardContent>
                       <div className="overflow-x-auto">
                         <Table>
@@ -592,13 +527,7 @@ const VPCNetworking = () => {
                             {loading ? (
                               Array(3).fill(0).map((_, i) => (
                                 <TableRow key={i}>
-                                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                                  <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+                                  {Array(7).fill(0).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>)}
                                 </TableRow>
                               ))
                             ) : vpcPeeringConnections.length === 0 ? (
@@ -611,10 +540,10 @@ const VPCNetworking = () => {
                               vpcPeeringConnections.map((peering) => {
                                 const getStatusVariant = (status: string) => {
                                   switch (status) {
-                                    case 'active': return 'default';
-                                    case 'pending-acceptance': return 'secondary';
-                                    case 'deleted': case 'rejected': case 'failed': return 'destructive';
-                                    default: return 'outline';
+                                    case 'active': return 'default' as const;
+                                    case 'pending-acceptance': return 'secondary' as const;
+                                    case 'deleted': case 'rejected': case 'failed': return 'destructive' as const;
+                                    default: return 'outline' as const;
                                   }
                                 };
                                 const nameTag = peering.tags.find(t => t.key === 'Name');
@@ -624,11 +553,7 @@ const VPCNetworking = () => {
                                       <div className="font-mono text-sm">{peering.id}</div>
                                       {nameTag && <div className="text-xs text-muted-foreground">{nameTag.value}</div>}
                                     </TableCell>
-                                    <TableCell>
-                                      <Badge variant={getStatusVariant(peering.status)}>
-                                        {peering.status}
-                                      </Badge>
-                                    </TableCell>
+                                    <TableCell><Badge variant={getStatusVariant(peering.status)}>{peering.status}</Badge></TableCell>
                                     <TableCell className="font-mono text-sm">{peering.requesterVpcId}</TableCell>
                                     <TableCell className="font-mono text-sm">{peering.accepterVpcId}</TableCell>
                                     <TableCell className="font-mono text-sm">{peering.requesterCidrBlock}</TableCell>
@@ -636,19 +561,13 @@ const VPCNetworking = () => {
                                     <TableCell className="text-right">
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" className="h-8 w-8 p-0">
-                                            <MoreVertical className="h-4 w-4" />
-                                          </Button>
+                                          <Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                           <DropdownMenuItem>View Details</DropdownMenuItem>
-                                          {peering.status === 'pending-acceptance' && (
-                                            <DropdownMenuItem>Accept Connection</DropdownMenuItem>
-                                          )}
+                                          {peering.status === 'pending-acceptance' && <DropdownMenuItem>Accept Connection</DropdownMenuItem>}
                                           <DropdownMenuItem>Manage Route Tables</DropdownMenuItem>
-                                          <DropdownMenuItem className="text-destructive">
-                                            Delete Connection
-                                          </DropdownMenuItem>
+                                          <DropdownMenuItem className="text-destructive">Delete Connection</DropdownMenuItem>
                                         </DropdownMenuContent>
                                       </DropdownMenu>
                                     </TableCell>
@@ -661,6 +580,47 @@ const VPCNetworking = () => {
                       </div>
                     </CardContent>
                   </Card>
+                </TabsContent>
+
+                {/* ===== Connectivity Analyzer Tab ===== */}
+                <TabsContent value="connectivity">
+                  <SubnetConnectivityAnalyzer
+                    subnets={subnets}
+                    securityGroups={securityGroups}
+                    routeTables={advancedData?.routeTables || []}
+                    nacls={advancedData?.nacls || []}
+                    natGateways={advancedData?.natGateways || []}
+                    internetGateways={advancedData?.internetGateways || []}
+                    loading={loading || advancedLoading}
+                  />
+                </TabsContent>
+
+                {/* ===== Flow Logs Tab ===== */}
+                <TabsContent value="flowlogs">
+                  <FlowLogExplorer
+                    vpcs={vpcs}
+                    flowLogs={advancedData?.flowLogs || []}
+                    loading={loading || advancedLoading}
+                    safetyMode={safetyMode}
+                    onRefresh={handleRefreshAll}
+                  />
+                </TabsContent>
+
+                {/* ===== SG/NACL Auditor Tab ===== */}
+                <TabsContent value="auditor">
+                  <SecurityNACLAuditor
+                    securityGroups={securityGroups}
+                    nacls={advancedData?.nacls || []}
+                    loading={loading || advancedLoading}
+                  />
+                </TabsContent>
+
+                {/* ===== Troubleshooter Tab ===== */}
+                <TabsContent value="troubleshoot">
+                  <ConnectivityTroubleshooter
+                    ec2Instances={ec2Instances}
+                    safetyMode={safetyMode}
+                  />
                 </TabsContent>
               </Tabs>
             </div>
