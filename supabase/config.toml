@@ -47,3 +47,6 @@ verify_jwt = true
 
 [functions.reachability-analyzer]
 verify_jwt = true
+
+[functions.manage-nacl-rules]
+verify_jwt = true

@@ -29,6 +29,7 @@ import { SubnetBlastRadiusDialog } from "@/components/SubnetBlastRadiusDialog";
 import { SubnetConnectivityAnalyzer } from "@/components/vpc/SubnetConnectivityAnalyzer";
 import { FlowLogExplorer } from "@/components/vpc/FlowLogExplorer";
 import { SecurityNACLAuditor } from "@/components/vpc/SecurityNACLAuditor";
+import { NACLRulesManager } from "@/components/vpc/NACLRulesManager";
 import { ConnectivityTroubleshooter } from "@/components/vpc/ConnectivityTroubleshooter";
 import { GlobalResourceView } from "@/components/vpc/GlobalResourceView";
 
@@ -273,6 +274,7 @@ const VPCNetworking = () => {
                   <TabsTrigger value="connectivity">Connectivity</TabsTrigger>
                   <TabsTrigger value="flowlogs">Flow Logs</TabsTrigger>
                   <TabsTrigger value="auditor">SG/NACL Audit</TabsTrigger>
+                  <TabsTrigger value="nacl-manager">NACL Rules</TabsTrigger>
                   <TabsTrigger value="troubleshoot">Troubleshoot</TabsTrigger>
                 </TabsList>
 
@@ -612,6 +614,15 @@ const VPCNetworking = () => {
                     securityGroups={securityGroups}
                     nacls={advancedData?.nacls || []}
                     loading={loading || advancedLoading}
+                  />
+                </TabsContent>
+
+                {/* ===== NACL Rules Manager Tab ===== */}
+                <TabsContent value="nacl-manager">
+                  <NACLRulesManager
+                    nacls={advancedData?.nacls || []}
+                    loading={loading || advancedLoading}
+                    onRefresh={handleRefreshAll}
                   />
                 </TabsContent>
 
