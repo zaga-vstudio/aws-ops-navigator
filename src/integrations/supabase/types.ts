@@ -221,6 +221,54 @@ export type Database = {
         }
         Relationships: []
       }
+      monitoring_data_cache: {
+        Row: {
+          cached_at: string | null
+          cpu_metrics: Json | null
+          created_at: string | null
+          disk_read_metrics: Json | null
+          disk_write_metrics: Json | null
+          expires_at: string | null
+          id: string
+          network_in_metrics: Json | null
+          network_out_metrics: Json | null
+          status_check_metrics: Json | null
+          time_range: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          cached_at?: string | null
+          cpu_metrics?: Json | null
+          created_at?: string | null
+          disk_read_metrics?: Json | null
+          disk_write_metrics?: Json | null
+          expires_at?: string | null
+          id?: string
+          network_in_metrics?: Json | null
+          network_out_metrics?: Json | null
+          status_check_metrics?: Json | null
+          time_range?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          cached_at?: string | null
+          cpu_metrics?: Json | null
+          created_at?: string | null
+          disk_read_metrics?: Json | null
+          disk_write_metrics?: Json | null
+          expires_at?: string | null
+          id?: string
+          network_in_metrics?: Json | null
+          network_out_metrics?: Json | null
+          status_check_metrics?: Json | null
+          time_range?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       notification_preferences: {
         Row: {
           cost_explorer_enabled: boolean | null
