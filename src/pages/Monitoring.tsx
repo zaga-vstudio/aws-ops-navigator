@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Header } from "@/components/Header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,82 +6,42 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  Cpu, 
-  HardDrive,
-  RefreshCw,
-  AlertCircle,
-  CheckCircle,
-  Info,
-  Server,
-  Database,
-  Bell,
-  Shield
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import {
+  RefreshCw, AlertCircle, CheckCircle, Info, Server, Database, Bell, Shield, HardDrive, Activity, Clock
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, AreaChart, Area } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { useAWSData } from "@/hooks/useAWSData";
+import { useMonitoringData, MetricDataPoint } from "@/hooks/useMonitoringData";
 import { ComplianceDashboard } from "@/components/ComplianceDashboard";
+import { CostBadge } from "@/components/CostBadge";
+import { MonitoringResourceCards } from "@/components/monitoring/MonitoringResourceCards";
+import { MonitoringInstanceList } from "@/components/monitoring/MonitoringInstanceList";
 
 export default function Monitoring() {
   const { data, loading, error, refetch } = useAWSData();
+  const { data: metricsData, loading: metricsLoading, fetchMetrics } = useMonitoringData();
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState("24h");
+  const [includePaidMetrics, setIncludePaidMetrics] = useState(false);
+
+  // Fetch monitoring metrics on mount and when time range changes
+  useEffect(() => {
+    fetchMetrics(timeRange, { includePaidMetrics });
+  }, [timeRange, includePaidMetrics]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await refetch();
+    await Promise.all([
+      refetch(),
+      fetchMetrics(timeRange, { forceRefresh: true, includePaidMetrics }),
+    ]);
     setRefreshing(false);
   };
 
-  const getStatusIcon = (status: string) => {
-    const normalizedStatus = status?.toLowerCase();
-    switch (normalizedStatus) {
-      case "running":
-      case "available":
-      case "healthy":
-      case "ok":
-        return <CheckCircle className="h-4 w-4 text-success" />;
-      case "pending":
-      case "starting":
-      case "stopping":
-      case "insufficient_data":
-        return <AlertCircle className="h-4 w-4 text-warning" />;
-      case "stopped":
-      case "terminated":
-      case "alarm":
-      case "critical":
-        return <AlertCircle className="h-4 w-4 text-destructive" />;
-      default:
-        return <div className="h-4 w-4 rounded-full bg-muted" />;
-    }
-  };
-
-  const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
-    const normalizedStatus = status?.toLowerCase();
-    switch (normalizedStatus) {
-      case "running":
-      case "available":
-      case "healthy":
-      case "ok":
-        return "default";
-      case "pending":
-      case "starting":
-      case "stopping":
-      case "insufficient_data":
-        return "secondary";
-      case "stopped":
-      case "terminated":
-      case "alarm":
-      case "critical":
-        return "destructive";
-      default:
-        return "outline";
-    }
-  };
-
-  // Calculate metrics from real data
   const ec2Instances = data?.ec2Instances || [];
   const rdsDatabases = data?.rdsDatabases || [];
   const cloudWatchAlarms = data?.alarms || [];
@@ -94,66 +54,59 @@ export default function Monitoring() {
   const alarmsInAlarm = cloudWatchAlarms.filter(a => a.state === 'ALARM').length;
   const totalAlarms = cloudWatchAlarms.length;
 
-  // Get real CloudWatch metrics from data
-  const cloudWatchMetrics = data?.cloudWatchMetrics;
-  const hasRealMetrics = cloudWatchMetrics && (
-    cloudWatchMetrics.cpu.length > 0 || 
-    cloudWatchMetrics.networkIn.length > 0 || 
-    cloudWatchMetrics.networkOut.length > 0
-  );
-
   // Format metrics for charts
-  const formatChartData = () => {
-    if (!cloudWatchMetrics || !hasRealMetrics) {
-      // Generate simulated data as fallback
-      const points = timeRange === '1h' ? 6 : timeRange === '6h' ? 12 : timeRange === '24h' ? 24 : 7;
-      const labels = timeRange === '7d' 
-        ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-        : Array.from({ length: points }, (_, i) => {
-            if (timeRange === '1h') return `${i * 10}m`;
-            if (timeRange === '6h') return `${i * 30}m`;
-            return `${i}:00`;
-          });
-      
-      return labels.map((time, i) => ({
-        time,
-        cpu: Math.floor(30 + Math.random() * 50 + Math.sin(i) * 10),
-        networkIn: Math.floor(10 + Math.random() * 40),
-        networkOut: Math.floor(5 + Math.random() * 25),
-      }));
-    }
-
-    // Use real CloudWatch metrics
-    const cpuData = cloudWatchMetrics.cpu;
-    const networkInData = cloudWatchMetrics.networkIn;
-    const networkOutData = cloudWatchMetrics.networkOut;
-
-    // Merge all timestamps and create unified data points
-    const allTimestamps = new Set<string>();
-    cpuData.forEach(d => allTimestamps.add(d.timestamp));
-    networkInData.forEach(d => allTimestamps.add(d.timestamp));
-    networkOutData.forEach(d => allTimestamps.add(d.timestamp));
-
-    const sortedTimestamps = Array.from(allTimestamps).sort();
-
-    return sortedTimestamps.map(timestamp => {
-      const date = new Date(timestamp);
-      const time = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
-      
-      const cpuPoint = cpuData.find(d => d.timestamp === timestamp);
-      const networkInPoint = networkInData.find(d => d.timestamp === timestamp);
-      const networkOutPoint = networkOutData.find(d => d.timestamp === timestamp);
-
-      return {
-        time,
-        cpu: cpuPoint?.value || 0,
-        networkIn: networkInPoint ? Math.round(networkInPoint.value / 1024 / 1024) : 0, // Convert to MB
-        networkOut: networkOutPoint ? Math.round(networkOutPoint.value / 1024 / 1024) : 0, // Convert to MB
-      };
+  const formatChartData = (metrics: MetricDataPoint[]) => {
+    return metrics.map(m => {
+      const date = new Date(m.timestamp);
+      const time = timeRange === '7d'
+        ? date.toLocaleDateString('en', { weekday: 'short' })
+        : `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+      return { time, value: m.value };
     });
   };
 
-  const chartData = formatChartData();
+  const hasRealCPU = metricsData && metricsData.cpu.length > 0;
+  const hasRealNetwork = metricsData && (metricsData.networkIn.length > 0 || metricsData.networkOut.length > 0);
+
+  // Simulated fallback
+  const generateSimulated = (points: number) =>
+    Array.from({ length: points }, (_, i) => ({
+      time: timeRange === '7d' ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i % 7] :
+        timeRange === '1h' ? `${i * 10}m` : timeRange === '6h' ? `${i * 30}m` : `${i}:00`,
+      value: Math.floor(30 + Math.random() * 50 + Math.sin(i) * 10),
+    }));
+
+  const simPoints = timeRange === '1h' ? 6 : timeRange === '6h' ? 12 : timeRange === '24h' ? 24 : 7;
+
+  const cpuChartData = hasRealCPU ? formatChartData(metricsData.cpu) : generateSimulated(simPoints);
+
+  const networkChartData = hasRealNetwork
+    ? metricsData.networkIn.map((m, i) => {
+        const date = new Date(m.timestamp);
+        const time = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+        return {
+          time,
+          networkIn: Math.round(m.value / 1024 / 1024),
+          networkOut: Math.round((metricsData.networkOut[i]?.value || 0) / 1024 / 1024),
+        };
+      })
+    : generateSimulated(simPoints).map(p => ({
+        time: p.time,
+        networkIn: Math.floor(10 + Math.random() * 40),
+        networkOut: Math.floor(5 + Math.random() * 25),
+      }));
+
+  const diskChartData = metricsData?.diskReadOps && metricsData.diskReadOps.length > 0
+    ? metricsData.diskReadOps.map((m, i) => {
+        const date = new Date(m.timestamp);
+        const time = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+        return {
+          time,
+          readOps: m.value,
+          writeOps: metricsData.diskWriteOps?.[i]?.value || 0,
+        };
+      })
+    : null;
 
   if (error) {
     return (
@@ -191,6 +144,7 @@ export default function Monitoring() {
 
           <main className="flex-1 overflow-y-auto p-6">
             <div className="max-w-7xl mx-auto space-y-6">
+              {/* Header */}
               <div className="flex items-center justify-between">
                 <div>
                   <h1 className="text-3xl font-bold text-foreground">Monitoring</h1>
@@ -208,170 +162,274 @@ export default function Monitoring() {
                       <SelectItem value="7d">7 Days</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Button onClick={handleRefresh} disabled={refreshing || loading}>
-                    <RefreshCw className={`h-4 w-4 mr-2 ${refreshing || loading ? 'animate-spin' : ''}`} />
+                  <Button onClick={handleRefresh} disabled={refreshing || loading || metricsLoading}>
+                    <RefreshCw className={`h-4 w-4 mr-2 ${refreshing || loading || metricsLoading ? 'animate-spin' : ''}`} />
                     Refresh
                   </Button>
                 </div>
               </div>
 
-              {/* Info Banner */}
-              {!hasRealMetrics && (
+              {/* Cache Info */}
+              {metricsData?.fromCache && metricsData.cachedAt && (
+                <Alert>
+                  <Clock className="h-4 w-4" />
+                  <AlertDescription className="flex items-center justify-between">
+                    <span>
+                      Showing cached data from {new Date(metricsData.cachedAt).toLocaleTimeString()}.
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => fetchMetrics(timeRange, { forceRefresh: true, includePaidMetrics })}
+                      disabled={metricsLoading}
+                    >
+                      Force Refresh
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {!hasRealCPU && !metricsLoading && (
                 <Alert>
                   <Info className="h-4 w-4" />
                   <AlertDescription>
-                    {runningEC2 === 0 
-                      ? "No running EC2 instances found. Charts show simulated data. Launch an instance to see real metrics."
-                      : "CloudWatch metrics not yet available for your instances. Charts show simulated data. Metrics may take a few minutes to appear."
-                    }
+                    {runningEC2 === 0
+                      ? "No running EC2 instances found. Charts show simulated data."
+                      : "CloudWatch metrics not yet available. Charts show simulated data."}
                   </AlertDescription>
                 </Alert>
               )}
 
               {/* Resource Overview Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">EC2 Instances</CardTitle>
-                    <Server className="h-4 w-4 text-primary" />
-                  </CardHeader>
-                  <CardContent>
-                    {loading ? (
-                      <Skeleton className="h-8 w-20" />
-                    ) : (
-                      <>
-                        <div className="text-2xl font-bold">{runningEC2}/{totalEC2}</div>
-                        <p className="text-xs text-muted-foreground">
-                          {runningEC2} running, {totalEC2 - runningEC2} stopped
-                        </p>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
+              <MonitoringResourceCards
+                runningEC2={runningEC2}
+                totalEC2={totalEC2}
+                availableRDS={availableRDS}
+                totalRDS={totalRDS}
+                alarmsInAlarm={alarmsInAlarm}
+                totalAlarms={totalAlarms}
+                securityGroupsCount={securityGroups.length}
+                loading={loading}
+              />
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">RDS Databases</CardTitle>
-                    <Database className="h-4 w-4 text-primary" />
-                  </CardHeader>
-                  <CardContent>
-                    {loading ? (
-                      <Skeleton className="h-8 w-20" />
-                    ) : (
-                      <>
-                        <div className="text-2xl font-bold">{availableRDS}/{totalRDS}</div>
-                        <p className="text-xs text-muted-foreground">
-                          {availableRDS} available
-                        </p>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
+              {/* Paid Metrics Toggle */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <CardTitle className="text-base">Extended Metrics</CardTitle>
+                      <CostBadge
+                        type="paid"
+                        label="~$0.01/1K requests"
+                        costNote="Additional GetMetricStatistics calls for Disk I/O and Status Checks. Each API call is free up to 1M/month, then $0.01 per 1,000 requests."
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="paid-metrics" className="text-sm text-muted-foreground">
+                        Enable Disk I/O & Status Checks
+                      </Label>
+                      <Switch
+                        id="paid-metrics"
+                        checked={includePaidMetrics}
+                        onCheckedChange={setIncludePaidMetrics}
+                      />
+                    </div>
+                  </div>
+                </CardHeader>
+              </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">CloudWatch Alarms</CardTitle>
-                    <Bell className="h-4 w-4 text-primary" />
-                  </CardHeader>
-                  <CardContent>
-                    {loading ? (
-                      <Skeleton className="h-8 w-20" />
-                    ) : (
-                      <>
-                        <div className="text-2xl font-bold flex items-center gap-2">
-                          {totalAlarms}
-                          {alarmsInAlarm > 0 && (
-                            <Badge variant="destructive" className="text-xs">
-                              {alarmsInAlarm} active
-                            </Badge>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          {alarmsInAlarm === 0 ? "All clear" : `${alarmsInAlarm} in alarm state`}
-                        </p>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Security Groups</CardTitle>
-                    <Shield className="h-4 w-4 text-primary" />
-                  </CardHeader>
-                  <CardContent>
-                    {loading ? (
-                      <Skeleton className="h-8 w-20" />
-                    ) : (
-                      <>
-                        <div className="text-2xl font-bold">{securityGroups.length}</div>
-                        <p className="text-xs text-muted-foreground">Active security groups</p>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Metrics Charts */}
+              {/* FREE: CPU Usage */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
                   <CardHeader>
-                    <CardTitle>CPU Usage {!hasRealMetrics && "(Simulated)"}</CardTitle>
-                    <CardDescription>Average CPU utilization trend</CardDescription>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>CPU Usage {!hasRealCPU && "(Simulated)"}</CardTitle>
+                        <CardDescription>Average CPU utilization</CardDescription>
+                      </div>
+                      <CostBadge
+                        type="free"
+                        label="Free Tier"
+                        costNote="GetMetricStatistics: Free for up to 1M API requests/month. Basic monitoring at 5-minute intervals is included at no charge."
+                      />
+                    </div>
                   </CardHeader>
                   <CardContent>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <AreaChart data={chartData}>
+                    {metricsLoading && !metricsData ? (
+                      <Skeleton className="h-[250px] w-full" />
+                    ) : (
+                      <ResponsiveContainer width="100%" height={250}>
+                        <AreaChart data={cpuChartData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="time" />
+                          <YAxis domain={[0, 100]} />
+                          <Tooltip formatter={(value) => [`${value}%`, 'CPU Usage']} />
+                          <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* PAID: Disk I/O (when enabled) */}
+                {includePaidMetrics && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle>Disk I/O {!diskChartData && "(No Data)"}</CardTitle>
+                          <CardDescription>Read/Write operations per second</CardDescription>
+                        </div>
+                        <CostBadge
+                          type="paid"
+                          label="~$0.01/1K req"
+                          costNote="2 additional GetMetricStatistics calls per refresh. Free up to 1M requests/month, then $0.01 per 1,000 requests."
+                        />
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {metricsLoading ? (
+                        <Skeleton className="h-[250px] w-full" />
+                      ) : diskChartData ? (
+                        <ResponsiveContainer width="100%" height={250}>
+                          <AreaChart data={diskChartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="time" />
+                            <YAxis />
+                            <Tooltip />
+                            <Area type="monotone" dataKey="readOps" name="Read Ops" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.4} />
+                            <Area type="monotone" dataKey="writeOps" name="Write Ops" stroke="hsl(var(--warning))" fill="hsl(var(--warning))" fillOpacity={0.4} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                          <div className="text-center">
+                            <HardDrive className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">No disk I/O data available yet</p>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* FREE: Network Traffic */}
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle>Network Traffic {!hasRealNetwork && "(Simulated)"}</CardTitle>
+                      <CardDescription>Inbound and outbound network traffic</CardDescription>
+                    </div>
+                    <CostBadge
+                      type="free"
+                      label="Free Tier"
+                      costNote="NetworkIn/NetworkOut metrics via GetMetricStatistics. Free up to 1M API requests/month."
+                    />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {metricsLoading && !metricsData ? (
+                    <Skeleton className="h-[250px] w-full" />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={250}>
+                      <AreaChart data={networkChartData}>
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="time" />
-                        <YAxis domain={[0, 100]} />
-                        <Tooltip formatter={(value) => [`${value}%`, 'CPU Usage']} />
-                        <Area 
-                          type="monotone" 
-                          dataKey="cpu" 
-                          stroke="hsl(var(--primary))" 
-                          fill="hsl(var(--primary))" 
-                          fillOpacity={0.3}
-                        />
+                        <YAxis />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="networkIn" name="Inbound (MB/s)" stackId="1" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.6} />
+                        <Area type="monotone" dataKey="networkOut" name="Outbound (MB/s)" stackId="1" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.6} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* PAID: Status Check (when enabled) */}
+              {includePaidMetrics && metricsData?.statusCheckFailed && metricsData.statusCheckFailed.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Status Check Failures</CardTitle>
+                        <CardDescription>Instance and system status check failures</CardDescription>
+                      </div>
+                      <CostBadge
+                        type="paid"
+                        label="~$0.01/1K req"
+                        costNote="1 additional GetMetricStatistics call per refresh. Free up to 1M requests/month."
+                      />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <ResponsiveContainer width="100%" height={200}>
+                      <AreaChart data={formatChartData(metricsData.statusCheckFailed)}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="time" />
+                        <YAxis />
+                        <Tooltip />
+                        <Area type="monotone" dataKey="value" name="Failures" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.3} />
                       </AreaChart>
                     </ResponsiveContainer>
                   </CardContent>
                 </Card>
-              </div>
+              )}
 
-              {/* Network Traffic */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Network Traffic {!hasRealMetrics && "(Simulated)"}</CardTitle>
-                  <CardDescription>Inbound and outbound network traffic</CardDescription>
+              {/* AWS Pricing Reference */}
+              <Card className="border-dashed">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Info className="h-4 w-4 text-muted-foreground" />
+                    CloudWatch Pricing Reference
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <AreaChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="time" />
-                      <YAxis />
-                      <Tooltip />
-                      <Area 
-                        type="monotone" 
-                        dataKey="networkIn" 
-                        name="Inbound (MB/s)"
-                        stackId="1"
-                        stroke="hsl(var(--primary))" 
-                        fill="hsl(var(--primary))" 
-                        fillOpacity={0.6}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="networkOut" 
-                        name="Outbound (MB/s)"
-                        stackId="1"
-                        stroke="hsl(var(--success))" 
-                        fill="hsl(var(--success))" 
-                        fillOpacity={0.6}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CostBadge type="free" label="Free" />
+                        <span className="font-medium">Basic Monitoring</span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">5-min intervals, 10 metrics, 1M API requests/mo, 3 dashboards</p>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CostBadge type="free" label="Free" />
+                        <span className="font-medium">CloudWatch Alarms</span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">10 alarm metrics free, DescribeAlarms API included</p>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CostBadge type="paid" label="$0.30/instance/mo" />
+                        <span className="font-medium">Detailed Monitoring</span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">1-minute intervals for EC2 instances</p>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CostBadge type="paid" label="$0.01/1K metrics" />
+                        <span className="font-medium">GetMetricData API</span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">Advanced metric queries and math expressions</p>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CostBadge type="paid" label="$0.005/GB" />
+                        <span className="font-medium">Logs Insights</span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">Query and analyze log data from CloudWatch Logs</p>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <CostBadge type="paid" label="$3/metric/mo" />
+                        <span className="font-medium">Anomaly Detection</span>
+                      </div>
+                      <p className="text-muted-foreground text-xs">ML-powered anomaly detection on metrics</p>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -383,147 +441,13 @@ export default function Monitoring() {
                 loading={loading}
               />
 
-              {/* EC2 Instance Details */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>EC2 Instance Status</CardTitle>
-                  <CardDescription>Real-time status for your EC2 instances</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {loading ? (
-                    <div className="space-y-4">
-                      {[1, 2, 3].map((i) => (
-                        <Skeleton key={i} className="h-16 w-full" />
-                      ))}
-                    </div>
-                  ) : ec2Instances.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Server className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>No EC2 instances found</p>
-                      <p className="text-sm">Launch an EC2 instance to see it here</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {ec2Instances.map((instance) => (
-                        <div key={instance.id} className="flex items-center justify-between p-4 border rounded-lg">
-                          <div className="flex items-center gap-4">
-                            {getStatusIcon(instance.state)}
-                            <div>
-                              <p className="font-medium">{instance.name || 'Unnamed Instance'}</p>
-                              <p className="text-sm text-muted-foreground">{instance.id}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-6">
-                            <div className="text-center">
-                              <p className="text-sm text-muted-foreground">Type</p>
-                              <p className="font-medium text-sm">{instance.type}</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-sm text-muted-foreground">Region</p>
-                              <p className="font-medium text-sm">{instance.region || 'N/A'}</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-sm text-muted-foreground">IP</p>
-                              <p className="font-medium text-sm">{instance.publicIp || instance.privateIp || 'N/A'}</p>
-                            </div>
-                            <Badge variant={getStatusBadgeVariant(instance.state)}>
-                              {instance.state}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* RDS Instance Details */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>RDS Database Status</CardTitle>
-                  <CardDescription>Real-time status for your RDS instances</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {loading ? (
-                    <div className="space-y-4">
-                      {[1, 2].map((i) => (
-                        <Skeleton key={i} className="h-16 w-full" />
-                      ))}
-                    </div>
-                  ) : rdsDatabases.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <Database className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <p>No RDS databases found</p>
-                      <p className="text-sm">Create an RDS instance to see it here</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {rdsDatabases.map((db) => (
-                        <div key={db.id} className="flex items-center justify-between p-4 border rounded-lg">
-                          <div className="flex items-center gap-4">
-                            {getStatusIcon(db.state)}
-                            <div>
-                              <p className="font-medium">{db.name}</p>
-                              <p className="text-sm text-muted-foreground">{db.engine} {db.engineVersion}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-6">
-                            <div className="text-center">
-                              <p className="text-sm text-muted-foreground">Class</p>
-                              <p className="font-medium text-sm">{db.instanceClass}</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-sm text-muted-foreground">Storage</p>
-                              <p className="font-medium text-sm">{db.allocatedStorage} GB</p>
-                            </div>
-                            <div className="text-center">
-                              <p className="text-sm text-muted-foreground">Region</p>
-                              <p className="font-medium text-sm">{db.region}</p>
-                            </div>
-                            <Badge variant={getStatusBadgeVariant(db.state)}>
-                              {db.state}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* CloudWatch Alarms */}
-              {cloudWatchAlarms.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>CloudWatch Alarms</CardTitle>
-                    <CardDescription>Active monitoring alarms</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      {cloudWatchAlarms.map((alarm) => (
-                        <div key={alarm.id} className="flex items-center justify-between p-4 border rounded-lg">
-                          <div className="flex items-center gap-4">
-                            {getStatusIcon(alarm.state === 'ALARM' ? 'alarm' : alarm.state === 'OK' ? 'ok' : 'warning')}
-                            <div>
-                              <p className="font-medium">{alarm.name}</p>
-                              <p className="text-sm text-muted-foreground">{alarm.metric}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-6">
-                            <div className="text-center">
-                              <p className="text-sm text-muted-foreground">Threshold</p>
-                              <p className="font-medium text-sm">{alarm.threshold}</p>
-                            </div>
-                            <Badge variant={alarm.state === 'ALARM' ? 'destructive' : alarm.state === 'OK' ? 'default' : 'secondary'}>
-                              {alarm.state}
-                            </Badge>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+              {/* Instance & RDS Lists */}
+              <MonitoringInstanceList
+                ec2Instances={ec2Instances}
+                rdsDatabases={rdsDatabases}
+                cloudWatchAlarms={cloudWatchAlarms}
+                loading={loading}
+              />
             </div>
           </main>
         </div>
