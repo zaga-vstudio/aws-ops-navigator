@@ -33,7 +33,8 @@ export function NotificationChannelDialog({
   useEffect(() => {
     if (channel) {
       setEnabled(channel.enabled);
-      setConfigValue(channel.config);
+      // Clear masked placeholder so the user sees the real placeholder hint
+      setConfigValue(channel.config === "••••••••" ? "" : channel.config);
     }
   }, [channel]);
 
