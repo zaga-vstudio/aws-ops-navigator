@@ -14,25 +14,31 @@ interface Enable2FADialogProps {
   onSuccess: () => void;
 }
 
-const convertSvgToPng = (svgDataUri: string): Promise<string> => {
+const convertSvgToPng = (svgInput: string): Promise<string> => {
   return new Promise((resolve, reject) => {
+    // Normalize: if raw SVG XML, convert to a data URI first
+    let dataUri = svgInput;
+    if (svgInput.trimStart().startsWith("<?xml") || svgInput.trimStart().startsWith("<svg")) {
+      dataUri = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgInput);
+    }
+
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement("canvas");
-      canvas.width = 200;
-      canvas.height = 200;
+      canvas.width = 300;
+      canvas.height = 300;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
         reject(new Error("Canvas context not available"));
         return;
       }
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, 200, 200);
-      ctx.drawImage(img, 0, 0, 200, 200);
+      ctx.fillRect(0, 0, 300, 300);
+      ctx.drawImage(img, 0, 0, 300, 300);
       resolve(canvas.toDataURL("image/png"));
     };
     img.onerror = () => reject(new Error("Failed to load QR code image"));
-    img.src = svgDataUri;
+    img.src = dataUri;
   });
 };
 
@@ -48,6 +54,7 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
   const [verifyCode, setVerifyCode] = useState("");
   const [copied, setCopied] = useState(false);
   const [enrollError, setEnrollError] = useState<string>("");
+  const [rawSvgFallback, setRawSvgFallback] = useState<string>("");
 
   const resetState = useCallback(() => {
     setStep("enroll");
@@ -56,6 +63,7 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
     setVerifyCode("");
     setCopied(false);
     setEnrollError("");
+    setRawSvgFallback("");
     setLoading(false);
   }, []);
 
@@ -81,14 +89,17 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
 
       if (error) throw error;
 
-      // Convert SVG QR to PNG for universal compatibility
-      let qrUri = data.totp.qr_code;
+      // Always attempt PNG conversion for universal compatibility
+      const rawQr = data.totp.qr_code;
+      let qrUri: string;
       try {
-        if (qrUri.startsWith("data:image/svg")) {
-          qrUri = await convertSvgToPng(qrUri);
-        }
+        qrUri = await convertSvgToPng(rawQr);
       } catch {
-        // Fall back to SVG if conversion fails
+        // If conversion fails, store raw SVG for inline fallback
+        qrUri = "";
+        if (rawQr.trimStart().startsWith("<?xml") || rawQr.trimStart().startsWith("<svg")) {
+          setRawSvgFallback(rawQr);
+        }
       }
 
       setQrCode(qrUri);
@@ -204,13 +215,18 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
             </Alert>
 
             <div className="flex flex-col items-center space-y-4">
-              {qrCode && (
+              {qrCode ? (
                 <img
                   src={qrCode}
                   alt="QR Code"
                   className="w-48 h-48 border border-border rounded-lg bg-white p-1"
                 />
-              )}
+              ) : rawSvgFallback ? (
+                <div
+                  className="w-48 h-48 border border-border rounded-lg bg-white p-1 [&_svg]:w-full [&_svg]:h-full"
+                  dangerouslySetInnerHTML={{ __html: rawSvgFallback }}
+                />
+              ) : null}
 
               <div className="w-full space-y-2">
                 <Label>Or enter this code manually in your app:</Label>
