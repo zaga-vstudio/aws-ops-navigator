@@ -20,9 +20,6 @@ export const Header = () => {
   return (
     <div className="flex-1 flex items-center justify-between">
       <div className="flex items-center gap-3">
-        <Badge variant="outline" className="text-xs hidden sm:inline-flex">
-          Production
-        </Badge>
       </div>
 
       <div className="flex-1 flex items-center justify-center max-w-md mx-4 lg:mx-8">
