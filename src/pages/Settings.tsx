@@ -32,6 +32,7 @@ import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { Enable2FADialog } from "@/components/Enable2FADialog";
 import { AWSCredentialsDialog } from "@/components/AWSCredentialsDialog";
 import { IaCExportDialog } from "@/components/IaCExportDialog";
+import { SESSetupCard } from "@/components/SESSetupCard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAWSData } from "@/hooks/useAWSData";
@@ -264,6 +265,8 @@ export default function Settings() {
                       </div>
                     </CardContent>
                   </Card>
+
+                  <SESSetupCard />
                 </TabsContent>
 
                 <TabsContent value="export" className="space-y-6">

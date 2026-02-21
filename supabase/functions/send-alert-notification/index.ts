@@ -88,7 +88,16 @@ serve(async (req) => {
             },
           });
 
-          const senderEmail = Deno.env.get('SES_SENDER_EMAIL') || `noreply@cloudhub.app`;
+          // Get per-user sender email
+          let senderEmail = Deno.env.get('SES_SENDER_EMAIL') || `noreply@cloudhub.app`;
+          const { data: senderPrefs } = await supabaseClient
+            .from('notification_preferences')
+            .select('ses_sender_email')
+            .eq('user_id', user.id)
+            .single();
+          if (senderPrefs?.ses_sender_email) {
+            senderEmail = senderPrefs.ses_sender_email;
+          }
           const severityColor = alert.severity === 'critical' ? '#dc2626' : alert.severity === 'warning' ? '#f59e0b' : '#3b82f6';
 
           const htmlBody = `
