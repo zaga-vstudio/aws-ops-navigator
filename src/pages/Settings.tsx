@@ -266,7 +266,6 @@ export default function Settings() {
                     </CardContent>
                   </Card>
 
-                  <SESSetupCard />
                 </TabsContent>
 
                 <TabsContent value="export" className="space-y-6">
@@ -504,6 +503,8 @@ export default function Settings() {
                       </div>
                     </CardContent>
                   </Card>
+
+                  <SESSetupCard />
                 </TabsContent>
 
                 <TabsContent value="security" className="space-y-6">
