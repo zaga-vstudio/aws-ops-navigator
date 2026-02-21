@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, HelpCircle, CheckCircle, AlertTriangle } from "lucide-react";
+import { Loader2, HelpCircle, CheckCircle, AlertTriangle, Cpu, HardDrive, DollarSign, Gauge, Shield, ArrowRight } from "lucide-react";
 
 interface NewAlertRuleDialogProps {
   open: boolean;
@@ -30,13 +30,49 @@ interface MetricDefinition {
   defaultComparison: string;
   category: string;
   requiresAgent?: boolean;
+  iamPermissions?: string[];
 }
 
-const METRIC_CATEGORIES: Record<string, { label: string; badge: 'free' | 'agent' }> = {
-  performance: { label: "Performance", badge: "free" },
-  storage: { label: "Storage", badge: "free" },
-  cost: { label: "Cost & Budget", badge: "free" },
-  agent: { label: "Agent-Required", badge: "agent" },
+const METRIC_CATEGORIES: Record<string, {
+  label: string;
+  badge: 'free' | 'agent';
+  icon: typeof Cpu;
+  colorClass: string;
+  badgeClass: string;
+  itemAccent: string;
+}> = {
+  performance: {
+    label: "Performance",
+    badge: "free",
+    icon: Cpu,
+    colorClass: "text-sky-500",
+    badgeClass: "bg-sky-500/15 text-sky-600 border-sky-500/30",
+    itemAccent: "border-l-2 border-l-sky-500/40 pl-2",
+  },
+  storage: {
+    label: "Storage",
+    badge: "free",
+    icon: HardDrive,
+    colorClass: "text-violet-500",
+    badgeClass: "bg-violet-500/15 text-violet-600 border-violet-500/30",
+    itemAccent: "border-l-2 border-l-violet-500/40 pl-2",
+  },
+  cost: {
+    label: "Cost & Budget",
+    badge: "free",
+    icon: DollarSign,
+    colorClass: "text-emerald-500",
+    badgeClass: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+    itemAccent: "border-l-2 border-l-emerald-500/40 pl-2",
+  },
+  agent: {
+    label: "Agent-Required",
+    badge: "agent",
+    icon: Gauge,
+    colorClass: "text-amber-500",
+    badgeClass: "bg-amber-500/15 text-amber-600 border-amber-500/30",
+    itemAccent: "border-l-2 border-l-amber-500/40 pl-2",
+  },
 };
 
 const METRICS: MetricDefinition[] = [
@@ -52,12 +88,31 @@ const METRICS: MetricDefinition[] = [
   { value: "VolumeReadOps", label: "Volume Read Ops (EBS)", unit: "ops", unitLabel: "Threshold (ops)", defaultComparison: "GreaterThanThreshold", category: "storage" },
   { value: "VolumeWriteOps", label: "Volume Write Ops (EBS)", unit: "ops", unitLabel: "Threshold (ops)", defaultComparison: "GreaterThanThreshold", category: "storage" },
   // Cost
-  { value: "MonthlyBudget", label: "Monthly Budget", unit: "$", unitLabel: "Budget Limit ($)", defaultComparison: "GreaterThanThreshold", category: "cost" },
-  { value: "ServiceBudget", label: "Service Budget", unit: "$", unitLabel: "Budget Limit ($)", defaultComparison: "GreaterThanThreshold", category: "cost" },
+  { value: "MonthlyBudget", label: "Monthly Budget", unit: "$", unitLabel: "Budget Limit ($)", defaultComparison: "GreaterThanThreshold", category: "cost", iamPermissions: ["budgets:CreateBudget", "budgets:DeleteBudget", "sts:GetCallerIdentity"] },
+  { value: "ServiceBudget", label: "Service Budget", unit: "$", unitLabel: "Budget Limit ($)", defaultComparison: "GreaterThanThreshold", category: "cost", iamPermissions: ["budgets:CreateBudget", "budgets:DeleteBudget", "sts:GetCallerIdentity"] },
   // Agent-Required
   { value: "MemoryUtilization", label: "Memory Utilization", unit: "%", unitLabel: "Threshold (%)", defaultComparison: "GreaterThanThreshold", category: "agent", requiresAgent: true },
   { value: "DiskUtilization", label: "Disk Utilization", unit: "%", unitLabel: "Threshold (%)", defaultComparison: "GreaterThanThreshold", category: "agent", requiresAgent: true },
 ];
+
+function IAMPermissionsDiagram({ permissions }: { permissions: string[] }) {
+  return (
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+        <Shield className="h-3.5 w-3.5" />
+        Required IAM Permissions
+      </div>
+      <div className="flex flex-col gap-1">
+        {permissions.map((perm) => (
+          <div key={perm} className="flex items-center gap-2 text-xs text-muted-foreground">
+            <ArrowRight className="h-3 w-3 text-amber-500/70 shrink-0" />
+            <code className="font-mono text-[11px] bg-amber-500/10 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">{perm}</code>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: NewAlertRuleDialogProps) {
   const [formData, setFormData] = useState({
@@ -74,6 +129,7 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
     [formData.metric]
   );
 
+  const selectedCategory = selectedMetric ? METRIC_CATEGORIES[selectedMetric.category] : null;
   const isBudgetMetric = selectedMetric?.category === "cost";
 
   const handleMetricChange = (value: string) => {
@@ -122,34 +178,43 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
             <div className="grid gap-2">
               <Label htmlFor="metric">Metric</Label>
               <Select value={formData.metric} onValueChange={handleMetricChange} required disabled={loading}>
-                <SelectTrigger id="metric">
+                <SelectTrigger id="metric" className={selectedCategory ? `border-l-2 ${selectedCategory.itemAccent.split(' ')[1]}` : ''}>
                   <SelectValue placeholder="Select metric" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(METRIC_CATEGORIES).map(([key, cat]) => (
-                    <SelectGroup key={key}>
-                      <SelectLabel className="flex items-center gap-2">
-                        {cat.label}
-                        {cat.badge === "free" ? (
-                          <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] px-1.5 py-0">Free</Badge>
-                        ) : (
-                          <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px] px-1.5 py-0">CW Agent</Badge>
-                        )}
-                      </SelectLabel>
-                      {METRICS.filter(m => m.category === key).map(m => (
-                        <SelectItem key={m.value} value={m.value}>
-                          {m.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
+                  {Object.entries(METRIC_CATEGORIES).map(([key, cat]) => {
+                    const Icon = cat.icon;
+                    return (
+                      <SelectGroup key={key}>
+                        <SelectLabel className="flex items-center gap-2 py-1.5">
+                          <Icon className={`h-3.5 w-3.5 ${cat.colorClass}`} />
+                          <span>{cat.label}</span>
+                          <Badge className={`${cat.badgeClass} text-[10px] px-1.5 py-0`}>
+                            {cat.badge === "free" ? "Free" : "CW Agent"}
+                          </Badge>
+                        </SelectLabel>
+                        {METRICS.filter(m => m.category === key).map(m => (
+                          <SelectItem key={m.value} value={m.value} className={cat.itemAccent}>
+                            {m.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    );
+                  })}
                 </SelectContent>
               </Select>
+
+              {/* Agent warning */}
               {selectedMetric?.requiresAgent && (
-                <p className="text-xs text-amber-600 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  Requires CloudWatch Agent installed on instances
-                </p>
+                <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-md px-2.5 py-1.5">
+                  <AlertTriangle className="h-3 w-3 shrink-0" />
+                  Requires CloudWatch Agent installed on your EC2 instances
+                </div>
+              )}
+
+              {/* IAM permissions diagram for budget metrics */}
+              {selectedMetric?.iamPermissions && selectedMetric.iamPermissions.length > 0 && (
+                <IAMPermissionsDiagram permissions={selectedMetric.iamPermissions} />
               )}
             </div>
 
@@ -234,7 +299,7 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
             </div>
 
             {/* Cost note */}
-            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-2.5">
               <CheckCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
               {isBudgetMetric
                 ? "AWS Budgets are free to create. You'll receive alerts when spend exceeds your limit."
