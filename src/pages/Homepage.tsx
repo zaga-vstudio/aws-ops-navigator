@@ -246,7 +246,7 @@ const Homepage = () => {
               <span className="text-lg font-bold text-foreground">CloudHub</span>
             </div>
             <p className="text-muted-foreground">
-              © 2024 CloudHub. All rights reserved.
+              © 2026 CloudHub. All rights reserved.
             </p>
           </div>
         </div>
