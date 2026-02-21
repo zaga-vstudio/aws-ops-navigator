@@ -303,7 +303,7 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
               <CheckCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
               {isBudgetMetric
                 ? "AWS Budgets are free to create. You'll receive alerts when spend exceeds your limit."
-                : "CloudWatch alarms use the free tier. Drift detection scans are also free."}
+                : "CloudWatch alarms use the free tier. No additional costs for basic monitoring."}
             </div>
           </div>
 
