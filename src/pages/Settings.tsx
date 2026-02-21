@@ -9,11 +9,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { 
-  Settings as SettingsIcon, 
-  User, 
-  Shield, 
-  Globe, 
+import {
+  Settings as SettingsIcon,
+  User,
+  Shield,
+  Globe,
   Moon,
   Sun,
   Bell,
@@ -23,8 +23,8 @@ import {
   Save,
   RefreshCw,
   FileCode,
-  Download
-} from "lucide-react";
+  Download } from
+"lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { useTheme } from "next-themes";
@@ -45,7 +45,7 @@ export default function Settings() {
     mobile: true,
     marketing: false
   });
-  
+
   // Security dialogs state
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [enable2FAOpen, setEnable2FAOpen] = useState(false);
@@ -204,36 +204,36 @@ export default function Settings() {
                       
                       <div className="space-y-2">
                         <Label htmlFor="projects">Project Tags</Label>
-                        <Textarea 
+                        <Textarea
                           id="projects"
                           placeholder="Enter project names separated by commas (e.g., production, staging, development)"
-                          defaultValue="production, staging, development, testing"
-                        />
+                          defaultValue="production, staging, development, testing" />
+
                       </div>
 
                       <Separator />
 
-                      <div className="space-y-4">
-                        <h3 className="text-lg font-medium">Alert Thresholds</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="cpuThreshold">CPU Threshold (%)</Label>
-                            <Input id="cpuThreshold" type="number" defaultValue="80" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="memoryThreshold">Memory Threshold (%)</Label>
-                            <Input id="memoryThreshold" type="number" defaultValue="85" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="diskThreshold">Disk Threshold (%)</Label>
-                            <Input id="diskThreshold" type="number" defaultValue="90" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="networkThreshold">Network Threshold (MB/s)</Label>
-                            <Input id="networkThreshold" type="number" defaultValue="1000" />
-                          </div>
-                        </div>
-                      </div>
+                      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
                       <Separator />
 
@@ -249,7 +249,7 @@ export default function Settings() {
                               ⚠️ AWS charges ~$0.01 per API request (cached for 6h)
                             </p>
                           </div>
-                          <Switch 
+                          <Switch
                             checked={costExplorerState.enabled}
                             disabled={costExplorerState.loading}
                             onCheckedChange={(checked) => {
@@ -258,8 +258,8 @@ export default function Settings() {
                               } else {
                                 disableCostExplorer();
                               }
-                            }}
-                          />
+                            }} />
+
                         </div>
                       </div>
                     </CardContent>
@@ -287,21 +287,21 @@ export default function Settings() {
                         </p>
                         <div className="flex flex-wrap gap-2 justify-center mb-4">
                           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-muted rounded-full text-sm">
-                            <img 
-                              src="https://www.terraform.io/favicon.ico" 
-                              alt="Terraform" 
+                            <img
+                              src="https://www.terraform.io/favicon.ico"
+                              alt="Terraform"
                               className="h-4 w-4"
-                              onError={(e) => (e.currentTarget.style.display = 'none')}
-                            />
+                              onError={(e) => e.currentTarget.style.display = 'none'} />
+
                             Terraform (.tf)
                           </div>
                           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-muted rounded-full text-sm">
-                            <img 
-                              src="https://aws.amazon.com/favicon.ico" 
-                              alt="AWS" 
+                            <img
+                              src="https://aws.amazon.com/favicon.ico"
+                              alt="AWS"
                               className="h-4 w-4"
-                              onError={(e) => (e.currentTarget.style.display = 'none')}
-                            />
+                              onError={(e) => e.currentTarget.style.display = 'none'} />
+
                             CloudFormation (.json)
                           </div>
                         </div>
@@ -367,8 +367,8 @@ export default function Settings() {
                             variant={theme === "light" ? "default" : "outline"}
                             size="sm"
                             onClick={() => setTheme("light")}
-                            className="flex items-center gap-2"
-                          >
+                            className="flex items-center gap-2">
+
                             <Sun className="h-4 w-4" />
                             Light
                           </Button>
@@ -376,8 +376,8 @@ export default function Settings() {
                             variant={theme === "dark" ? "default" : "outline"}
                             size="sm"
                             onClick={() => setTheme("dark")}
-                            className="flex items-center gap-2"
-                          >
+                            className="flex items-center gap-2">
+
                             <Moon className="h-4 w-4" />
                             Dark
                           </Button>
@@ -385,8 +385,8 @@ export default function Settings() {
                             variant={theme === "system" ? "default" : "outline"}
                             size="sm"
                             onClick={() => setTheme("system")}
-                            className="flex items-center gap-2"
-                          >
+                            className="flex items-center gap-2">
+
                             <SettingsIcon className="h-4 w-4" />
                             System
                           </Button>
@@ -443,30 +443,30 @@ export default function Settings() {
                               <Label>Email notifications</Label>
                               <p className="text-sm text-muted-foreground">Receive alerts via email</p>
                             </div>
-                            <Switch 
+                            <Switch
                               checked={notifications.email}
-                              onCheckedChange={(checked) => setNotifications(prev => ({ ...prev, email: checked }))}
-                            />
+                              onCheckedChange={(checked) => setNotifications((prev) => ({ ...prev, email: checked }))} />
+
                           </div>
                           <div className="flex items-center justify-between">
                             <div>
                               <Label>Desktop notifications</Label>
                               <p className="text-sm text-muted-foreground">Show browser notifications</p>
                             </div>
-                            <Switch 
+                            <Switch
                               checked={notifications.desktop}
-                              onCheckedChange={(checked) => setNotifications(prev => ({ ...prev, desktop: checked }))}
-                            />
+                              onCheckedChange={(checked) => setNotifications((prev) => ({ ...prev, desktop: checked }))} />
+
                           </div>
                           <div className="flex items-center justify-between">
                             <div>
                               <Label>Mobile push notifications</Label>
                               <p className="text-sm text-muted-foreground">Receive push notifications on mobile</p>
                             </div>
-                            <Switch 
+                            <Switch
                               checked={notifications.mobile}
-                              onCheckedChange={(checked) => setNotifications(prev => ({ ...prev, mobile: checked }))}
-                            />
+                              onCheckedChange={(checked) => setNotifications((prev) => ({ ...prev, mobile: checked }))} />
+
                           </div>
                         </div>
                       </div>
@@ -516,11 +516,11 @@ export default function Settings() {
                       <div className="space-y-4">
                         <h3 className="text-lg font-medium">Password & Authentication</h3>
                         <div className="space-y-3">
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             className="w-full justify-start"
-                            onClick={() => setChangePasswordOpen(true)}
-                          >
+                            onClick={() => setChangePasswordOpen(true)}>
+
                             <Key className="h-4 w-4 mr-2" />
                             Change Password
                           </Button>
@@ -531,10 +531,10 @@ export default function Settings() {
                                 {is2FAEnabled ? "2FA is currently enabled" : "Add an extra layer of security to your account"}
                               </p>
                             </div>
-                            <Switch 
+                            <Switch
                               checked={is2FAEnabled}
-                              onCheckedChange={handle2FAToggle}
-                            />
+                              onCheckedChange={handle2FAToggle} />
+
                           </div>
                         </div>
                       </div>
@@ -544,19 +544,19 @@ export default function Settings() {
                       <div className="space-y-4">
                         <h3 className="text-lg font-medium">AWS Credentials</h3>
                         <div className="space-y-3">
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             className="w-full justify-start"
-                            onClick={() => handleAWSCredentialsClick("update")}
-                          >
+                            onClick={() => handleAWSCredentialsClick("update")}>
+
                             <RefreshCw className="h-4 w-4 mr-2" />
                             Update AWS Credentials
                           </Button>
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             className="w-full justify-start"
-                            onClick={() => handleAWSCredentialsClick("test")}
-                          >
+                            onClick={() => handleAWSCredentialsClick("test")}>
+
                             <Database className="h-4 w-4 mr-2" />
                             Test AWS Connection
                           </Button>
@@ -597,20 +597,20 @@ export default function Settings() {
       </div>
 
       {/* Security Dialogs */}
-      <ChangePasswordDialog 
-        open={changePasswordOpen} 
-        onOpenChange={setChangePasswordOpen} 
-      />
-      <Enable2FADialog 
-        open={enable2FAOpen} 
+      <ChangePasswordDialog
+        open={changePasswordOpen}
+        onOpenChange={setChangePasswordOpen} />
+
+      <Enable2FADialog
+        open={enable2FAOpen}
         onOpenChange={setEnable2FAOpen}
-        onSuccess={() => setIs2FAEnabled(true)}
-      />
-      <AWSCredentialsDialog 
-        open={awsCredentialsOpen} 
+        onSuccess={() => setIs2FAEnabled(true)} />
+
+      <AWSCredentialsDialog
+        open={awsCredentialsOpen}
         onOpenChange={setAWSCredentialsOpen}
-        mode={awsCredentialsMode}
-      />
+        mode={awsCredentialsMode} />
+
       <IaCExportDialog
         open={iacExportOpen}
         onOpenChange={setIaCExportOpen}
@@ -618,8 +618,8 @@ export default function Settings() {
         rdsDatabases={awsData?.rdsDatabases || []}
         vpcs={awsData?.vpcs || []}
         subnets={awsData?.subnets || []}
-        securityGroups={awsData?.securityGroups || []}
-      />
-    </SidebarProvider>
-  );
+        securityGroups={awsData?.securityGroups || []} />
+
+    </SidebarProvider>);
+
 }
