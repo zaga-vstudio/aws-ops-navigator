@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
+import { AWSDataProvider } from "@/contexts/AWSDataContext";
 import { ThemeProvider } from "next-themes";
 import Homepage from "./pages/Homepage";
 import Auth from "./pages/Auth";
@@ -23,6 +24,25 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
+const AuthenticatedRoutes = () => (
+  <AWSDataProvider>
+    <Routes>
+      <Route path="/setup" element={<Setup />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/ec2" element={<EC2Instances />} />
+      <Route path="/rds" element={<RDSDatabases />} />
+      <Route path="/vpc" element={<VPCNetworking />} />
+      <Route path="/security" element={<Security />} />
+      <Route path="/costs" element={<CostManagement />} />
+      <Route path="/monitoring" element={<Monitoring />} />
+      <Route path="/alerts" element={<Alerts />} />
+      <Route path="/logs" element={<ActivityLog />} />
+      <Route path="/settings" element={<Settings />} />
+      <Route path="/aws-setup" element={<AWSSetup />} />
+    </Routes>
+  </AWSDataProvider>
+);
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
@@ -34,18 +54,18 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Homepage />} />
               <Route path="/auth" element={<Auth />} />
-              <Route path="/setup" element={<Setup />} />
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/ec2" element={<EC2Instances />} />
-              <Route path="/rds" element={<RDSDatabases />} />
-              <Route path="/vpc" element={<VPCNetworking />} />
-              <Route path="/security" element={<Security />} />
-              <Route path="/costs" element={<CostManagement />} />
-              <Route path="/monitoring" element={<Monitoring />} />
-              <Route path="/alerts" element={<Alerts />} />
-              <Route path="/logs" element={<ActivityLog />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/aws-setup" element={<AWSSetup />} />
+              <Route path="/setup/*" element={<AuthenticatedRoutes />} />
+              <Route path="/dashboard" element={<AuthenticatedRoutes />} />
+              <Route path="/ec2" element={<AuthenticatedRoutes />} />
+              <Route path="/rds" element={<AuthenticatedRoutes />} />
+              <Route path="/vpc" element={<AuthenticatedRoutes />} />
+              <Route path="/security" element={<AuthenticatedRoutes />} />
+              <Route path="/costs" element={<AuthenticatedRoutes />} />
+              <Route path="/monitoring" element={<AuthenticatedRoutes />} />
+              <Route path="/alerts" element={<AuthenticatedRoutes />} />
+              <Route path="/logs" element={<AuthenticatedRoutes />} />
+              <Route path="/settings" element={<AuthenticatedRoutes />} />
+              <Route path="/aws-setup" element={<AuthenticatedRoutes />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { format, subHours, subDays, isAfter } from "date-fns";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,7 +43,7 @@ interface ActivityLog {
 }
 
 export default function ActivityLog() {
-  const { data: awsData, loading, refetch } = useAWSData();
+  const { data: awsData, loading, refetch } = useAWSDataContext();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterUser, setFilterUser] = useState("all");
   const [filterAction, setFilterAction] = useState("all");

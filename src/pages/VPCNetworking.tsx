@@ -4,7 +4,8 @@ import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
-import { useAWSData, VPC, Subnet } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
+import { VPC, Subnet } from "@/hooks/useAWSData";
 import { useVPCAdvancedData } from "@/hooks/useVPCAdvancedData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +38,7 @@ const VPCNetworking = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { data: awsData, loading: dataLoading, error, refetch } = useAWSData();
+  const { data: awsData, loading: dataLoading, error, refetch } = useAWSDataContext();
   const { data: advancedData, loading: advancedLoading, refetch: refetchAdvanced } = useVPCAdvancedData();
   const [createVPCDialogOpen, setCreateVPCDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);

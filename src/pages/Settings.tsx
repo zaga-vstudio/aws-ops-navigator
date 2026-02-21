@@ -35,7 +35,7 @@ import { IaCExportDialog } from "@/components/IaCExportDialog";
 import { SESSetupCard } from "@/components/SESSetupCard";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 
 const TIMEZONES = [
   { group: "Americas", items: [
@@ -148,7 +148,7 @@ export default function Settings() {
   const [iacExportOpen, setIaCExportOpen] = useState(false);
 
   // Fetch AWS data for IaC export
-  const { data: awsData, costExplorerState, enableCostExplorer, disableCostExplorer } = useAWSData();
+  const { data: awsData, costExplorerState, enableCostExplorer, disableCostExplorer } = useAWSDataContext();
 
   // Load profile and auth data
   useEffect(() => {

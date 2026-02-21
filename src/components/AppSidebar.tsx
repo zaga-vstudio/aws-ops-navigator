@@ -3,7 +3,7 @@ import { useLocation, NavLink } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { NotificationBadge } from "@/components/NotificationBadge";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { 
   LayoutDashboard,
   Server,
@@ -103,7 +103,7 @@ export function AppSidebar() {
   const location = useLocation();
   const { signOut } = useAuth();
   const { toast } = useToast();
-  const { data: awsData } = useAWSData();
+  const { data: awsData } = useAWSDataContext();
   const [awsRegion, setAwsRegion] = useState("us-east-1");
   const [regionDialogOpen, setRegionDialogOpen] = useState(false);
   

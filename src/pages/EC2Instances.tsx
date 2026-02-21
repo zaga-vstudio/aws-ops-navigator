@@ -4,7 +4,8 @@ import { Header } from "@/components/Header";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
-import { useAWSData, EC2Instance, SecurityGroup } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
+import { EC2Instance, SecurityGroup } from "@/hooks/useAWSData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,7 +118,7 @@ const isPort22Open = (instance: EC2Instance, securityGroups: SecurityGroup[]): b
 
 const EC2Instances = () => {
   const { user, loading } = useAuth();
-  const { data: awsData, loading: awsLoading, refetch } = useAWSData();
+  const { data: awsData, loading: awsLoading, refetch } = useAWSDataContext();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [launchDialogOpen, setLaunchDialogOpen] = useState(false);

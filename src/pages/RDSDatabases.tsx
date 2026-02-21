@@ -24,7 +24,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CreateRDSDialog } from "@/components/CreateRDSDialog";
@@ -57,7 +57,7 @@ const RDSDatabases = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { data: awsData, loading: awsLoading, error: awsError, refetch } = useAWSData();
+  const { data: awsData, loading: awsLoading, error: awsError, refetch } = useAWSDataContext();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
