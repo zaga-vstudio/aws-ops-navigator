@@ -11,7 +11,7 @@ import { formatDistanceToNow } from "date-fns";
 
 interface DriftScheduleSettings {
   drift_scan_enabled: boolean;
-  drift_scan_frequency: string;
+  drift_scan_frequency: 'daily' | 'weekly' | 'monthly';
   drift_scan_last_run: string | null;
   notify_on_drift: boolean;
 }
@@ -86,7 +86,7 @@ export function DriftScheduleSettings() {
   };
 
   const handleFrequencyChange = (frequency: string) => {
-    saveSettings({ drift_scan_frequency: frequency });
+    saveSettings({ drift_scan_frequency: frequency as 'daily' | 'weekly' | 'monthly' });
   };
 
   const handleNotifyToggle = (notify: boolean) => {
@@ -94,11 +94,9 @@ export function DriftScheduleSettings() {
   };
 
   const frequencyLabels: Record<string, string> = {
-    'hourly': 'Every hour',
-    'every_6_hours': 'Every 6 hours',
-    'every_12_hours': 'Every 12 hours',
     'daily': 'Once a day',
     'weekly': 'Once a week',
+    'monthly': 'Once a month',
   };
 
   if (loading) {
@@ -163,11 +161,9 @@ export function DriftScheduleSettings() {
                   <SelectValue placeholder="Select frequency" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hourly">Every hour</SelectItem>
-                  <SelectItem value="every_6_hours">Every 6 hours</SelectItem>
-                  <SelectItem value="every_12_hours">Every 12 hours</SelectItem>
                   <SelectItem value="daily">Once a day</SelectItem>
                   <SelectItem value="weekly">Once a week</SelectItem>
+                  <SelectItem value="monthly">Once a month</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">
