@@ -96,7 +96,7 @@ const Homepage = () => {
       {/* Hero Section */}
       <section className="py-20 px-6">
         <div className="container mx-auto text-center max-w-4xl">
-          <Badge className="mb-6 bg-gradient-to-r from-primary/10 to-primary-glow/10 text-primary border-primary/20"> Beta version
+          <Badge className="mb-6 bg-gradient-to-r from-primary/10 to-primary-glow/10 border-primary/20 text-primary-glow"> Beta version
 
           </Badge>
           <h1 className="text-4xl md:text-6xl font-bold text-foreground mb-6 leading-tight">
