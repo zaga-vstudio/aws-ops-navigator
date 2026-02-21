@@ -1,68 +1,68 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { 
-  Cloud, 
-  Shield, 
-  Zap, 
-  BarChart3, 
+import {
+  Cloud,
+  Shield,
+  Zap,
+  BarChart3,
   ArrowRight,
   CheckCircle,
   Star,
   Monitor,
   Database,
-  Settings
-} from "lucide-react";
+  Settings } from
+"lucide-react";
 import { Link } from "react-router-dom";
 
 const Homepage = () => {
   const features = [
-    {
-      icon: <Monitor className="h-6 w-6 text-primary" />,
-      title: "Real-time Monitoring",
-      description: "Monitor your AWS infrastructure in real-time with beautiful dashboards and instant alerts."
-    },
-    {
-      icon: <Shield className="h-6 w-6 text-cloud-green" />,
-      title: "Secure AWS Integration",
-      description: "Connect securely using IAM roles and temporary credentials. Your data stays in your AWS account."
-    },
-    {
-      icon: <BarChart3 className="h-6 w-6 text-cloud-purple" />,
-      title: "Cost Optimization",
-      description: "Track spending, identify cost drivers, and optimize your AWS resources automatically."
-    },
-    {
-      icon: <Zap className="h-6 w-6 text-warning" />,
-      title: "Performance Insights",
-      description: "Get detailed performance metrics and recommendations to optimize your infrastructure."
-    }
-  ];
+  {
+    icon: <Monitor className="h-6 w-6 text-primary" />,
+    title: "Real-time Monitoring",
+    description: "Monitor your AWS infrastructure in real-time with beautiful dashboards and instant alerts."
+  },
+  {
+    icon: <Shield className="h-6 w-6 text-cloud-green" />,
+    title: "Secure AWS Integration",
+    description: "Connect securely using IAM roles and temporary credentials. Your data stays in your AWS account."
+  },
+  {
+    icon: <BarChart3 className="h-6 w-6 text-cloud-purple" />,
+    title: "Cost Optimization",
+    description: "Track spending, identify cost drivers, and optimize your AWS resources automatically."
+  },
+  {
+    icon: <Zap className="h-6 w-6 text-warning" />,
+    title: "Performance Insights",
+    description: "Get detailed performance metrics and recommendations to optimize your infrastructure."
+  }];
+
 
   const testimonials = [
-    {
-      name: "Sarah Chen",
-      role: "DevOps Engineer",
-      company: "TechStartup",
-      comment: "CloudHub transformed how we manage our AWS infrastructure. Setup took minutes, not hours.",
-      rating: 5
-    },
-    {
-      name: "Marcus Johnson",
-      role: "CTO",
-      company: "ScaleUp Inc",
-      comment: "The cost optimization features alone saved us 30% on our monthly AWS bill.",
-      rating: 5
-    }
-  ];
+  {
+    name: "Sarah Chen",
+    role: "DevOps Engineer",
+    company: "TechStartup",
+    comment: "CloudHub transformed how we manage our AWS infrastructure. Setup took minutes, not hours.",
+    rating: 5
+  },
+  {
+    name: "Marcus Johnson",
+    role: "CTO",
+    company: "ScaleUp Inc",
+    comment: "The cost optimization features alone saved us 30% on our monthly AWS bill.",
+    rating: 5
+  }];
+
 
   const technologies = [
-    { name: "AWS", color: "aws-orange" },
-    { name: "React", color: "cloud-cyan" },
-    { name: "TypeScript", color: "primary" },
-    { name: "Supabase", color: "cloud-green" },
-    { name: "Tailwind", color: "cloud-purple" }
-  ];
+  { name: "AWS", color: "aws-orange" },
+  { name: "React", color: "cloud-cyan" },
+  { name: "TypeScript", color: "primary" },
+  { name: "Supabase", color: "cloud-green" },
+  { name: "Tailwind", color: "cloud-purple" }];
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -75,9 +75,9 @@ const Homepage = () => {
                 <Cloud className="h-5 w-5 text-white" />
               </div>
               <h1 className="text-xl font-bold text-foreground">CloudHub</h1>
-              <Badge variant="outline" className="text-xs">
-                Production Ready
-              </Badge>
+              
+
+
             </div>
             <div className="flex items-center gap-4">
               <Link to="/auth">
@@ -133,15 +133,15 @@ const Homepage = () => {
             </p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {features.map((feature, index) => (
-              <Card key={index} className="border-border/50 hover:border-primary/20 transition-all duration-300 hover:shadow-lg">
+            {features.map((feature, index) =>
+            <Card key={index} className="border-border/50 hover:border-primary/20 transition-all duration-300 hover:shadow-lg">
                 <CardContent className="p-6">
                   <div className="mb-4">{feature.icon}</div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">{feature.title}</h3>
                   <p className="text-muted-foreground">{feature.description}</p>
                 </CardContent>
               </Card>
-            ))}
+            )}
           </div>
         </div>
       </section>
@@ -154,15 +154,15 @@ const Homepage = () => {
             Powered by industry-leading tools and frameworks for maximum reliability and performance.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            {technologies.map((tech, index) => (
-              <Badge 
-                key={index} 
-                variant="outline" 
-                className={`px-4 py-2 text-sm border-${tech.color}/20 text-${tech.color} bg-${tech.color}/5`}
-              >
+            {technologies.map((tech, index) =>
+            <Badge
+              key={index}
+              variant="outline"
+              className={`px-4 py-2 text-sm border-${tech.color}/20 text-${tech.color} bg-${tech.color}/5`}>
+
                 {tech.name}
               </Badge>
-            ))}
+            )}
           </div>
         </div>
       </section>
@@ -179,13 +179,13 @@ const Homepage = () => {
             </p>
           </div>
           <div className="grid md:grid-cols-2 gap-8">
-            {testimonials.map((testimonial, index) => (
-              <Card key={index} className="border-border/50">
+            {testimonials.map((testimonial, index) =>
+            <Card key={index} className="border-border/50">
                 <CardContent className="p-6">
                   <div className="flex mb-4">
-                    {[...Array(testimonial.rating)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4 fill-warning text-warning" />
-                    ))}
+                    {[...Array(testimonial.rating)].map((_, i) =>
+                  <Star key={i} className="h-4 w-4 fill-warning text-warning" />
+                  )}
                   </div>
                   <p className="text-foreground mb-4">"{testimonial.comment}"</p>
                   <div>
@@ -194,7 +194,7 @@ const Homepage = () => {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+            )}
           </div>
         </div>
       </section>
@@ -251,8 +251,8 @@ const Homepage = () => {
           </div>
         </div>
       </footer>
-    </div>
-  );
+    </div>);
+
 };
 
 export default Homepage;
