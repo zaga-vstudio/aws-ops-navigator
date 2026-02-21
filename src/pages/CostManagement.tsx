@@ -527,7 +527,9 @@ export default function CostManagement() {
                               backgroundColor: 'hsl(var(--card))',
                               border: '1px solid hsl(var(--border))',
                               borderRadius: 'var(--radius)',
+                              color: 'hsl(var(--foreground))',
                             }}
+                            cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
                             formatter={(value) => [`$${value}`, 'Cost']} 
                           />
                           <Area 
@@ -592,7 +594,9 @@ export default function CostManagement() {
                                 backgroundColor: 'hsl(var(--card))',
                                 border: '1px solid hsl(var(--border))',
                                 borderRadius: 'var(--radius)',
+                                color: 'hsl(var(--foreground))',
                               }}
+                              itemStyle={{ color: 'hsl(var(--foreground))' }}
                               formatter={(value: number, name: string, props: any) => [
                                 `$${props.payload.cost.toFixed(2)} (${value.toFixed(1)}%)`, 
                                 props.payload.name
