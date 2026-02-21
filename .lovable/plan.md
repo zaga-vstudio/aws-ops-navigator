@@ -1,72 +1,77 @@
 
-# Complete the Webhook Save Flow
 
-## Problem
+# Phase 1: Central AWS Data Provider
 
-When a user enters a Slack, Discord, or custom webhook URL in the channel configuration dialog and clicks "Save Changes", the URL is never actually encrypted and stored in the database. The `updateChannel` function in the hook only handles **disabling** (clearing the value) but has no code path to **encrypt and save** a new URL. This means webhooks can never be configured.
-
-## Solution
-
-Create a new edge function (`save-webhook`) that receives the plaintext webhook URL, encrypts it server-side using the existing `encrypt_secret` database function, and stores it in the `notification_preferences` table. Then update the frontend hook to call this edge function when saving a webhook URL.
+## Goal
+Eliminate 14 independent `useAWSData()` calls across the app, each triggering its own fetch to the `aws-dashboard-data` edge function (which makes 8+ AWS API calls). Replace with a single React Context provider so data is fetched once and shared.
 
 ## Changes
 
-### 1. Create edge function: `save-webhook`
+### 1. Create `src/contexts/AWSDataContext.tsx`
+- New file that creates a React Context wrapping the existing `useAWSData()` hook
+- Calls `useAWSData()` once and exposes all its return values (`data`, `loading`, `error`, `refetch`, `refetchWithForceRefreshCost`, `costExplorerState`, `enableCostExplorer`, `disableCostExplorer`) via context
+- Exports `AWSDataProvider` component and `useAWSDataContext()` consumer hook
+- The consumer hook throws if used outside the provider (standard pattern)
 
-**File:** `supabase/functions/save-webhook/index.ts`
+### 2. Wrap authenticated routes in `src/App.tsx`
+- Import and wrap all dashboard routes (everything except `/`, `/auth`, and `*`) inside `<AWSDataProvider>`
+- The provider sits inside `AuthProvider` so it has access to auth state
 
-- Accepts `{ channelType, webhookUrl }` in the POST body
-- Authenticates the user via the Authorization header
-- Validates the URL format (must start with `https://`)
-- Validates `channelType` is one of `slack`, `discord`, `webhook`
-- Uses the service role client to call `encrypt_secret(webhookUrl)` to get the encrypted bytea value
-- Updates the correct column (`encrypted_slack_webhook`, `encrypted_discord_webhook`, or `encrypted_webhook_url`) in `notification_preferences` for the authenticated user
-- Returns success/failure
+### 3. Replace all `useAWSData()` calls with `useAWSDataContext()`
+Update these 14 files to import from the context instead of calling the hook directly:
 
-### 2. Add config entry
-
-**File:** `supabase/config.toml`
-
-- Add `[functions.save-webhook]` with `verify_jwt = true`
-
-### 3. Update `useNotificationPreferences` hook
-
-**File:** `src/hooks/useNotificationPreferences.tsx`
-
-- In the `updateChannel` function, when `config.enabled` is `true` and a non-masked value is provided for slack/discord/webhook channels, call the `save-webhook` edge function instead of doing a direct table update
-- Keep the existing "disable" path (clearing to null) as-is
-
-### 4. Fix dialog masked value handling
-
-**File:** `src/components/NotificationChannelDialog.tsx`
-
-- When the channel config is the masked placeholder (`"••••••••"`), clear the input so the user sees an empty field with the placeholder hint, rather than editing the mask string
-- This prevents accidentally sending the mask string as the webhook URL
-
-## Technical Details
-
-### Edge Function Flow
-
-```text
-Client (dialog) --> useNotificationPreferences.updateChannel()
-  |-- if disabling: direct DB update (set field to null) [existing]
-  |-- if enabling with new URL: supabase.functions.invoke("save-webhook", {
-        body: { channelType: "slack", webhookUrl: "https://hooks.slack.com/..." }
-      })
-        --> Edge function authenticates user
-        --> Calls encrypt_secret(webhookUrl) via service role
-        --> Updates notification_preferences row
-```
-
-### Validation (edge function)
-
-- `channelType` must be `slack | discord | webhook`
-- `webhookUrl` must be a valid HTTPS URL
-- User must be authenticated
-
-| File | Action |
+| File | What it uses |
 |---|---|
-| `supabase/functions/save-webhook/index.ts` | Create -- encrypt and store webhook URLs server-side |
-| `supabase/config.toml` | Edit -- add `save-webhook` function config |
-| `src/hooks/useNotificationPreferences.tsx` | Edit -- call edge function when saving webhook URLs |
-| `src/components/NotificationChannelDialog.tsx` | Edit -- clear masked placeholder on dialog open |
+| `src/pages/Dashboard.tsx` | `data`, `loading`, `refetch` |
+| `src/pages/EC2Instances.tsx` | `data`, `loading`, `refetch` |
+| `src/pages/RDSDatabases.tsx` | `data`, `loading`, `error`, `refetch` |
+| `src/pages/VPCNetworking.tsx` | `data`, `loading`, `error`, `refetch` |
+| `src/pages/Security.tsx` | `data`, `loading`, `error`, `refetch` |
+| `src/pages/CostManagement.tsx` | `data`, `loading`, `refetch`, `refetchWithForceRefreshCost`, `costExplorerState`, `enableCostExplorer`, `disableCostExplorer` |
+| `src/pages/Monitoring.tsx` | `data`, `loading`, `error`, `refetch` |
+| `src/pages/Alerts.tsx` | `data`, `loading`, `error`, `refetch` |
+| `src/pages/ActivityLog.tsx` | `data`, `loading`, `refetch` |
+| `src/pages/Settings.tsx` | `data`, `costExplorerState`, `enableCostExplorer`, `disableCostExplorer` |
+| `src/components/AppSidebar.tsx` | `data` |
+| `src/components/ResourceOverview.tsx` | `data`, `loading`, `error` |
+| `src/components/CostChart.tsx` | `data`, `loading` |
+| `src/hooks/useNotifications.tsx` | `data` |
+
+### 4. Add `staleTime` to prevent unnecessary refetches
+- Inside `AWSDataContext`, the single `useAWSData()` call already manages its own state; we keep it as-is but the key win is it only runs once instead of 14 times
+
+---
+
+# Phase 2: Wire Up Dashboard Quick Actions
+
+## Goal
+The four Quick Action buttons on the Dashboard ("Launch EC2", "Create RDS", "Cost Analysis", "Monitor") currently do nothing. Wire them to open existing dialogs or navigate to the correct pages.
+
+## Changes
+
+### 1. Update `src/pages/Dashboard.tsx`
+- Add state variables for `launchEC2Open` and `createRDSOpen` dialog visibility
+- Import `LaunchEC2Dialog` and `CreateRDSDialog` components
+- Import `useNavigate` (already imported)
+- Wire the four buttons:
+  - **Launch EC2** -- opens `LaunchEC2Dialog` (`setLaunchEC2Open(true)`)
+  - **Create RDS** -- opens `CreateRDSDialog` (`setCreateRDSOpen(true)`)
+  - **Cost Analysis** -- navigates to `/costs` (`navigate('/costs')`)
+  - **Monitor** -- navigates to `/monitoring` (`navigate('/monitoring')`)
+- Render `<LaunchEC2Dialog>` and `<CreateRDSDialog>` at the bottom of the component, with `onSuccess` calling `refetch` to refresh data after resource creation
+
+## Technical Notes
+
+- `LaunchEC2Dialog` expects props: `open`, `onOpenChange`, `onSuccess`
+- `CreateRDSDialog` expects props: `open`, `onOpenChange`, `onSuccess`
+- Both dialogs already handle their own form state, validation, and AWS API calls internally
+- After Phase 1, the `refetch` used in `onSuccess` comes from `useAWSDataContext()`, so newly created resources appear across the entire app
+
+## File Summary
+
+| File | Phase | Action |
+|---|---|---|
+| `src/contexts/AWSDataContext.tsx` | 1 | Create -- context provider and consumer hook |
+| `src/App.tsx` | 1 | Edit -- wrap routes with `AWSDataProvider` |
+| 14 files (pages, components, hooks) | 1 | Edit -- replace `useAWSData()` with `useAWSDataContext()` |
+| `src/pages/Dashboard.tsx` | 2 | Edit -- wire Quick Actions to dialogs and navigation |
