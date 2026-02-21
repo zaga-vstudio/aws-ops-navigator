@@ -53,6 +53,7 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
   const [secret, setSecret] = useState<string>("");
   const [verifyCode, setVerifyCode] = useState("");
   const [copied, setCopied] = useState(false);
+  const [factorId, setFactorId] = useState<string>("");
   const [enrollError, setEnrollError] = useState<string>("");
   const [rawSvgFallback, setRawSvgFallback] = useState<string>("");
 
@@ -64,6 +65,7 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
     setCopied(false);
     setEnrollError("");
     setRawSvgFallback("");
+    setFactorId("");
     setLoading(false);
   }, []);
 
@@ -109,6 +111,7 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
 
       setQrCode(qrUri);
       setSecret(data.totp.secret);
+      setFactorId(data.id);
       setStep("verify");
     } catch (error: any) {
       setEnrollError(error.message || "Failed to setup 2FA. Please try again.");
@@ -139,17 +142,12 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
     setLoading(true);
 
     try {
-      const factors = await supabase.auth.mfa.listFactors();
-      if (factors.error) throw factors.error;
-
-      const totpFactor = factors.data.totp[0];
-
-      if (!totpFactor) {
-        throw new Error("No TOTP factor found");
+      if (!factorId) {
+        throw new Error("No TOTP factor found. Please try again.");
       }
 
       const { data, error } = await supabase.auth.mfa.challengeAndVerify({
-        factorId: totpFactor.id,
+        factorId: factorId,
         code: verifyCode,
       });
 
