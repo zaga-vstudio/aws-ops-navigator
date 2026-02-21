@@ -24,23 +24,8 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const AuthenticatedRoutes = () => (
-  <AWSDataProvider>
-    <Routes>
-      <Route path="/setup" element={<Setup />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/ec2" element={<EC2Instances />} />
-      <Route path="/rds" element={<RDSDatabases />} />
-      <Route path="/vpc" element={<VPCNetworking />} />
-      <Route path="/security" element={<Security />} />
-      <Route path="/costs" element={<CostManagement />} />
-      <Route path="/monitoring" element={<Monitoring />} />
-      <Route path="/alerts" element={<Alerts />} />
-      <Route path="/logs" element={<ActivityLog />} />
-      <Route path="/settings" element={<Settings />} />
-      <Route path="/aws-setup" element={<AWSSetup />} />
-    </Routes>
-  </AWSDataProvider>
+const WithAWSData = ({ children }: { children: React.ReactNode }) => (
+  <AWSDataProvider>{children}</AWSDataProvider>
 );
 
 const App = () => (
@@ -54,18 +39,18 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Homepage />} />
               <Route path="/auth" element={<Auth />} />
-              <Route path="/setup/*" element={<AuthenticatedRoutes />} />
-              <Route path="/dashboard" element={<AuthenticatedRoutes />} />
-              <Route path="/ec2" element={<AuthenticatedRoutes />} />
-              <Route path="/rds" element={<AuthenticatedRoutes />} />
-              <Route path="/vpc" element={<AuthenticatedRoutes />} />
-              <Route path="/security" element={<AuthenticatedRoutes />} />
-              <Route path="/costs" element={<AuthenticatedRoutes />} />
-              <Route path="/monitoring" element={<AuthenticatedRoutes />} />
-              <Route path="/alerts" element={<AuthenticatedRoutes />} />
-              <Route path="/logs" element={<AuthenticatedRoutes />} />
-              <Route path="/settings" element={<AuthenticatedRoutes />} />
-              <Route path="/aws-setup" element={<AuthenticatedRoutes />} />
+              <Route path="/setup/*" element={<WithAWSData><Setup /></WithAWSData>} />
+              <Route path="/dashboard" element={<WithAWSData><Dashboard /></WithAWSData>} />
+              <Route path="/ec2" element={<WithAWSData><EC2Instances /></WithAWSData>} />
+              <Route path="/rds" element={<WithAWSData><RDSDatabases /></WithAWSData>} />
+              <Route path="/vpc" element={<WithAWSData><VPCNetworking /></WithAWSData>} />
+              <Route path="/security" element={<WithAWSData><Security /></WithAWSData>} />
+              <Route path="/costs" element={<WithAWSData><CostManagement /></WithAWSData>} />
+              <Route path="/monitoring" element={<WithAWSData><Monitoring /></WithAWSData>} />
+              <Route path="/alerts" element={<WithAWSData><Alerts /></WithAWSData>} />
+              <Route path="/logs" element={<WithAWSData><ActivityLog /></WithAWSData>} />
+              <Route path="/settings" element={<WithAWSData><Settings /></WithAWSData>} />
+              <Route path="/aws-setup" element={<WithAWSData><AWSSetup /></WithAWSData>} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
