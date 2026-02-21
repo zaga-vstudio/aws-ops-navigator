@@ -1,0 +1,1 @@
+ALTER TABLE public.alert_rules ADD COLUMN comparison_operator TEXT NOT NULL DEFAULT 'GreaterThanThreshold';

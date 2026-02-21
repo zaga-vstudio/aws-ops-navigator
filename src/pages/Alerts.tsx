@@ -114,6 +114,27 @@ export default function Alerts() {
     }
   };
 
+  const BUDGET_METRICS = ['MonthlyBudget', 'ServiceBudget'];
+
+  const getComparisonSymbol = (op: string) => {
+    switch (op) {
+      case 'GreaterThanThreshold': return '>';
+      case 'GreaterThanOrEqualToThreshold': return '≥';
+      case 'LessThanThreshold': return '<';
+      case 'LessThanOrEqualToThreshold': return '≤';
+      default: return '>';
+    }
+  };
+
+  const getThresholdUnit = (metric: string) => {
+    if (BUDGET_METRICS.includes(metric)) return '$';
+    if (['CPUUtilization', 'MemoryUtilization', 'DiskUtilization'].includes(metric)) return '%';
+    if (['DatabaseConnections'].includes(metric)) return '';
+    if (['ReadLatency', 'WriteLatency'].includes(metric)) return 'ms';
+    if (['FreeStorageSpace'].includes(metric)) return 'GB';
+    return '';
+  };
+
   // Combine CloudWatch alarms with user-created rules for display
   const allRules = [
     ...rules.map(rule => ({
@@ -125,6 +146,9 @@ export default function Alerts() {
       severity: rule.severity,
       isUserCreated: true,
       enabled: rule.enabled,
+      source: BUDGET_METRICS.includes(rule.metric) ? 'Budget' as const : 'CloudWatch' as const,
+      comparison_operator: rule.comparison_operator || 'GreaterThanThreshold',
+      duration: rule.duration,
     })),
     ...alarms.map(alarm => ({
       id: alarm.id,
@@ -135,6 +159,9 @@ export default function Alerts() {
       severity: alarm.severity,
       isUserCreated: false,
       enabled: true,
+      source: 'CloudWatch' as const,
+      comparison_operator: 'GreaterThanThreshold',
+      duration: 0,
     }))
   ];
 
@@ -489,8 +516,10 @@ export default function Alerts() {
                           <TableHeader>
                             <TableRow>
                               <TableHead>Rule Name</TableHead>
+                              <TableHead>Source</TableHead>
                               <TableHead>Metric</TableHead>
                               <TableHead>Threshold</TableHead>
+                              <TableHead>Period</TableHead>
                               <TableHead>State</TableHead>
                               <TableHead>Severity</TableHead>
                               <TableHead>Enabled</TableHead>
@@ -508,8 +537,28 @@ export default function Alerts() {
                                     )}
                                   </div>
                                 </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className={`text-xs ${
+                                    rule.source === 'Budget' 
+                                      ? 'bg-blue-500/10 text-blue-600 border-blue-500/30' 
+                                      : 'bg-purple-500/10 text-purple-600 border-purple-500/30'
+                                  }`}>
+                                    {rule.source}
+                                  </Badge>
+                                </TableCell>
                                 <TableCell>{rule.metric}</TableCell>
-                                <TableCell>{rule.threshold}</TableCell>
+                                <TableCell>
+                                  <span className="font-mono text-sm">
+                                    {getComparisonSymbol(rule.comparison_operator)} {rule.source === 'Budget' ? '$' : ''}{rule.threshold}{getThresholdUnit(rule.metric)}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  {rule.source !== 'Budget' && rule.duration > 0 ? (
+                                    <span className="text-sm text-muted-foreground">{rule.duration}m</span>
+                                  ) : (
+                                    <span className="text-sm text-muted-foreground">—</span>
+                                  )}
+                                </TableCell>
                                 <TableCell>
                                   <Badge variant={
                                     rule.state === 'OK' ? 'secondary' : 

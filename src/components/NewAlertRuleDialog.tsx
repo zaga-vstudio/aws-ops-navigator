@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Loader2, HelpCircle, CheckCircle, AlertTriangle } from "lucide-react";
 
 interface NewAlertRuleDialogProps {
   open: boolean;
@@ -15,9 +17,47 @@ interface NewAlertRuleDialogProps {
     threshold: string;
     duration: string;
     severity: string;
+    comparison_operator: string;
   }) => Promise<boolean>;
   loading?: boolean;
 }
+
+interface MetricDefinition {
+  value: string;
+  label: string;
+  unit: string;
+  unitLabel: string;
+  defaultComparison: string;
+  category: string;
+  requiresAgent?: boolean;
+}
+
+const METRIC_CATEGORIES: Record<string, { label: string; badge: 'free' | 'agent' }> = {
+  performance: { label: "Performance", badge: "free" },
+  storage: { label: "Storage", badge: "free" },
+  cost: { label: "Cost & Budget", badge: "free" },
+  agent: { label: "Agent-Required", badge: "agent" },
+};
+
+const METRICS: MetricDefinition[] = [
+  // Performance
+  { value: "CPUUtilization", label: "CPU Utilization (EC2)", unit: "%", unitLabel: "Threshold (%)", defaultComparison: "GreaterThanThreshold", category: "performance" },
+  { value: "NetworkIn", label: "Network In (EC2)", unit: "bytes", unitLabel: "Threshold (bytes)", defaultComparison: "GreaterThanThreshold", category: "performance" },
+  { value: "NetworkOut", label: "Network Out (EC2)", unit: "bytes", unitLabel: "Threshold (bytes)", defaultComparison: "GreaterThanThreshold", category: "performance" },
+  { value: "DatabaseConnections", label: "Database Connections (RDS)", unit: "count", unitLabel: "Threshold (count)", defaultComparison: "GreaterThanThreshold", category: "performance" },
+  { value: "ReadLatency", label: "Read Latency (RDS)", unit: "ms", unitLabel: "Threshold (ms)", defaultComparison: "GreaterThanThreshold", category: "performance" },
+  { value: "WriteLatency", label: "Write Latency (RDS)", unit: "ms", unitLabel: "Threshold (ms)", defaultComparison: "GreaterThanThreshold", category: "performance" },
+  // Storage
+  { value: "FreeStorageSpace", label: "Free Storage Space (RDS)", unit: "GB", unitLabel: "Threshold (GB)", defaultComparison: "LessThanThreshold", category: "storage" },
+  { value: "VolumeReadOps", label: "Volume Read Ops (EBS)", unit: "ops", unitLabel: "Threshold (ops)", defaultComparison: "GreaterThanThreshold", category: "storage" },
+  { value: "VolumeWriteOps", label: "Volume Write Ops (EBS)", unit: "ops", unitLabel: "Threshold (ops)", defaultComparison: "GreaterThanThreshold", category: "storage" },
+  // Cost
+  { value: "MonthlyBudget", label: "Monthly Budget", unit: "$", unitLabel: "Budget Limit ($)", defaultComparison: "GreaterThanThreshold", category: "cost" },
+  { value: "ServiceBudget", label: "Service Budget", unit: "$", unitLabel: "Budget Limit ($)", defaultComparison: "GreaterThanThreshold", category: "cost" },
+  // Agent-Required
+  { value: "MemoryUtilization", label: "Memory Utilization", unit: "%", unitLabel: "Threshold (%)", defaultComparison: "GreaterThanThreshold", category: "agent", requiresAgent: true },
+  { value: "DiskUtilization", label: "Disk Utilization", unit: "%", unitLabel: "Threshold (%)", defaultComparison: "GreaterThanThreshold", category: "agent", requiresAgent: true },
+];
 
 export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: NewAlertRuleDialogProps) {
   const [formData, setFormData] = useState({
@@ -25,35 +65,47 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
     metric: "",
     threshold: "",
     duration: "5",
-    severity: "warning"
+    severity: "warning",
+    comparison_operator: "GreaterThanThreshold",
   });
+
+  const selectedMetric = useMemo(
+    () => METRICS.find(m => m.value === formData.metric),
+    [formData.metric]
+  );
+
+  const isBudgetMetric = selectedMetric?.category === "cost";
+
+  const handleMetricChange = (value: string) => {
+    const metric = METRICS.find(m => m.value === value);
+    setFormData({
+      ...formData,
+      metric: value,
+      comparison_operator: metric?.defaultComparison || "GreaterThanThreshold",
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const success = await onSubmit(formData);
     if (success) {
       onOpenChange(false);
-      setFormData({
-        name: "",
-        metric: "",
-        threshold: "",
-        duration: "5",
-        severity: "warning"
-      });
+      setFormData({ name: "", metric: "", threshold: "", duration: "5", severity: "warning", comparison_operator: "GreaterThanThreshold" });
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[540px]">
         <DialogHeader>
           <DialogTitle>Create New Alert Rule</DialogTitle>
           <DialogDescription>
-            Configure a new CloudWatch alarm to monitor your AWS resources.
+            Configure a CloudWatch alarm or AWS Budget to monitor your resources.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div className="grid gap-4 py-4">
+            {/* Rule Name */}
             <div className="grid gap-2">
               <Label htmlFor="name">Rule Name</Label>
               <Input
@@ -65,64 +117,111 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
                 disabled={loading}
               />
             </div>
-            
+
+            {/* Metric with grouped categories */}
             <div className="grid gap-2">
               <Label htmlFor="metric">Metric</Label>
-              <Select 
-                value={formData.metric} 
-                onValueChange={(value) => setFormData({ ...formData, metric: value })}
-                required
-                disabled={loading}
-              >
+              <Select value={formData.metric} onValueChange={handleMetricChange} required disabled={loading}>
                 <SelectTrigger id="metric">
                   <SelectValue placeholder="Select metric" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="CPUUtilization">CPU Utilization</SelectItem>
-                  <SelectItem value="MemoryUtilization">Memory Utilization</SelectItem>
-                  <SelectItem value="DiskUtilization">Disk Utilization</SelectItem>
-                  <SelectItem value="NetworkIn">Network In</SelectItem>
-                  <SelectItem value="NetworkOut">Network Out</SelectItem>
+                  {Object.entries(METRIC_CATEGORIES).map(([key, cat]) => (
+                    <SelectGroup key={key}>
+                      <SelectLabel className="flex items-center gap-2">
+                        {cat.label}
+                        {cat.badge === "free" ? (
+                          <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30 text-[10px] px-1.5 py-0">Free</Badge>
+                        ) : (
+                          <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px] px-1.5 py-0">CW Agent</Badge>
+                        )}
+                      </SelectLabel>
+                      {METRICS.filter(m => m.category === key).map(m => (
+                        <SelectItem key={m.value} value={m.value}>
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  ))}
                 </SelectContent>
               </Select>
+              {selectedMetric?.requiresAgent && (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  Requires CloudWatch Agent installed on instances
+                </p>
+              )}
             </div>
-            
+
+            {/* Threshold with dynamic label */}
             <div className="grid gap-2">
-              <Label htmlFor="threshold">Threshold (%)</Label>
+              <Label htmlFor="threshold">{selectedMetric?.unitLabel || "Threshold"}</Label>
               <Input
                 id="threshold"
                 type="number"
-                placeholder="e.g., 80"
+                placeholder={isBudgetMetric ? "e.g., 500" : "e.g., 80"}
                 min="0"
-                max="100"
+                step={isBudgetMetric ? "1" : "any"}
                 value={formData.threshold}
                 onChange={(e) => setFormData({ ...formData, threshold: e.target.value })}
                 required
                 disabled={loading}
               />
             </div>
-            
+
+            {/* Comparison Operator */}
             <div className="grid gap-2">
-              <Label htmlFor="duration">Duration (minutes)</Label>
-              <Input
-                id="duration"
-                type="number"
-                placeholder="e.g., 5"
-                min="1"
-                value={formData.duration}
-                onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
-                required
-                disabled={loading}
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="severity">Severity</Label>
-              <Select 
-                value={formData.severity} 
-                onValueChange={(value) => setFormData({ ...formData, severity: value })}
+              <Label>Comparison</Label>
+              <Select
+                value={formData.comparison_operator}
+                onValueChange={(v) => setFormData({ ...formData, comparison_operator: v })}
                 disabled={loading}
               >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="GreaterThanThreshold">Greater than (&gt;)</SelectItem>
+                  <SelectItem value="GreaterThanOrEqualToThreshold">Greater than or equal (≥)</SelectItem>
+                  <SelectItem value="LessThanThreshold">Less than (&lt;)</SelectItem>
+                  <SelectItem value="LessThanOrEqualToThreshold">Less than or equal (≤)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Evaluation Period - only for non-budget metrics */}
+            {!isBudgetMetric && (
+              <div className="grid gap-2">
+                <TooltipProvider>
+                  <div className="flex items-center gap-1.5">
+                    <Label htmlFor="duration">Evaluation Period (minutes)</Label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-[260px]">
+                        <p>How many minutes of data to average before checking the threshold. A longer period reduces false positives.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                </TooltipProvider>
+                <Input
+                  id="duration"
+                  type="number"
+                  placeholder="e.g., 5"
+                  min="1"
+                  value={formData.duration}
+                  onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                  required
+                  disabled={loading}
+                />
+              </div>
+            )}
+
+            {/* Severity */}
+            <div className="grid gap-2">
+              <Label htmlFor="severity">Severity</Label>
+              <Select value={formData.severity} onValueChange={(v) => setFormData({ ...formData, severity: v })} disabled={loading}>
                 <SelectTrigger id="severity">
                   <SelectValue />
                 </SelectTrigger>
@@ -133,8 +232,16 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Cost note */}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
+              <CheckCircle className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+              {isBudgetMetric
+                ? "AWS Budgets are free to create. You'll receive alerts when spend exceeds your limit."
+                : "CloudWatch alarms use the free tier. Drift detection scans are also free."}
+            </div>
           </div>
-          
+
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel

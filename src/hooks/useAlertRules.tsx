@@ -12,6 +12,7 @@ export interface AlertRule {
   severity: string;
   enabled: boolean;
   cloudwatch_alarm_name: string | null;
+  comparison_operator: string;
   created_at: string;
   updated_at: string;
 }
@@ -54,6 +55,7 @@ export function useAlertRules() {
     threshold: string;
     duration: string;
     severity: string;
+    comparison_operator: string;
   }) => {
     try {
       setActionLoading('create');
