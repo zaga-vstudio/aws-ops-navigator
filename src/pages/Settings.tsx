@@ -37,6 +37,91 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useAWSData } from "@/hooks/useAWSData";
 
+const TIMEZONES = [
+  { group: "Americas", items: [
+    { value: "America/New_York", label: "Eastern Time (US & Canada)" },
+    { value: "America/Chicago", label: "Central Time (US & Canada)" },
+    { value: "America/Denver", label: "Mountain Time (US & Canada)" },
+    { value: "America/Los_Angeles", label: "Pacific Time (US & Canada)" },
+    { value: "America/Anchorage", label: "Alaska" },
+    { value: "Pacific/Honolulu", label: "Hawaii" },
+    { value: "America/Phoenix", label: "Arizona" },
+    { value: "America/Toronto", label: "Eastern Time (Canada)" },
+    { value: "America/Vancouver", label: "Pacific Time (Canada)" },
+    { value: "America/Halifax", label: "Atlantic Time (Canada)" },
+    { value: "America/St_Johns", label: "Newfoundland" },
+    { value: "America/Mexico_City", label: "Mexico City" },
+    { value: "America/Bogota", label: "Bogota" },
+    { value: "America/Lima", label: "Lima" },
+    { value: "America/Santiago", label: "Santiago" },
+    { value: "America/Buenos_Aires", label: "Buenos Aires" },
+    { value: "America/Sao_Paulo", label: "São Paulo" },
+    { value: "America/Caracas", label: "Caracas" },
+  ]},
+  { group: "Europe", items: [
+    { value: "Europe/London", label: "London (GMT)" },
+    { value: "Europe/Dublin", label: "Dublin" },
+    { value: "Europe/Paris", label: "Paris" },
+    { value: "Europe/Berlin", label: "Berlin" },
+    { value: "Europe/Madrid", label: "Madrid" },
+    { value: "Europe/Rome", label: "Rome" },
+    { value: "Europe/Amsterdam", label: "Amsterdam" },
+    { value: "Europe/Brussels", label: "Brussels" },
+    { value: "Europe/Zurich", label: "Zurich" },
+    { value: "Europe/Vienna", label: "Vienna" },
+    { value: "Europe/Stockholm", label: "Stockholm" },
+    { value: "Europe/Oslo", label: "Oslo" },
+    { value: "Europe/Helsinki", label: "Helsinki" },
+    { value: "Europe/Warsaw", label: "Warsaw" },
+    { value: "Europe/Prague", label: "Prague" },
+    { value: "Europe/Bucharest", label: "Bucharest" },
+    { value: "Europe/Athens", label: "Athens" },
+    { value: "Europe/Istanbul", label: "Istanbul" },
+    { value: "Europe/Moscow", label: "Moscow" },
+    { value: "Europe/Kiev", label: "Kyiv" },
+  ]},
+  { group: "Asia", items: [
+    { value: "Asia/Dubai", label: "Dubai" },
+    { value: "Asia/Riyadh", label: "Riyadh" },
+    { value: "Asia/Tehran", label: "Tehran" },
+    { value: "Asia/Karachi", label: "Karachi" },
+    { value: "Asia/Kolkata", label: "Kolkata / Mumbai" },
+    { value: "Asia/Colombo", label: "Colombo" },
+    { value: "Asia/Dhaka", label: "Dhaka" },
+    { value: "Asia/Bangkok", label: "Bangkok" },
+    { value: "Asia/Jakarta", label: "Jakarta" },
+    { value: "Asia/Singapore", label: "Singapore" },
+    { value: "Asia/Kuala_Lumpur", label: "Kuala Lumpur" },
+    { value: "Asia/Hong_Kong", label: "Hong Kong" },
+    { value: "Asia/Shanghai", label: "Beijing / Shanghai" },
+    { value: "Asia/Taipei", label: "Taipei" },
+    { value: "Asia/Seoul", label: "Seoul" },
+    { value: "Asia/Tokyo", label: "Tokyo" },
+    { value: "Asia/Manila", label: "Manila" },
+  ]},
+  { group: "Africa", items: [
+    { value: "Africa/Cairo", label: "Cairo" },
+    { value: "Africa/Lagos", label: "Lagos" },
+    { value: "Africa/Nairobi", label: "Nairobi" },
+    { value: "Africa/Johannesburg", label: "Johannesburg" },
+    { value: "Africa/Casablanca", label: "Casablanca" },
+    { value: "Africa/Accra", label: "Accra" },
+  ]},
+  { group: "Oceania", items: [
+    { value: "Australia/Sydney", label: "Sydney" },
+    { value: "Australia/Melbourne", label: "Melbourne" },
+    { value: "Australia/Brisbane", label: "Brisbane" },
+    { value: "Australia/Perth", label: "Perth" },
+    { value: "Australia/Adelaide", label: "Adelaide" },
+    { value: "Australia/Darwin", label: "Darwin" },
+    { value: "Pacific/Auckland", label: "Auckland" },
+    { value: "Pacific/Fiji", label: "Fiji" },
+  ]},
+  { group: "Other", items: [
+    { value: "UTC", label: "UTC" },
+  ]},
+];
+
 export default function Settings() {
   const [saving, setSaving] = useState(false);
   const { theme, setTheme } = useTheme();
@@ -46,6 +131,13 @@ export default function Settings() {
     mobile: true,
     marketing: false
   });
+
+  // Profile state
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
+  const [timezone, setTimezone] = useState("UTC");
 
   // Security dialogs state
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -58,6 +150,35 @@ export default function Settings() {
   // Fetch AWS data for IaC export
   const { data: awsData, costExplorerState, enableCostExplorer, disableCostExplorer } = useAWSData();
 
+  // Load profile and auth data
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        setEmail(user.email || "");
+
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("display_name, company, timezone")
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (profile) {
+          setDisplayName(profile.display_name || "");
+          setCompany(profile.company || "");
+          setTimezone((profile as any).timezone || "UTC");
+        }
+      } catch (err) {
+        console.error("Failed to load profile:", err);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+    loadProfile();
+  }, []);
+
   // Check if 2FA is enabled
   useEffect(() => {
     const check2FA = async () => {
@@ -69,9 +190,28 @@ export default function Settings() {
     check2FA();
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    setTimeout(() => setSaving(false), 2000);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not logged in");
+
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          display_name: displayName || null,
+          company: company || null,
+          timezone,
+        } as any)
+        .eq("user_id", user.id);
+
+      if (error) throw error;
+      toast.success("Profile saved successfully");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save profile");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handle2FAToggle = async (checked: boolean) => {
@@ -143,37 +283,46 @@ export default function Settings() {
                       <CardDescription>Update your personal information and preferences</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="displayName">Display Name</Label>
-                          <Input id="displayName" defaultValue="John Doe" />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="email">Email</Label>
-                          <Input id="email" type="email" defaultValue="john.doe@company.com" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="company">Company</Label>
-                          <Input id="company" defaultValue="TechCorp Inc." />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="timezone">Timezone</Label>
-                          <Select defaultValue="america/new_york">
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="america/new_york">Eastern Time</SelectItem>
-                              <SelectItem value="america/chicago">Central Time</SelectItem>
-                              <SelectItem value="america/denver">Mountain Time</SelectItem>
-                              <SelectItem value="america/los_angeles">Pacific Time</SelectItem>
-                              <SelectItem value="utc">UTC</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
+                      {profileLoading ? (
+                        <p className="text-sm text-muted-foreground">Loading profile...</p>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="displayName">Display Name</Label>
+                              <Input id="displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="email">Email</Label>
+                              <Input id="email" type="email" value={email} disabled className="opacity-70" />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="company">Company</Label>
+                              <Input id="company" value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Your company" />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="timezone">Timezone</Label>
+                              <Select value={timezone} onValueChange={setTimezone}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select timezone" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {TIMEZONES.map((group) => (
+                                    <div key={group.group}>
+                                      <p className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{group.group}</p>
+                                      {group.items.map((tz) => (
+                                        <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                                      ))}
+                                    </div>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+                        </>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
