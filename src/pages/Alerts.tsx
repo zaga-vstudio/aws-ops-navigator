@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { useAlertRules } from "@/hooks/useAlertRules";
 import { useNotificationPreferences, NotificationChannel } from "@/hooks/useNotificationPreferences";
 import { useDriftDetection } from "@/hooks/useDriftDetection";
@@ -41,7 +41,7 @@ import { DriftScheduleSettings } from "@/components/DriftScheduleSettings";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Alerts() {
-  const { data, loading: awsLoading, error, refetch } = useAWSData();
+  const { data, loading: awsLoading, error, refetch } = useAWSDataContext();
   const { rules, loading: rulesLoading, actionLoading, createRule, deleteRule, toggleRule, fetchRules } = useAlertRules();
   const { channels, loading: prefsLoading, saving, updateChannel, toggleChannel } = useNotificationPreferences();
   const { 

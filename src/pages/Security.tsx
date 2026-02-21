@@ -1,5 +1,5 @@
 import { Header } from "@/components/Header";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { NotificationBadge } from "@/components/NotificationBadge";
@@ -38,7 +38,7 @@ import { formatDistanceToNow } from "date-fns";
 // Mock IAM users removed - now using real data from AWS
 
 export default function Security() {
-  const { data: awsData, loading, error, refetch } = useAWSData();
+  const { data: awsData, loading, error, refetch } = useAWSDataContext();
   
   const securityGroups = awsData?.securityGroups || [];
   const alarms = awsData?.alarms || [];

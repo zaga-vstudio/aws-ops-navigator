@@ -1,5 +1,5 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
-import { useAWSData } from './useAWSData';
+import { useAWSDataContext } from '@/contexts/AWSDataContext';
 
 export interface Notification {
   id: string;
@@ -24,7 +24,7 @@ const loadDismissedIds = (): string[] => {
 };
 
 export const useNotifications = () => {
-  const { data: awsData } = useAWSData();
+  const { data: awsData } = useAWSDataContext();
   const [dismissedIds, setDismissedIds] = useState<string[]>(loadDismissedIds);
 
   useEffect(() => {

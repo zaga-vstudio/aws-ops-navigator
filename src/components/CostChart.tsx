@@ -1,11 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, TrendingUp } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { useMemo } from "react";
 
 export const CostChart = () => {
-  const { data, loading } = useAWSData();
+  const { data, loading } = useAWSDataContext();
   
   const currentCost = data?.metrics.estimatedCost || 0;
   

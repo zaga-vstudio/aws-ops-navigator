@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { Header } from "@/components/Header";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { NotificationBadge } from "@/components/NotificationBadge";
@@ -53,7 +53,7 @@ const filterHistoricalByRange = (historicalCosts: { month: string; cost: number 
 export default function CostManagement() {
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState("6months");
-  const { data: awsData, loading, refetch, refetchWithForceRefreshCost, costExplorerState, enableCostExplorer, disableCostExplorer } = useAWSData();
+  const { data: awsData, loading, refetch, refetchWithForceRefreshCost, costExplorerState, enableCostExplorer, disableCostExplorer } = useAWSDataContext();
 
   const isCostExplorerDisabled = awsData?.costData?.costExplorerDisabled === true;
   const isHistoricalData = awsData?.costData?.isHistoricalData === true;

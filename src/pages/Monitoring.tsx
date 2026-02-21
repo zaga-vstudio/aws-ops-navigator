@@ -14,7 +14,7 @@ import {
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { useMonitoringData, MetricDataPoint } from "@/hooks/useMonitoringData";
 import { ComplianceDashboard } from "@/components/ComplianceDashboard";
 import { CostBadge } from "@/components/CostBadge";
@@ -22,7 +22,7 @@ import { MonitoringResourceCards } from "@/components/monitoring/MonitoringResou
 import { MonitoringInstanceList } from "@/components/monitoring/MonitoringInstanceList";
 
 export default function Monitoring() {
-  const { data, loading, error, refetch } = useAWSData();
+  const { data, loading, error, refetch } = useAWSDataContext();
   const { data: metricsData, loading: metricsLoading, fetchMetrics } = useMonitoringData();
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState("24h");

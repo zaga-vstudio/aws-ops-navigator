@@ -1,14 +1,16 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { MetricCard } from "@/components/MetricCard";
 import { ResourceOverview } from "@/components/ResourceOverview";
 import { CostChart } from "@/components/CostChart";
 import { ActivityLog } from "@/components/ActivityLog";
+import { LaunchEC2Dialog } from "@/components/LaunchEC2Dialog";
+import { CreateRDSDialog } from "@/components/CreateRDSDialog";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
-import { useAWSData } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { 
   Server, 
   Database, 
@@ -23,8 +25,10 @@ import { Button } from "@/components/ui/button";
 
 const Dashboard = () => {
   const { user, loading } = useAuth();
-  const { data: awsData, loading: awsLoading, refetch } = useAWSData();
+  const { data: awsData, loading: awsLoading, refetch } = useAWSDataContext();
   const navigate = useNavigate();
+  const [launchEC2Open, setLaunchEC2Open] = useState(false);
+  const [createRDSOpen, setCreateRDSOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -144,36 +148,48 @@ const Dashboard = () => {
                     <h3 className="text-lg font-semibold text-foreground mb-4">
                       Quick Actions
                     </h3>
-                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
-                      <button className="flex items-center gap-3 p-3 text-left bg-background border border-border/50 rounded-lg hover:bg-accent/50 transition-colors">
-                        <Server className="h-5 w-5 text-primary flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">Launch EC2</p>
-                          <p className="text-xs text-muted-foreground">Create new instance</p>
-                        </div>
-                      </button>
-                      <button className="flex items-center gap-3 p-3 text-left bg-background border border-border/50 rounded-lg hover:bg-accent/50 transition-colors">
-                        <Database className="h-5 w-5 text-cloud-purple flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">Create RDS</p>
-                          <p className="text-xs text-muted-foreground">Setup database</p>
-                        </div>
-                      </button>
-                      <button className="flex items-center gap-3 p-3 text-left bg-background border border-border/50 rounded-lg hover:bg-accent/50 transition-colors">
-                        <DollarSign className="h-5 w-5 text-cloud-cyan flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">Cost Analysis</p>
-                          <p className="text-xs text-muted-foreground">View spending</p>
-                        </div>
-                      </button>
-                      <button className="flex items-center gap-3 p-3 text-left bg-background border border-border/50 rounded-lg hover:bg-accent/50 transition-colors">
-                        <Activity className="h-5 w-5 text-cloud-green flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">Monitor</p>
-                          <p className="text-xs text-muted-foreground">View metrics</p>
-                        </div>
-                      </button>
-                    </div>
+                     <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+                       <button 
+                         onClick={() => setLaunchEC2Open(true)}
+                         className="flex items-center gap-3 p-3 text-left bg-background border border-border/50 rounded-lg hover:bg-accent/50 transition-colors"
+                       >
+                         <Server className="h-5 w-5 text-primary flex-shrink-0" />
+                         <div className="min-w-0">
+                           <p className="font-medium text-foreground truncate">Launch EC2</p>
+                           <p className="text-xs text-muted-foreground">Create new instance</p>
+                         </div>
+                       </button>
+                       <button 
+                         onClick={() => setCreateRDSOpen(true)}
+                         className="flex items-center gap-3 p-3 text-left bg-background border border-border/50 rounded-lg hover:bg-accent/50 transition-colors"
+                       >
+                         <Database className="h-5 w-5 text-cloud-purple flex-shrink-0" />
+                         <div className="min-w-0">
+                           <p className="font-medium text-foreground truncate">Create RDS</p>
+                           <p className="text-xs text-muted-foreground">Setup database</p>
+                         </div>
+                       </button>
+                       <button 
+                         onClick={() => navigate('/costs')}
+                         className="flex items-center gap-3 p-3 text-left bg-background border border-border/50 rounded-lg hover:bg-accent/50 transition-colors"
+                       >
+                         <DollarSign className="h-5 w-5 text-cloud-cyan flex-shrink-0" />
+                         <div className="min-w-0">
+                           <p className="font-medium text-foreground truncate">Cost Analysis</p>
+                           <p className="text-xs text-muted-foreground">View spending</p>
+                         </div>
+                       </button>
+                       <button 
+                         onClick={() => navigate('/monitoring')}
+                         className="flex items-center gap-3 p-3 text-left bg-background border border-border/50 transition-colors"
+                       >
+                         <Activity className="h-5 w-5 text-cloud-green flex-shrink-0" />
+                         <div className="min-w-0">
+                           <p className="font-medium text-foreground truncate">Monitor</p>
+                           <p className="text-xs text-muted-foreground">View metrics</p>
+                         </div>
+                       </button>
+                     </div>
                   </div>
                 </div>
               </div>
@@ -181,6 +197,17 @@ const Dashboard = () => {
           </main>
         </div>
       </div>
+
+      <LaunchEC2Dialog 
+        open={launchEC2Open} 
+        onOpenChange={setLaunchEC2Open} 
+        onSuccess={refetch} 
+      />
+      <CreateRDSDialog 
+        open={createRDSOpen} 
+        onOpenChange={setCreateRDSOpen} 
+        onSuccess={refetch} 
+      />
     </SidebarProvider>
   );
 };

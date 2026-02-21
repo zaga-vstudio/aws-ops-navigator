@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Server, Database, Network, DollarSign } from "lucide-react";
-import { useAWSData, type EC2Instance, type RDSDatabase, type S3Bucket } from "@/hooks/useAWSData";
+import { useAWSDataContext } from "@/contexts/AWSDataContext";
 
 interface DisplayResource {
   id: string;
@@ -13,7 +13,7 @@ interface DisplayResource {
 }
 
 export const ResourceOverview = () => {
-  const { data, loading, error } = useAWSData();
+  const { data, loading, error } = useAWSDataContext();
 
   // Transform AWS data into display format
   const getDisplayResources = (): DisplayResource[] => {
