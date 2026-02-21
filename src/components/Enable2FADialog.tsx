@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Shield, Copy, Check } from "lucide-react";
+import { Shield, Copy, Check, RefreshCw, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Enable2FADialogProps {
@@ -14,38 +14,108 @@ interface Enable2FADialogProps {
   onSuccess: () => void;
 }
 
+const convertSvgToPng = (svgDataUri: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 200;
+      canvas.height = 200;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas context not available"));
+        return;
+      }
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, 200, 200);
+      ctx.drawImage(img, 0, 0, 200, 200);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.onerror = () => reject(new Error("Failed to load QR code image"));
+    img.src = svgDataUri;
+  });
+};
+
+const formatSecret = (secret: string): string => {
+  return secret.replace(/(.{4})/g, "$1 ").trim();
+};
+
 export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADialogProps) {
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<"enroll" | "verify">("enroll");
+  const [step, setStep] = useState<"enroll" | "verify" | "error">("enroll");
   const [qrCode, setQrCode] = useState<string>("");
   const [secret, setSecret] = useState<string>("");
   const [verifyCode, setVerifyCode] = useState("");
   const [copied, setCopied] = useState(false);
+  const [enrollError, setEnrollError] = useState<string>("");
 
-  useEffect(() => {
-    if (open && step === "enroll") {
-      enrollMFA();
-    }
-  }, [open]);
+  const resetState = useCallback(() => {
+    setStep("enroll");
+    setQrCode("");
+    setSecret("");
+    setVerifyCode("");
+    setCopied(false);
+    setEnrollError("");
+    setLoading(false);
+  }, []);
 
-  const enrollMFA = async () => {
+  const enrollMFA = useCallback(async () => {
     setLoading(true);
+    setEnrollError("");
     try {
+      // Clean up any stale unverified factors
+      const { data: factors, error: listError } = await supabase.auth.mfa.listFactors();
+      if (listError) throw listError;
+
+      for (const factor of factors.totp) {
+        if (factor.status === "unverified") {
+          await supabase.auth.mfa.unenroll({ factorId: factor.id });
+        }
+      }
+
+      // Enroll new factor
       const { data, error } = await supabase.auth.mfa.enroll({
-        factorType: 'totp'
+        factorType: "totp",
+        issuer: "CloudHub",
       });
 
       if (error) throw error;
 
-      setQrCode(data.totp.qr_code);
+      // Convert SVG QR to PNG for universal compatibility
+      let qrUri = data.totp.qr_code;
+      try {
+        if (qrUri.startsWith("data:image/svg")) {
+          qrUri = await convertSvgToPng(qrUri);
+        }
+      } catch {
+        // Fall back to SVG if conversion fails
+      }
+
+      setQrCode(qrUri);
       setSecret(data.totp.secret);
       setStep("verify");
     } catch (error: any) {
-      toast.error(error.message || "Failed to setup 2FA");
-      onOpenChange(false);
+      setEnrollError(error.message || "Failed to setup 2FA. Please try again.");
+      setStep("error");
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      resetState();
+      // Small delay to ensure state is reset before enrolling
+      const timer = setTimeout(() => enrollMFA(), 50);
+      return () => clearTimeout(timer);
+    }
+  }, [open, resetState, enrollMFA]);
+
+  const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen) {
+      resetState();
+    }
+    onOpenChange(isOpen);
   };
 
   const verifyMFA = async (e: React.FormEvent) => {
@@ -57,21 +127,21 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
       if (factors.error) throw factors.error;
 
       const totpFactor = factors.data.totp[0];
-      
+
       if (!totpFactor) {
         throw new Error("No TOTP factor found");
       }
 
       const { data, error } = await supabase.auth.mfa.challengeAndVerify({
         factorId: totpFactor.id,
-        code: verifyCode
+        code: verifyCode,
       });
 
       if (error) throw error;
 
       toast.success("Two-factor authentication enabled successfully");
       onSuccess();
-      onOpenChange(false);
+      handleOpenChange(false);
     } catch (error: any) {
       toast.error(error.message || "Invalid verification code");
     } finally {
@@ -87,7 +157,7 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -99,6 +169,32 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
           </DialogDescription>
         </DialogHeader>
 
+        {step === "enroll" && (
+          <div className="flex flex-col items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            <p className="mt-3 text-sm text-muted-foreground">Setting up 2FA...</p>
+          </div>
+        )}
+
+        {step === "error" && (
+          <div className="space-y-4">
+            <Alert className="border-destructive/50">
+              <AlertDescription className="text-destructive">
+                {enrollError}
+              </AlertDescription>
+            </Alert>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={enrollMFA} disabled={loading}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Retry
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+
         {step === "verify" && (
           <form onSubmit={verifyMFA} className="space-y-4">
             <Alert>
@@ -109,20 +205,21 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
 
             <div className="flex flex-col items-center space-y-4">
               {qrCode && (
-                <img 
-                  src={qrCode} 
-                  alt="QR Code" 
-                  className="w-48 h-48 border border-border rounded-lg"
+                <img
+                  src={qrCode}
+                  alt="QR Code"
+                  className="w-48 h-48 border border-border rounded-lg bg-white p-1"
                 />
               )}
-              
+
               <div className="w-full space-y-2">
-                <Label>Or enter this code manually:</Label>
+                <Label>Or enter this code manually in your app:</Label>
+                <p className="text-xs text-muted-foreground">Issuer: <span className="font-medium">CloudHub</span></p>
                 <div className="flex gap-2">
-                  <Input 
-                    value={secret} 
-                    readOnly 
-                    className="font-mono text-sm"
+                  <Input
+                    value={formatSecret(secret)}
+                    readOnly
+                    className="font-mono text-sm tracking-wider"
                   />
                   <Button
                     type="button"
@@ -142,18 +239,28 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
                 id="verifyCode"
                 placeholder="Enter 6-digit code"
                 value={verifyCode}
-                onChange={(e) => setVerifyCode(e.target.value)}
+                onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 maxLength={6}
+                className="text-center text-lg tracking-widest font-mono"
+                autoComplete="one-time-code"
+                autoFocus
                 required
               />
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 Cancel
               </Button>
               <Button type="submit" disabled={loading || verifyCode.length !== 6}>
-                {loading ? "Verifying..." : "Verify & Enable"}
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  "Verify & Enable"
+                )}
               </Button>
             </DialogFooter>
           </form>
