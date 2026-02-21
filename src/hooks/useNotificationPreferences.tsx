@@ -127,19 +127,33 @@ export function useNotificationPreferences() {
         case 'email':
           updateData.email_enabled = config.enabled;
           break;
-        // For webhook channels, encryption is handled server-side
-        // Toggling off clears the encrypted value
         case 'slack':
         case 'discord':
-        case 'webhook':
-          // Disabling clears the value; enabling requires saving via edge function
-          if (!config.enabled) {
+        case 'webhook': {
+          const isMasked = config.value === '••••••••' || config.value === '';
+          if (config.enabled && !isMasked) {
+            // Save new webhook URL via edge function (encrypts server-side)
+            const { data: fnData, error: fnError } = await supabase.functions.invoke('save-webhook', {
+              body: { channelType, webhookUrl: config.value },
+            });
+            if (fnError) throw new Error(fnError.message || 'Failed to save webhook');
+            if (fnData?.error) throw new Error(fnData.error);
+            // Skip the direct DB update below since edge function handled it
+            toast({
+              title: 'Channel Updated',
+              description: 'Webhook URL has been encrypted and saved.',
+            });
+            await fetchPreferences();
+            return true;
+          } else if (!config.enabled) {
+            // Disable: clear the encrypted value
             const field = channelType === 'slack' ? 'encrypted_slack_webhook' 
               : channelType === 'discord' ? 'encrypted_discord_webhook' 
               : 'encrypted_webhook_url';
             (updateData as any)[field] = null;
           }
           break;
+        }
       }
 
       const { error } = await supabase
