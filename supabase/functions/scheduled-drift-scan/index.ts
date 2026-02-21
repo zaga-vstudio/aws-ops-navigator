@@ -272,8 +272,20 @@ async function sendDriftNotifications(
     }
   }
 
+  // Decrypt webhook URLs
+  const decryptWebhook = async (encrypted: any, nonce: any): Promise<string | null> => {
+    if (!encrypted || !nonce) return null;
+    const { data, error } = await supabase.rpc('decrypt_secret', { encrypted_data: encrypted, nonce });
+    if (error) { console.error('Decrypt error:', error); return null; }
+    return data;
+  };
+
+  const slackWebhook = await decryptWebhook(preferences.encrypted_slack_webhook, preferences.webhook_nonce);
+  const discordWebhook = await decryptWebhook(preferences.encrypted_discord_webhook, preferences.webhook_nonce);
+  const webhookUrl = await decryptWebhook(preferences.encrypted_webhook_url, preferences.webhook_nonce);
+
   // Send Slack notification if configured
-  if (preferences.slack_webhook) {
+  if (slackWebhook) {
     try {
       const slackPayload = {
         text: `🔄 *CloudHub Drift Alert*`,
@@ -288,7 +300,7 @@ async function sendDriftNotifications(
         }],
       };
 
-      const slackRes = await fetch(preferences.slack_webhook, {
+      const slackRes = await fetch(slackWebhook, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(slackPayload),
@@ -303,7 +315,7 @@ async function sendDriftNotifications(
   }
 
   // Send Discord notification if configured
-  if (preferences.discord_webhook) {
+  if (discordWebhook) {
     try {
       const discordPayload = {
         embeds: [{
@@ -319,7 +331,7 @@ async function sendDriftNotifications(
         }],
       };
 
-      const discordRes = await fetch(preferences.discord_webhook, {
+      const discordRes = await fetch(discordWebhook, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(discordPayload),
@@ -334,9 +346,9 @@ async function sendDriftNotifications(
   }
 
   // Send custom webhook if configured
-  if (preferences.webhook_url) {
+  if (webhookUrl) {
     try {
-      const webhookRes = await fetch(preferences.webhook_url, {
+      const webhookRes = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -494,16 +506,12 @@ function shouldRunScan(lastRun: string | null, frequency: string): boolean {
   const diffHours = diffMs / (1000 * 60 * 60);
   
   switch (frequency) {
-    case 'hourly':
-      return diffHours >= 1;
-    case 'every_6_hours':
-      return diffHours >= 6;
-    case 'every_12_hours':
-      return diffHours >= 12;
     case 'daily':
       return diffHours >= 24;
     case 'weekly':
       return diffHours >= 168;
+    case 'monthly':
+      return diffHours >= 720;
     default:
       return diffHours >= 24;
   }
@@ -567,7 +575,7 @@ Deno.serve(async (req) => {
     // Scheduled scan - process all users with drift scanning enabled
     const { data: usersWithScanning, error: fetchError } = await supabase
       .from('notification_preferences')
-      .select('user_id, drift_scan_enabled, drift_scan_frequency, drift_scan_last_run, notify_on_drift, email_enabled, slack_webhook, discord_webhook, webhook_url')
+      .select('user_id, drift_scan_enabled, drift_scan_frequency, drift_scan_last_run, notify_on_drift, email_enabled, encrypted_slack_webhook, encrypted_discord_webhook, encrypted_webhook_url, webhook_nonce')
       .eq('drift_scan_enabled', true);
 
     if (fetchError) {

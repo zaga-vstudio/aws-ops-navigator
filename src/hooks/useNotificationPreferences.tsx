@@ -9,9 +9,10 @@ export interface NotificationPreferences {
   notify_on_approval_needed: boolean;
   notify_on_compliance_issue: boolean;
   notify_on_security_alert: boolean;
-  webhook_url: string | null;
-  slack_webhook: string | null;
-  discord_webhook: string | null;
+  encrypted_webhook_url: string | null;
+  encrypted_slack_webhook: string | null;
+  encrypted_discord_webhook: string | null;
+  webhook_nonce: string | null;
 }
 
 export interface NotificationChannel {
@@ -94,22 +95,22 @@ export function useNotificationPreferences() {
         id: "2", 
         type: "slack", 
         name: "Slack Channel", 
-        enabled: !!preferences.slack_webhook, 
-        config: preferences.slack_webhook || "" 
+        enabled: !!preferences.encrypted_slack_webhook, 
+        config: preferences.encrypted_slack_webhook ? "••••••••" : "" 
       },
       { 
         id: "3", 
         type: "discord", 
         name: "Discord Channel", 
-        enabled: !!preferences.discord_webhook, 
-        config: preferences.discord_webhook || "" 
+        enabled: !!preferences.encrypted_discord_webhook, 
+        config: preferences.encrypted_discord_webhook ? "••••••••" : "" 
       },
       { 
         id: "4", 
         type: "webhook", 
         name: "Custom Webhook", 
-        enabled: !!preferences.webhook_url, 
-        config: preferences.webhook_url || "" 
+        enabled: !!preferences.encrypted_webhook_url, 
+        config: preferences.encrypted_webhook_url ? "••••••••" : "" 
       },
     ];
   };
@@ -126,14 +127,18 @@ export function useNotificationPreferences() {
         case 'email':
           updateData.email_enabled = config.enabled;
           break;
+        // For webhook channels, encryption is handled server-side
+        // Toggling off clears the encrypted value
         case 'slack':
-          updateData.slack_webhook = config.enabled ? config.value : null;
-          break;
         case 'discord':
-          updateData.discord_webhook = config.enabled ? config.value : null;
-          break;
         case 'webhook':
-          updateData.webhook_url = config.enabled ? config.value : null;
+          // Disabling clears the value; enabling requires saving via edge function
+          if (!config.enabled) {
+            const field = channelType === 'slack' ? 'encrypted_slack_webhook' 
+              : channelType === 'discord' ? 'encrypted_discord_webhook' 
+              : 'encrypted_webhook_url';
+            (updateData as any)[field] = null;
+          }
           break;
       }
 

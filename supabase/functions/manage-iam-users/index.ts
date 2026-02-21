@@ -184,17 +184,26 @@ serve(async (req) => {
         .eq('user_id', user.id)
         .single();
 
-      if (notifPrefs?.webhook_url) {
-        fetch(notifPrefs.webhook_url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'iam_user_modified',
-            action: requestData.action,
-            userName: requestData.userName,
-            timestamp: new Date().toISOString()
-          })
-        }).catch(err => console.error('Notification webhook failed:', err));
+      if (notifPrefs?.encrypted_webhook_url && notifPrefs?.webhook_nonce) {
+        const serviceClient = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+        );
+        const { data: decryptedUrl } = await serviceClient.rpc('decrypt_secret', { 
+          encrypted_data: notifPrefs.encrypted_webhook_url, nonce: notifPrefs.webhook_nonce 
+        });
+        if (decryptedUrl) {
+          fetch(decryptedUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              event: 'iam_user_modified',
+              action: requestData.action,
+              userName: requestData.userName,
+              timestamp: new Date().toISOString()
+            })
+          }).catch(err => console.error('Notification webhook failed:', err));
+        }
       }
 
       return new Response(JSON.stringify({ 

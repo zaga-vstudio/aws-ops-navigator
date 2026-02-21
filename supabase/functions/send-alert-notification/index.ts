@@ -52,6 +52,23 @@ serve(async (req) => {
       throw new Error('Notification preferences not found');
     }
 
+    // Decrypt webhook URLs using service role client
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const decryptWebhook = async (encrypted: any, nonce: any): Promise<string | null> => {
+      if (!encrypted || !nonce) return null;
+      const { data, error } = await serviceClient.rpc('decrypt_secret', { encrypted_data: encrypted, nonce });
+      if (error) { console.error('Decrypt error:', error); return null; }
+      return data;
+    };
+
+    const slackWebhook = await decryptWebhook(preferences.encrypted_slack_webhook, preferences.webhook_nonce);
+    const discordWebhook = await decryptWebhook(preferences.encrypted_discord_webhook, preferences.webhook_nonce);
+    const webhookUrl = await decryptWebhook(preferences.encrypted_webhook_url, preferences.webhook_nonce);
+
     const results: Record<string, any> = {};
 
     // Send Email via SES if enabled
@@ -114,7 +131,7 @@ serve(async (req) => {
     }
 
     // Send Slack notification if configured
-    if (preferences.slack_webhook) {
+    if (slackWebhook) {
       try {
         const slackPayload = {
           text: `🚨 *CloudHub Alert: ${alert.alertName}*`,
@@ -129,7 +146,7 @@ serve(async (req) => {
           }],
         };
 
-        const slackRes = await fetch(preferences.slack_webhook, {
+        const slackRes = await fetch(slackWebhook, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(slackPayload),
@@ -144,7 +161,7 @@ serve(async (req) => {
     }
 
     // Send Discord notification if configured
-    if (preferences.discord_webhook) {
+    if (discordWebhook) {
       try {
         const discordPayload = {
           embeds: [{
@@ -160,7 +177,7 @@ serve(async (req) => {
           }],
         };
 
-        const discordRes = await fetch(preferences.discord_webhook, {
+        const discordRes = await fetch(discordWebhook, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(discordPayload),
@@ -175,9 +192,9 @@ serve(async (req) => {
     }
 
     // Send custom webhook if configured
-    if (preferences.webhook_url) {
+    if (webhookUrl) {
       try {
-        const webhookRes = await fetch(preferences.webhook_url, {
+        const webhookRes = await fetch(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type: 'alert', alert, timestamp: new Date().toISOString() }),

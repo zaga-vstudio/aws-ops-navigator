@@ -18,12 +18,13 @@ export type Database = {
         Row: {
           cloudwatch_alarm_name: string | null
           created_at: string
+          deleted_at: string | null
           duration: number
           enabled: boolean
           id: string
           metric: string
           name: string
-          severity: string
+          severity: Database["public"]["Enums"]["severity_level"]
           threshold: number
           updated_at: string
           user_id: string
@@ -31,12 +32,13 @@ export type Database = {
         Insert: {
           cloudwatch_alarm_name?: string | null
           created_at?: string
+          deleted_at?: string | null
           duration?: number
           enabled?: boolean
           id?: string
           metric: string
           name: string
-          severity?: string
+          severity?: Database["public"]["Enums"]["severity_level"]
           threshold: number
           updated_at?: string
           user_id: string
@@ -44,12 +46,13 @@ export type Database = {
         Update: {
           cloudwatch_alarm_name?: string | null
           created_at?: string
+          deleted_at?: string | null
           duration?: number
           enabled?: boolean
           id?: string
           metric?: string
           name?: string
-          severity?: string
+          severity?: Database["public"]["Enums"]["severity_level"]
           threshold?: number
           updated_at?: string
           user_id?: string
@@ -62,12 +65,8 @@ export type Database = {
           aws_region: string
           configuration_name: string
           created_at: string
-          encrypted_access_key: string | null
-          encrypted_secret_key: string | null
-          encrypted_session_token: string | null
           id: string
           is_active: boolean | null
-          key_nonce: string | null
           projects: Json | null
           updated_at: string
           user_id: string
@@ -77,12 +76,8 @@ export type Database = {
           aws_region?: string
           configuration_name?: string
           created_at?: string
-          encrypted_access_key?: string | null
-          encrypted_secret_key?: string | null
-          encrypted_session_token?: string | null
           id?: string
           is_active?: boolean | null
-          key_nonce?: string | null
           projects?: Json | null
           updated_at?: string
           user_id: string
@@ -92,12 +87,8 @@ export type Database = {
           aws_region?: string
           configuration_name?: string
           created_at?: string
-          encrypted_access_key?: string | null
-          encrypted_secret_key?: string | null
-          encrypted_session_token?: string | null
           id?: string
           is_active?: boolean | null
-          key_nonce?: string | null
           projects?: Json | null
           updated_at?: string
           user_id?: string
@@ -111,7 +102,8 @@ export type Database = {
           details: Json | null
           id: string
           remediation_type: string
-          status: string
+          status: Database["public"]["Enums"]["remediation_status"]
+          updated_at: string | null
           user_id: string
         }
         Insert: {
@@ -120,7 +112,8 @@ export type Database = {
           details?: Json | null
           id?: string
           remediation_type: string
-          status: string
+          status: Database["public"]["Enums"]["remediation_status"]
+          updated_at?: string | null
           user_id: string
         }
         Update: {
@@ -129,7 +122,8 @@ export type Database = {
           details?: Json | null
           id?: string
           remediation_type?: string
-          status?: string
+          status?: Database["public"]["Enums"]["remediation_status"]
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []
@@ -137,6 +131,7 @@ export type Database = {
       cost_data_cache: {
         Row: {
           anomalies: Json | null
+          aws_region: string
           cached_at: string | null
           created_at: string | null
           expires_at: string | null
@@ -150,6 +145,7 @@ export type Database = {
         }
         Insert: {
           anomalies?: Json | null
+          aws_region?: string
           cached_at?: string | null
           created_at?: string | null
           expires_at?: string | null
@@ -163,6 +159,7 @@ export type Database = {
         }
         Update: {
           anomalies?: Json | null
+          aws_region?: string
           cached_at?: string | null
           created_at?: string | null
           expires_at?: string | null
@@ -182,13 +179,15 @@ export type Database = {
           acknowledged_at: string | null
           changes: Json
           current_hash: string
+          deleted_at: string | null
           detected_at: string
           id: string
           previous_hash: string
           resource_id: string
           resource_name: string | null
           resource_type: string
-          severity: string
+          severity: Database["public"]["Enums"]["severity_level"]
+          updated_at: string | null
           user_id: string
         }
         Insert: {
@@ -196,13 +195,15 @@ export type Database = {
           acknowledged_at?: string | null
           changes: Json
           current_hash: string
+          deleted_at?: string | null
           detected_at?: string
           id?: string
           previous_hash: string
           resource_id: string
           resource_name?: string | null
           resource_type: string
-          severity?: string
+          severity?: Database["public"]["Enums"]["severity_level"]
+          updated_at?: string | null
           user_id: string
         }
         Update: {
@@ -210,13 +211,15 @@ export type Database = {
           acknowledged_at?: string | null
           changes?: Json
           current_hash?: string
+          deleted_at?: string | null
           detected_at?: string
           id?: string
           previous_hash?: string
           resource_id?: string
           resource_name?: string | null
           resource_type?: string
-          severity?: string
+          severity?: Database["public"]["Enums"]["severity_level"]
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: []
@@ -233,7 +236,7 @@ export type Database = {
           network_in_metrics: Json | null
           network_out_metrics: Json | null
           status_check_metrics: Json | null
-          time_range: string
+          time_range: Database["public"]["Enums"]["monitoring_time_range"]
           updated_at: string | null
           user_id: string
         }
@@ -248,7 +251,7 @@ export type Database = {
           network_in_metrics?: Json | null
           network_out_metrics?: Json | null
           status_check_metrics?: Json | null
-          time_range?: string
+          time_range?: Database["public"]["Enums"]["monitoring_time_range"]
           updated_at?: string | null
           user_id: string
         }
@@ -263,7 +266,7 @@ export type Database = {
           network_in_metrics?: Json | null
           network_out_metrics?: Json | null
           status_check_metrics?: Json | null
-          time_range?: string
+          time_range?: Database["public"]["Enums"]["monitoring_time_range"]
           updated_at?: string | null
           user_id?: string
         }
@@ -274,58 +277,67 @@ export type Database = {
           cost_explorer_enabled: boolean | null
           cost_explorer_last_charged_at: string | null
           created_at: string
-          discord_webhook: string | null
           drift_scan_enabled: boolean | null
-          drift_scan_frequency: string | null
+          drift_scan_frequency:
+            | Database["public"]["Enums"]["drift_scan_frequency_enum"]
+            | null
           drift_scan_last_run: string | null
           email_enabled: boolean | null
+          encrypted_discord_webhook: string | null
+          encrypted_slack_webhook: string | null
+          encrypted_webhook_url: string | null
           id: string
           notify_on_approval_needed: boolean | null
           notify_on_compliance_issue: boolean | null
           notify_on_drift: boolean | null
           notify_on_security_alert: boolean | null
-          slack_webhook: string | null
           updated_at: string
           user_id: string
-          webhook_url: string | null
+          webhook_nonce: string | null
         }
         Insert: {
           cost_explorer_enabled?: boolean | null
           cost_explorer_last_charged_at?: string | null
           created_at?: string
-          discord_webhook?: string | null
           drift_scan_enabled?: boolean | null
-          drift_scan_frequency?: string | null
+          drift_scan_frequency?:
+            | Database["public"]["Enums"]["drift_scan_frequency_enum"]
+            | null
           drift_scan_last_run?: string | null
           email_enabled?: boolean | null
+          encrypted_discord_webhook?: string | null
+          encrypted_slack_webhook?: string | null
+          encrypted_webhook_url?: string | null
           id?: string
           notify_on_approval_needed?: boolean | null
           notify_on_compliance_issue?: boolean | null
           notify_on_drift?: boolean | null
           notify_on_security_alert?: boolean | null
-          slack_webhook?: string | null
           updated_at?: string
           user_id: string
-          webhook_url?: string | null
+          webhook_nonce?: string | null
         }
         Update: {
           cost_explorer_enabled?: boolean | null
           cost_explorer_last_charged_at?: string | null
           created_at?: string
-          discord_webhook?: string | null
           drift_scan_enabled?: boolean | null
-          drift_scan_frequency?: string | null
+          drift_scan_frequency?:
+            | Database["public"]["Enums"]["drift_scan_frequency_enum"]
+            | null
           drift_scan_last_run?: string | null
           email_enabled?: boolean | null
+          encrypted_discord_webhook?: string | null
+          encrypted_slack_webhook?: string | null
+          encrypted_webhook_url?: string | null
           id?: string
           notify_on_approval_needed?: boolean | null
           notify_on_compliance_issue?: boolean | null
           notify_on_drift?: boolean | null
           notify_on_security_alert?: boolean | null
-          slack_webhook?: string | null
           updated_at?: string
           user_id?: string
-          webhook_url?: string | null
+          webhook_nonce?: string | null
         }
         Relationships: []
       }
@@ -402,6 +414,7 @@ export type Database = {
           change_details: Json
           change_type: Database["public"]["Enums"]["security_change_type"]
           created_at: string
+          deleted_at: string | null
           executed_at: string | null
           execution_result: Json | null
           id: string
@@ -416,6 +429,7 @@ export type Database = {
           change_details: Json
           change_type: Database["public"]["Enums"]["security_change_type"]
           created_at?: string
+          deleted_at?: string | null
           executed_at?: string | null
           execution_result?: Json | null
           id?: string
@@ -430,6 +444,7 @@ export type Database = {
           change_details?: Json
           change_type?: Database["public"]["Enums"]["security_change_type"]
           created_at?: string
+          deleted_at?: string | null
           executed_at?: string | null
           execution_result?: Json | null
           id?: string
@@ -547,6 +562,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_old_records: {
+        Args: { retention_days?: number }
+        Returns: {
+          deleted_compliance_logs: number
+          deleted_drift_events: number
+          deleted_resource_snapshots: number
+        }[]
+      }
       decrypt_secret: {
         Args: { encrypted_data: string; nonce: string }
         Returns: string
@@ -568,12 +591,16 @@ export type Database = {
         | "rejected"
         | "executed"
         | "failed"
+      drift_scan_frequency_enum: "daily" | "weekly" | "monthly"
+      monitoring_time_range: "1h" | "6h" | "24h" | "7d"
+      remediation_status: "pending" | "success" | "failed"
       security_change_type:
         | "security_group_rule"
         | "iam_user_create"
         | "iam_user_delete"
         | "iam_key_rotation"
         | "compliance_remediation"
+      severity_level: "info" | "warning" | "critical"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -708,6 +735,9 @@ export const Constants = {
         "executed",
         "failed",
       ],
+      drift_scan_frequency_enum: ["daily", "weekly", "monthly"],
+      monitoring_time_range: ["1h", "6h", "24h", "7d"],
+      remediation_status: ["pending", "success", "failed"],
       security_change_type: [
         "security_group_rule",
         "iam_user_create",
@@ -715,6 +745,7 @@ export const Constants = {
         "iam_key_rotation",
         "compliance_remediation",
       ],
+      severity_level: ["info", "warning", "critical"],
     },
   },
 } as const

@@ -50,9 +50,10 @@ export function NotificationPreferencesDialog({
       }
 
       if (data) {
-        setWebhookUrl(data.webhook_url || '');
-        setSlackWebhook(data.slack_webhook || '');
-        setDiscordWebhook(data.discord_webhook || '');
+        // Webhook values are now encrypted server-side; show masked state
+        setWebhookUrl(data.encrypted_webhook_url ? '••••••••' : '');
+        setSlackWebhook(data.encrypted_slack_webhook ? '••••••••' : '');
+        setDiscordWebhook(data.encrypted_discord_webhook ? '••••••••' : '');
         setEmailEnabled(data.email_enabled ?? true);
         setNotifyApproval(data.notify_on_approval_needed ?? true);
         setNotifyCompliance(data.notify_on_compliance_issue ?? true);
@@ -76,9 +77,6 @@ export function NotificationPreferencesDialog({
         .from('notification_preferences')
         .upsert({
           user_id: user.id,
-          webhook_url: webhookUrl || null,
-          slack_webhook: slackWebhook || null,
-          discord_webhook: discordWebhook || null,
           email_enabled: emailEnabled,
           notify_on_approval_needed: notifyApproval,
           notify_on_compliance_issue: notifyCompliance,
