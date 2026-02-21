@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useAWSData } from './useAWSData';
 
 export interface Notification {
@@ -12,10 +12,26 @@ export interface Notification {
   resourceId?: string;
 }
 
+const STORAGE_KEY = 'cloudhub-dismissed-notifications';
+
+const loadDismissedIds = (): string[] => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
 export const useNotifications = () => {
   const { data: awsData } = useAWSData();
+  const [dismissedIds, setDismissedIds] = useState<string[]>(loadDismissedIds);
 
-  const notifications = useMemo<Notification[]>(() => {
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(dismissedIds));
+  }, [dismissedIds]);
+
+  const allNotifications = useMemo<Notification[]>(() => {
     if (!awsData) return [];
 
     const notifs: Notification[] = [];
@@ -81,19 +97,33 @@ export const useNotifications = () => {
         });
       });
 
-    // Sort by severity and timestamp
     return notifs.sort((a, b) => {
       const severityOrder = { critical: 0, warning: 1, info: 2 };
       return severityOrder[a.type] - severityOrder[b.type];
     });
   }, [awsData]);
 
-  const unreadCount = notifications.filter(n => !n.read).length;
-  const criticalCount = notifications.filter(n => n.type === 'critical' && !n.read).length;
+  const notifications = useMemo(
+    () => allNotifications.filter(n => !dismissedIds.includes(n.id)),
+    [allNotifications, dismissedIds]
+  );
+
+  const unreadCount = notifications.length;
+  const criticalCount = notifications.filter(n => n.type === 'critical').length;
+
+  const dismissNotification = useCallback((id: string) => {
+    setDismissedIds(prev => [...prev, id]);
+  }, []);
+
+  const dismissAll = useCallback(() => {
+    setDismissedIds(prev => [...prev, ...allNotifications.map(n => n.id)]);
+  }, [allNotifications]);
 
   return {
     notifications,
     unreadCount,
     criticalCount,
+    dismissNotification,
+    dismissAll,
   };
 };
