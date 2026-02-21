@@ -1,57 +1,50 @@
 
 
-# Fix Two-Factor Authentication QR Code and Enrollment Flow
+# Fix 2FA: QR Code Display and Manual Code Verification
 
-## Problem
-The QR code generated during 2FA setup did not work with your authenticator app. This is caused by two issues:
+## Root Cause
 
-1. **SVG QR Code Compatibility** -- Supabase returns the QR code as an SVG data URI (`data:image/svg+xml`). Many authenticator apps (especially on older phones or certain Android versions) struggle to scan SVG-based QR codes. The fix is to convert it to a PNG using the HTML Canvas API, which produces a rasterized image that all authenticator apps can scan reliably.
+Supabase returns the QR code as **raw SVG XML** (e.g., `<?xml version="1.0"?><svg ...>`), not as a `data:image/svg+xml` data URI. The current conversion code only checks for `data:image/svg` prefix, so:
+- The SVG-to-PNG conversion is skipped entirely
+- The raw SVG string is set as the `<img src>`, which renders nothing useful
+- The QR code appears broken or un-scannable
 
-2. **Stale Unverified Factor** -- Your account already has a leftover unverified TOTP factor from the previous failed attempt. When opening the dialog again, the code tries to enroll a new factor but the old one lingers, causing confusion. The fix is to automatically clean up any unverified factors before enrolling a new one.
-
-## Changes
+## Fix
 
 ### File: `src/components/Enable2FADialog.tsx`
 
-**Cleanup stale factors before enrollment:**
-- Before calling `supabase.auth.mfa.enroll()`, list existing factors and unenroll any with status "unverified"
-- This prevents the "factor already exists" error on retry
+**1. Fix SVG detection to handle raw SVG XML:**
 
-**Convert SVG QR to PNG for universal compatibility:**
-- After receiving the `data:image/svg+xml` QR code URI from Supabase, render it onto an HTML `<canvas>` element
-- Export the canvas as a `data:image/png` base64 URI
-- Display the PNG version instead of the raw SVG
-- This ensures all authenticator apps (Google Authenticator, Authy, Microsoft Authenticator, etc.) can scan it
+Update the `enrollMFA` function to detect both formats:
+- `data:image/svg+xml` data URIs (current check)
+- Raw SVG strings starting with `<?xml` or `<svg`
 
-**Improve the manual entry experience:**
-- Format the TOTP secret in groups of 4 characters (e.g., `ABCD EFGH IJKL MNOP`) for easier manual typing
-- Show the issuer name ("CloudHub") so users know which account the code belongs to in their authenticator app
+When raw SVG is detected, first convert it to a proper data URI (`data:image/svg+xml;charset=utf-8,` + URL-encoded SVG), then pass it to the canvas PNG conversion.
 
-**Reset dialog state properly:**
-- Reset `step`, `qrCode`, `secret`, and `verifyCode` when the dialog closes
-- Fix the `useEffect` to handle re-opening correctly by resetting to "enroll" step on open
+**2. Increase canvas resolution for better scanning:**
 
-**Add error recovery:**
-- If enrollment fails, show a "Retry" button instead of closing the dialog immediately
-- Display a clearer error message explaining what went wrong
+Change from 200x200 to 300x300 pixels for a crisper QR code that authenticator cameras can read more reliably.
 
-### Technical Details
+**3. Add fallback rendering:**
 
-The SVG-to-PNG conversion works as follows:
+If PNG conversion fails, render the SVG directly using `dangerouslySetInnerHTML` inside a container div as a last resort, so the user can at least see and try to scan something.
+
+## Technical Details
+
+The updated conversion flow:
 
 ```text
-1. Receive data:image/svg+xml URI from Supabase
-2. Create an Image element, set src to the SVG URI
-3. On image load, draw it onto a 200x200 Canvas
-4. Call canvas.toDataURL('image/png') to get PNG URI
-5. Display the PNG in the <img> tag
+1. Receive raw SVG XML from Supabase (e.g., "<?xml ...><svg ...>")
+2. Wrap it as a data URI: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg)
+3. Load into an Image element
+4. Draw onto a 300x300 Canvas with white background
+5. Export as data:image/png
+6. Display in <img> tag
 ```
 
-No new dependencies are needed -- Canvas API is built into all browsers.
+Changes are confined to a single file: `src/components/Enable2FADialog.tsx`
 
-### Summary of fixes:
-- Clean up unverified TOTP factors before new enrollment
-- Convert QR code from SVG to PNG for universal scanner compatibility
-- Format the manual secret key for readability
-- Reset dialog state on close/reopen
-- Add retry capability on enrollment failure
+- Update `convertSvgToPng` to accept both raw SVG and data URIs
+- Update `enrollMFA` to always attempt conversion regardless of prefix
+- Increase canvas size to 300x300
+- Add inline SVG fallback if canvas conversion fails
