@@ -17,6 +17,7 @@ export type Database = {
       alert_rules: {
         Row: {
           cloudwatch_alarm_name: string | null
+          comparison_operator: string
           created_at: string
           deleted_at: string | null
           duration: number
@@ -31,6 +32,7 @@ export type Database = {
         }
         Insert: {
           cloudwatch_alarm_name?: string | null
+          comparison_operator?: string
           created_at?: string
           deleted_at?: string | null
           duration?: number
@@ -45,6 +47,7 @@ export type Database = {
         }
         Update: {
           cloudwatch_alarm_name?: string | null
+          comparison_operator?: string
           created_at?: string
           deleted_at?: string | null
           duration?: number
