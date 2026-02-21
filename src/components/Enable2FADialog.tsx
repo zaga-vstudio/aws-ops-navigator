@@ -77,14 +77,19 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
 
       for (const factor of factors.totp) {
         if (factor.status === "unverified") {
-          await supabase.auth.mfa.unenroll({ factorId: factor.id });
+          try {
+            await supabase.auth.mfa.unenroll({ factorId: factor.id });
+          } catch {
+            // Ignore unenroll errors for stale factors
+          }
         }
       }
 
-      // Enroll new factor
+      // Enroll new factor with unique friendly name to avoid conflicts
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
         issuer: "CloudHub",
+        friendlyName: `CloudHub-${Date.now()}`,
       });
 
       if (error) throw error;
