@@ -1,86 +1,59 @@
 
+# Fix Notification Dismiss & Red Badge Sync
 
-# SES Email Setup Section in Settings
+## Problem
 
-Add a guided SES configuration section to the **AWS Config** tab in Settings that helps users verify their SES setup, configure a sender email, and send a test email -- all from within CloudHub.
+When you dismiss notifications by clicking the X button, they disappear from the dropdown list, but the red dot on the bell icon stays. This happens because:
 
-## What the User Will See
+- Dismissing only hides notifications visually inside the dropdown (local component state)
+- The red badge reads from a separate counter that never updates
+- Dismissed notifications are also lost when you navigate to another page
 
-A new "Email Notifications (SES)" card in the AWS Config tab with three steps:
+## Solution
 
-1. **Check SES Status** -- A button that calls AWS SES to report:
-   - Whether the account is in sandbox or production mode
-   - List of verified email addresses/domains
-   - Current sender email setting
+Move the dismissed/read state into the `useNotifications` hook so the red badge and the dropdown share the same source of truth. Add a "Mark All Read" button for convenience.
 
-2. **Set Sender Email** -- An input field to enter and save a verified sender email address (stored as the `SES_SENDER_EMAIL` secret). Includes a dropdown of verified identities fetched from SES for convenience.
+## Changes
 
-3. **Send Test Email** -- A button that sends a test alert email to the logged-in user's email address using the existing `send-ses-email` edge function, confirming the full pipeline works.
+### 1. Update `useNotifications` hook
 
-A status indicator shows the overall readiness: all-green when SES is in production mode, a sender email is set, and a test email succeeds.
+**File:** `src/hooks/useNotifications.tsx`
 
-## Implementation
+- Add `dismissedIds` state inside the hook (shared across all consumers)
+- Expose a `dismissNotification(id)` function and a `dismissAll()` function
+- Filter dismissed notifications out of `unreadCount` so the red badge updates immediately
+- Persist dismissed IDs to `localStorage` so they survive page navigation
 
-### 1. New Edge Function: `ses-status`
+### 2. Update `NotificationsDropdown` component
 
-**File:** `supabase/functions/ses-status/index.ts`
+**File:** `src/components/NotificationsDropdown.tsx`
 
-Uses the user's stored AWS credentials to call:
-- `GetAccountCommand` -- returns sandbox/production status and sending limits
-- `ListIdentitiesCommand` + `GetIdentityVerificationAttributesCommand` -- returns verified emails/domains
+- Remove the local `dismissedIds` state (no longer needed)
+- Call `dismissNotification(id)` from the hook instead
+- Add a "Mark All Read" button in the header when there are unread notifications
+- Use the hook's already-filtered notification list and count
 
-Returns a JSON response with:
-```json
-{
-  "sandboxMode": true,
-  "verifiedIdentities": [
-    { "identity": "user@example.com", "status": "Success" }
-  ],
-  "sendingLimits": { "max24HourSend": 200, "maxSendRate": 1, "sentLast24Hours": 5 }
-}
+### 3. Update `NotificationBadge` component
+
+**File:** `src/components/NotificationBadge.tsx`
+
+- No logic changes needed -- it already reads from `useNotifications`, so once the hook is fixed, sidebar badges will also update correctly when notifications are dismissed
+
+## Technical Details
+
+```text
+Before:
+  useNotifications (read=false always) --> unreadCount (never changes)
+  NotificationsDropdown (local dismissedIds) --> hides items visually only
+
+After:
+  useNotifications (tracks dismissedIds + localStorage) --> unreadCount (updates on dismiss)
+  NotificationsDropdown (calls hook.dismiss) --> both list and badge stay in sync
 ```
 
-### 2. New Component: `SESSetupCard`
-
-**File:** `src/components/SESSetupCard.tsx`
-
-A self-contained card component with:
-- **Status Section**: Shows sandbox vs production, verified identities list, sending quota. Fetched on mount via the `ses-status` edge function.
-- **Sender Email Input**: Text field pre-populated with current `SES_SENDER_EMAIL` if set. Saves to the `notification_preferences` table in a new `ses_sender_email` column.
-- **Test Email Button**: Calls `send-ses-email` with a test payload to the user's own email.
-- **Setup Guide**: Collapsible section with quick links to the AWS SES console for domain verification and production access request.
-
-### 3. Database Migration
-
-Add a `ses_sender_email` column to `notification_preferences`:
-```sql
-ALTER TABLE notification_preferences 
-  ADD COLUMN IF NOT EXISTS ses_sender_email text DEFAULT NULL;
-```
-
-This stores the user's chosen verified sender email. The edge functions will read this value instead of relying solely on the `SES_SENDER_EMAIL` environment variable, making it per-user configurable.
-
-### 4. Update Settings Page
-
-**File:** `src/pages/Settings.tsx`
-
-Add the `<SESSetupCard />` component inside the "AWS Config" tab, below the existing Cost & Billing section, separated by a `<Separator />`.
-
-### 5. Update Edge Functions
-
-**Files:** `supabase/functions/send-ses-email/index.ts` and `supabase/functions/send-alert-notification/index.ts`
-
-Update both to check for a per-user `ses_sender_email` from `notification_preferences` before falling back to the `SES_SENDER_EMAIL` env var.
-
-## File Summary
+### File Summary
 
 | File | Action |
 |---|---|
-| `supabase/functions/ses-status/index.ts` | Create -- new edge function |
-| `src/components/SESSetupCard.tsx` | Create -- new UI component |
-| `src/pages/Settings.tsx` | Edit -- add SESSetupCard to AWS Config tab |
-| `supabase/functions/send-ses-email/index.ts` | Edit -- read per-user sender email |
-| `supabase/functions/send-alert-notification/index.ts` | Edit -- read per-user sender email |
-| Database migration | Add `ses_sender_email` column to `notification_preferences` |
-| `supabase/config.toml` | Add `[functions.ses-status]` with `verify_jwt = false` |
-
+| `src/hooks/useNotifications.tsx` | Edit -- add dismiss state, localStorage persistence, expose dismiss functions |
+| `src/components/NotificationsDropdown.tsx` | Edit -- remove local state, use hook functions, add "Mark All Read" button |
