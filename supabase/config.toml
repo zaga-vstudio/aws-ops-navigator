@@ -53,3 +53,6 @@ verify_jwt = true
 
 [functions.monitoring-metrics]
 verify_jwt = true
+
+[functions.ses-status]
+verify_jwt = false

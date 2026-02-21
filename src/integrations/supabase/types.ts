@@ -294,6 +294,7 @@ export type Database = {
           notify_on_compliance_issue: boolean | null
           notify_on_drift: boolean | null
           notify_on_security_alert: boolean | null
+          ses_sender_email: string | null
           updated_at: string
           user_id: string
           webhook_nonce: string | null
@@ -316,6 +317,7 @@ export type Database = {
           notify_on_compliance_issue?: boolean | null
           notify_on_drift?: boolean | null
           notify_on_security_alert?: boolean | null
+          ses_sender_email?: string | null
           updated_at?: string
           user_id: string
           webhook_nonce?: string | null
@@ -338,6 +340,7 @@ export type Database = {
           notify_on_compliance_issue?: boolean | null
           notify_on_drift?: boolean | null
           notify_on_security_alert?: boolean | null
+          ses_sender_email?: string | null
           updated_at?: string
           user_id?: string
           webhook_nonce?: string | null

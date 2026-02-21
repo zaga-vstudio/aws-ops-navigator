@@ -60,8 +60,16 @@ serve(async (req) => {
       },
     });
 
-    // Get verified sender email from environment or use default
-    const senderEmail = Deno.env.get('SES_SENDER_EMAIL') || `noreply@${region}.amazonses.com`;
+    // Get per-user sender email from notification_preferences, then fallback to env var
+    let senderEmail = Deno.env.get('SES_SENDER_EMAIL') || `noreply@${region}.amazonses.com`;
+    const { data: prefs } = await supabaseClient
+      .from('notification_preferences')
+      .select('ses_sender_email')
+      .eq('user_id', user.id)
+      .single();
+    if (prefs?.ses_sender_email) {
+      senderEmail = prefs.ses_sender_email;
+    }
 
     const command = new SendEmailCommand({
       Source: senderEmail,
