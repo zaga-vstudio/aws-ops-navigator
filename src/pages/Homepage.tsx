@@ -168,36 +168,36 @@ const Homepage = () => {
       </section>
 
       {/* Testimonials Section */}
-      <section className="py-20 px-6 bg-muted/30">
-        <div className="container mx-auto max-w-6xl">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
-              Trusted by teams worldwide
-            </h2>
-            <p className="text-xl text-muted-foreground">
-              See what our customers have to say about CloudHub.
-            </p>
-          </div>
-          <div className="grid md:grid-cols-2 gap-8">
-            {testimonials.map((testimonial, index) =>
-            <Card key={index} className="border-border/50">
-                <CardContent className="p-6">
-                  <div className="flex mb-4">
-                    {[...Array(testimonial.rating)].map((_, i) =>
-                  <Star key={i} className="h-4 w-4 fill-warning text-warning" />
-                  )}
-                  </div>
-                  <p className="text-foreground mb-4">"{testimonial.comment}"</p>
-                  <div>
-                    <p className="font-semibold text-foreground">{testimonial.name}</p>
-                    <p className="text-sm text-muted-foreground">{testimonial.role} at {testimonial.company}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </div>
-      </section>
+      
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
       {/* CTA Section */}
       <section className="py-20 px-6">
@@ -218,7 +218,7 @@ const Homepage = () => {
               </Link>
             </div>
             <div className="flex items-center justify-center gap-6 mt-8 text-sm text-muted-foreground">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">Free month trial
                 <CheckCircle className="h-4 w-4 text-success" />
                 Free 14-day trial
               </div>
