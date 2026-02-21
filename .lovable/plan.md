@@ -1,170 +1,122 @@
 
 
-# Database Schema Refactoring Plan for CloudHub (50K Users)
+# Enhanced Alerts System Plan
 
-## Current State Assessment
+## Overview
+Expand the alerts system with new metric categories, improved UX clarity, and budget alerting capabilities. All CloudWatch describe/alarm operations are free; budget alerts use the AWS Budgets API (also free to create).
 
-After reviewing both prompts against the actual database, here is what already exists and what needs work:
+## Changes
 
-**Already in good shape:**
-- `updated_at` triggers exist on most tables (profiles, aws_configurations, user_setup, user_aws_credentials, security_change_approvals, notification_preferences, security_dashboard_configs, alert_rules, cost_data_cache, monitoring_data_cache)
-- RLS policies are properly configured on all tables
-- Some foreign keys exist (profiles, aws_configurations, user_setup, security_change_approvals, notification_preferences, security_dashboard_configs, compliance_remediation_log, cost_data_cache)
-- Some useful indexes exist (drift_events user/acknowledged, resource_snapshots user/type, cost_data_cache expires_at, monitoring_data_cache user/time_range)
-- ENUMs exist for `approval_status` and `security_change_type`
-- Database is currently empty (0 rows in all operational tables, 1 credential row) -- early stage
+### 1. Expand Alert Metric Categories
 
-**Gaps to address (filtered for 50K-user scale, not hyperscale):**
+Group metrics into clear categories in the "New Alert Rule" dialog:
 
----
+**Performance (Free - CloudWatch Basic)**
+- CPU Utilization (EC2) -- already exists
+- Network In / Network Out (EC2) -- already exists
+- Database Connections (RDS)
+- Read/Write Latency (RDS)
 
-## Phase 1: Missing Foreign Keys with CASCADE
+**Storage (Free - CloudWatch Basic)**
+- Free Storage Space (RDS)
+- Volume Read/Write Ops (EBS)
 
-Tables missing FK to `auth.users(id)`:
-- `alert_rules.user_id`
-- `drift_events.user_id`
-- `monitoring_data_cache.user_id`
-- `resource_snapshots.user_id`
-- `user_aws_credentials.user_id`
+**Cost & Budget (Free - AWS Budgets API)**
+- Monthly Budget -- alert when forecasted or actual spend exceeds a dollar threshold
+- Service Budget -- alert on a specific AWS service exceeding spend
 
-All will get `ON DELETE CASCADE` so user deletion cleans up data automatically.
+**Agent-Required (Paid - needs CloudWatch Agent installed)**
+- Memory Utilization -- already exists, add "(requires CW Agent)" label
+- Disk Utilization -- already exists, add "(requires CW Agent)" label
 
----
+### 2. Improve the "New Alert Rule" Dialog
 
-## Phase 2: New ENUM Types (Selective)
+Current issues to fix:
+- "Duration" is unclear -- rename to "Evaluation Period" with helper text: "How many minutes of data to average before checking the threshold"
+- Threshold label says "(%)" but budget alerts use dollar amounts -- make dynamic based on selected metric
+- No metric grouping -- add category headers in the Select dropdown
 
-Create ENUMs only for columns with stable, well-defined value sets:
+Updated form fields:
+- **Rule Name** (unchanged)
+- **Category** -- new grouped select: Performance / Storage / Cost / Agent-Required
+- **Metric** -- filtered by category, with cost badges for agent-required metrics
+- **Threshold** -- dynamic label: "%" for utilization metrics, "$" for budget metrics, "count" for connection metrics
+- **Evaluation Period** -- renamed from "Duration", with tooltip explaining the concept
+- **Comparison** -- new field: "Greater than" (default) or "Less than" (useful for free storage alerts)
+- **Severity** (unchanged)
 
-| ENUM Name | Values | Replaces |
-|-----------|--------|----------|
-| `severity_level` | `info`, `warning`, `critical` | `alert_rules.severity`, `drift_events.severity` |
-| `drift_scan_frequency` | `daily`, `weekly`, `monthly` | `notification_preferences.drift_scan_frequency` |
-| `remediation_status` | `pending`, `success`, `failed` | `compliance_remediation_log.status` |
-| `monitoring_time_range` | `1h`, `6h`, `24h`, `7d` | `monitoring_data_cache.time_range` |
+### 3. Backend: Budget Alert Support
 
-The `6h` value is included because the monitoring hook already supports it. Values like alert metric names are left as TEXT since they expand frequently.
+Update the `manage-alert-rules` edge function:
 
----
+- Add `@aws-sdk/client-budgets` import for `CreateBudgetCommand` and `DeleteBudgetCommand`
+- When metric category is "cost", create an AWS Budget with notification instead of a CloudWatch alarm
+- Store the budget name in `cloudwatch_alarm_name` column (rename conceptually, keep column for compatibility)
+- Add metric mapping for budget metrics with namespace "AWS/Billing"
+- Add `comparison_operator` field to the `alert_rules` table to support "less than" comparisons (e.g., free storage < 5GB)
 
-## Phase 3: Credential Storage Consolidation
+### 4. Database Changes
 
-Current state: Both `aws_configurations` and `user_aws_credentials` store encrypted credentials. The `get_user_aws_credentials` DB function reads from `user_aws_credentials`. The `aws_configurations` table has 0 rows while `user_aws_credentials` has 1.
+Add one column to `alert_rules`:
+- `comparison_operator TEXT NOT NULL DEFAULT 'GreaterThanThreshold'`
 
-**Decision: Keep `user_aws_credentials` as the single source of truth.** Remove encrypted credential columns (`encrypted_access_key`, `encrypted_secret_key`, `encrypted_session_token`, `key_nonce`) from `aws_configurations`. This table becomes a configuration/metadata store only (region, name, thresholds, projects).
+This supports both "greater than" (CPU > 80%) and "less than" (free storage < 5GB) alert types without breaking existing rules.
 
-This requires updating any edge functions that reference `aws_configurations` credential fields.
+### 5. Active Alerts Tab Improvements
 
----
+- Show the evaluation period alongside each active alarm for context
+- Add a badge distinguishing "CloudWatch" vs "Budget" alert sources
+- Show the comparison operator ("> 80%" vs "< 5 GB")
 
-## Phase 4: Webhook Encryption
+### 6. Cost Transparency
 
-Replace plaintext webhook fields in `notification_preferences`:
+Add CostBadge indicators:
+- Performance & Storage metrics: "Free" badge
+- Agent-required metrics: "Free (requires CW Agent setup)" badge
+- Budget alerts: "Free" badge
+- Note in dialog: "Drift detection scans are free -- AWS Describe API calls have no cost"
 
-| Remove (plaintext) | Add (encrypted) |
-|---|---|
-| `webhook_url` | `encrypted_webhook_url` (bytea) |
-| `slack_webhook` | `encrypted_slack_webhook` (bytea) |
-| `discord_webhook` | `encrypted_discord_webhook` (bytea) |
-| -- | `webhook_nonce` (bytea) |
+## Technical Details
 
-Encryption/decryption will use the same Vault-backed `encrypt_secret`/`decrypt_secret` functions already used for AWS credentials. All 5 edge functions that read these webhooks will be updated to decrypt via the DB function.
+### Files to modify:
+1. **`src/components/NewAlertRuleDialog.tsx`** -- Redesign with metric categories, dynamic threshold labels, comparison operator, evaluation period rename
+2. **`supabase/functions/manage-alert-rules/index.ts`** -- Add budget creation logic, comparison operator support, expanded metric mappings
+3. **`src/hooks/useAlertRules.tsx`** -- Add `comparison_operator` to AlertRule interface
+4. **`src/pages/Alerts.tsx`** -- Update active alerts display with source badges, comparison display
+5. **`supabase/migrations/[timestamp].sql`** -- Add `comparison_operator` column to `alert_rules`
+6. **`src/integrations/supabase/types.ts`** -- Regenerate types
 
----
+### New metric mapping in edge function:
 
-## Phase 5: Smart Indexing (Targeted)
+```text
+Performance (CloudWatch - Free):
+  CPUUtilization       -> AWS/EC2
+  NetworkIn            -> AWS/EC2
+  NetworkOut           -> AWS/EC2
+  DatabaseConnections  -> AWS/RDS
+  ReadLatency          -> AWS/RDS
+  WriteLatency         -> AWS/RDS
 
-New indexes to add (only where query patterns justify them):
+Storage (CloudWatch - Free):
+  FreeStorageSpace     -> AWS/RDS
+  VolumeReadOps        -> AWS/EBS
+  VolumeWriteOps       -> AWS/EBS
 
-| Index | Table | Rationale |
-|-------|-------|-----------|
-| `idx_alert_rules_user_id` | alert_rules | RLS + user-scoped queries |
-| `idx_drift_events_user_created` | drift_events | `ORDER BY detected_at DESC` queries |
-| `idx_drift_events_user_resource` | drift_events | Drift lookup by resource |
-| `idx_resource_snapshots_user_resource` | resource_snapshots | Already exists as unique constraint |
-| `idx_compliance_log_user_created` | compliance_remediation_log | User-scoped log queries |
-| `idx_security_approvals_status` | security_change_approvals | Status filtering |
-| `idx_security_approvals_user_created` | security_change_approvals | User-scoped queries |
-| `idx_monitoring_cache_expires` | monitoring_data_cache | Cache expiry checks |
+Cost (AWS Budgets API):
+  MonthlyBudget        -> budgets:CreateBudget
+  ServiceBudget        -> budgets:CreateBudget
 
-No JSONB indexes (not justified at this scale).
+Agent-Required:
+  MemoryUtilization    -> CWAgent (existing)
+  DiskUtilization      -> CWAgent (existing)
+```
 
----
+### IAM permissions needed (to document in setup):
+- Existing: `cloudwatch:PutMetricAlarm`, `cloudwatch:DeleteAlarms`
+- New: `budgets:CreateBudget`, `budgets:DeleteBudget`, `budgets:ViewBudget`
 
-## Phase 6: Soft Delete for Core Tables
-
-Add `deleted_at TIMESTAMP WITH TIME ZONE DEFAULT NULL` to:
-- `alert_rules`
-- `drift_events`
-- `security_change_approvals`
-
-Update RLS policies to filter out soft-deleted rows (`deleted_at IS NULL`). This enables audit trails without losing data.
-
----
-
-## Phase 7: Cache Table Flexibility
-
-- `monitoring_data_cache`: Already has `UNIQUE(user_id, time_range)` -- good.
-- `cost_data_cache`: Currently has `UNIQUE(user_id)`. Change to `UNIQUE(user_id, aws_region)` by adding an `aws_region TEXT NOT NULL DEFAULT 'us-east-1'` column. This supports future multi-region cost tracking without schema redesign.
-
----
-
-## Phase 8: Retention Strategy (No Partitioning)
-
-For high-volume tables (`drift_events`, `resource_snapshots`, `compliance_remediation_log`), partitioning is premature at 50K users. Instead:
-- Add a database function `cleanup_old_records(retention_days INT DEFAULT 90)` that can be called via a scheduled edge function
-- Deletes rows older than the retention period from these tables
-- Can be triggered weekly via a cron-style edge function
-
----
-
-## Phase 9: Consistency Fixes
-
-- Add missing `updated_at` triggers to `drift_events` and `compliance_remediation_log` (currently missing)
-- Ensure all JSONB defaults use explicit casting (already done)
-- Ensure all boolean defaults are explicit (already done)
-
----
-
-## Technical Details: Migration SQL
-
-The migration will be a single SQL file covering:
-1. New ENUM types
-2. Foreign key additions with CASCADE
-3. Column alterations (TEXT to ENUM with casts)
-4. New columns (deleted_at, aws_region on cost_data_cache, encrypted webhook fields)
-5. Drop old plaintext webhook columns
-6. Remove credential columns from aws_configurations
-7. New indexes
-8. Updated RLS policies for soft delete
-9. Retention cleanup function
-10. Missing triggers
-
-## Edge Function Updates Required
-
-After the migration, these edge functions need code changes:
-- `send-alert-notification` -- decrypt webhooks before use
-- `scheduled-drift-scan` -- decrypt webhooks before use
-- `manage-iam-users` -- decrypt webhook before use
-- `compliance-remediation` -- decrypt webhook before use
-- `manage-security-groups` -- decrypt webhook before use
-- `save-aws-credentials` -- stop writing credentials to aws_configurations
-
-## Frontend Updates Required
-
-- `useNotificationPreferences.tsx` -- webhook values are no longer readable from the client (encrypted). The UI should show a masked "configured" state instead of displaying the URL. Writing new webhook values will go through an edge function that encrypts before storing.
-- Any code referencing `aws_configurations` credential fields needs cleanup.
-
----
-
-## Why This Fits 50K Users
-
-At this scale, the bottlenecks are missing indexes, plaintext secrets, and duplicated credential storage -- not partition scaling or sharding. This plan:
-- Adds referential integrity without complex cascade chains
-- Indexes only the columns that match actual query patterns (RLS on user_id, ORDER BY created_at)
-- Uses ENUMs for data integrity on stable value sets
-- Eliminates credential duplication
-- Encrypts all secrets at rest
-- Provides soft delete for auditability
-- Prepares cache tables for multi-region without over-engineering
-- Avoids partitioning, GIN indexes, and read replicas that would be premature
+### Edge cases:
+- Budget alerts only work in `us-east-1` for consolidated billing -- the edge function will handle region override automatically
+- If user lacks budgets permissions, show a clear error message rather than failing silently
+- Existing alert rules with no `comparison_operator` default to "GreaterThanThreshold" via the DB default
 
