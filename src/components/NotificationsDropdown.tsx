@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Bell, AlertTriangle, AlertCircle, DollarSign, Shield, X } from "lucide-react";
+import { Bell, AlertTriangle, AlertCircle, DollarSign, Shield, X, CheckCheck } from "lucide-react";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useNavigate } from "react-router-dom";
 
@@ -18,15 +17,8 @@ interface NotificationsDropdownProps {
 }
 
 export function NotificationsDropdown({ children }: NotificationsDropdownProps) {
-  const { notifications: realNotifications, unreadCount } = useNotifications();
-  const [dismissedIds, setDismissedIds] = useState<string[]>([]);
+  const { notifications, unreadCount, dismissNotification, dismissAll } = useNotifications();
   const navigate = useNavigate();
-
-  const notifications = realNotifications.filter(n => !dismissedIds.includes(n.id));
-
-  const handleDismiss = (id: string) => {
-    setDismissedIds(prev => [...prev, id]);
-  };
 
   const handleNotificationClick = (notification: typeof notifications[0]) => {
     switch (notification.source) {
@@ -67,11 +59,27 @@ export function NotificationsDropdown({ children }: NotificationsDropdownProps) 
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
         <DropdownMenuLabel className="flex items-center justify-between">
-          <span>Notifications</span>
+          <div className="flex items-center gap-2">
+            <span>Notifications</span>
+            {unreadCount > 0 && (
+              <Badge variant="destructive" className="text-xs">
+                {unreadCount}
+              </Badge>
+            )}
+          </div>
           {unreadCount > 0 && (
-            <Badge variant="destructive" className="text-xs">
-              {unreadCount}
-            </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs text-muted-foreground"
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissAll();
+              }}
+            >
+              <CheckCheck className="h-3 w-3 mr-1" />
+              Mark All Read
+            </Button>
           )}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
@@ -108,7 +116,7 @@ export function NotificationsDropdown({ children }: NotificationsDropdownProps) 
                         className="h-4 w-4 p-0"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleDismiss(notification.id);
+                          dismissNotification(notification.id);
                         }}
                       >
                         <X className="h-3 w-3" />
