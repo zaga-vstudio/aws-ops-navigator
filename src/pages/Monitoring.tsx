@@ -263,7 +263,7 @@ export default function Monitoring() {
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="time" />
                           <YAxis domain={[0, 100]} />
-                          <Tooltip formatter={(value) => [`${value}%`, 'CPU Usage']} />
+                          <Tooltip formatter={(value) => [`${value}%`, 'CPU Usage']} contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))', borderRadius: '8px' }} labelStyle={{ color: 'hsl(var(--foreground))' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
                           <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} />
                         </AreaChart>
                       </ResponsiveContainer>
@@ -296,7 +296,7 @@ export default function Monitoring() {
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="time" />
                             <YAxis />
-                            <Tooltip />
+                             <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))', borderRadius: '8px' }} labelStyle={{ color: 'hsl(var(--foreground))' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
                             <Area type="monotone" dataKey="readOps" name="Read Ops" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.4} />
                             <Area type="monotone" dataKey="writeOps" name="Write Ops" stroke="hsl(var(--warning))" fill="hsl(var(--warning))" fillOpacity={0.4} />
                           </AreaChart>
@@ -338,7 +338,7 @@ export default function Monitoring() {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="time" />
                         <YAxis />
-                        <Tooltip />
+                         <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))', borderRadius: '8px' }} labelStyle={{ color: 'hsl(var(--foreground))' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
                         <Area type="monotone" dataKey="networkIn" name="Inbound (MB/s)" stackId="1" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.6} />
                         <Area type="monotone" dataKey="networkOut" name="Outbound (MB/s)" stackId="1" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.6} />
                       </AreaChart>
@@ -369,7 +369,7 @@ export default function Monitoring() {
                         <CartesianGrid strokeDasharray="3 3" />
                         <XAxis dataKey="time" />
                         <YAxis />
-                        <Tooltip />
+                        <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))', borderRadius: '8px' }} labelStyle={{ color: 'hsl(var(--foreground))' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
                         <Area type="monotone" dataKey="value" name="Failures" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.3} />
                       </AreaChart>
                     </ResponsiveContainer>
