@@ -10,6 +10,24 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { z } from "zod";
 
+const COMMON_PROTOCOLS = [
+  { label: "SSH", protocol: "tcp", fromPort: "22", toPort: "22" },
+  { label: "HTTP", protocol: "tcp", fromPort: "80", toPort: "80" },
+  { label: "HTTPS", protocol: "tcp", fromPort: "443", toPort: "443" },
+  { label: "MySQL/Aurora", protocol: "tcp", fromPort: "3306", toPort: "3306" },
+  { label: "PostgreSQL", protocol: "tcp", fromPort: "5432", toPort: "5432" },
+  { label: "Redis", protocol: "tcp", fromPort: "6379", toPort: "6379" },
+  { label: "RDP", protocol: "tcp", fromPort: "3389", toPort: "3389" },
+  { label: "DNS (TCP)", protocol: "tcp", fromPort: "53", toPort: "53" },
+  { label: "DNS (UDP)", protocol: "udp", fromPort: "53", toPort: "53" },
+  { label: "SMTP", protocol: "tcp", fromPort: "25", toPort: "25" },
+  { label: "NFS", protocol: "tcp", fromPort: "2049", toPort: "2049" },
+  { label: "Custom TCP", protocol: "tcp", fromPort: "", toPort: "" },
+  { label: "Custom UDP", protocol: "udp", fromPort: "", toPort: "" },
+  { label: "All ICMP", protocol: "icmp", fromPort: "", toPort: "" },
+  { label: "All Traffic", protocol: "-1", fromPort: "", toPort: "" },
+];
+
 // Validation schema for security group rules
 const securityGroupSchema = z.object({
   fromPort: z.number().min(0).max(65535).optional(),
@@ -35,11 +53,22 @@ export function ManageSecurityGroupDialog({
   const [loading, setLoading] = useState(false);
   const [action, setAction] = useState<'add' | 'remove'>('add');
   const [ruleType, setRuleType] = useState<'ingress' | 'egress'>('ingress');
+  const [selectedPreset, setSelectedPreset] = useState('');
   const [ipProtocol, setIpProtocol] = useState('tcp');
   const [fromPort, setFromPort] = useState('');
   const [toPort, setToPort] = useState('');
   const [cidrIp, setCidrIp] = useState('');
   const [reason, setReason] = useState('');
+
+  const handlePresetChange = (value: string) => {
+    setSelectedPreset(value);
+    const preset = COMMON_PROTOCOLS.find(p => p.label === value);
+    if (preset) {
+      setIpProtocol(preset.protocol);
+      setFromPort(preset.fromPort);
+      setToPort(preset.toPort);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,16 +168,17 @@ export function ManageSecurityGroupDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="protocol">Protocol</Label>
-            <Select value={ipProtocol} onValueChange={setIpProtocol}>
-              <SelectTrigger id="protocol">
-                <SelectValue />
+            <Label htmlFor="preset">Rule Type / Protocol</Label>
+            <Select value={selectedPreset} onValueChange={handlePresetChange}>
+              <SelectTrigger id="preset">
+                <SelectValue placeholder="Select a common rule..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="tcp">TCP</SelectItem>
-                <SelectItem value="udp">UDP</SelectItem>
-                <SelectItem value="icmp">ICMP</SelectItem>
-                <SelectItem value="-1">All</SelectItem>
+                {COMMON_PROTOCOLS.map((p) => (
+                  <SelectItem key={p.label} value={p.label}>
+                    {p.label}{p.fromPort ? ` (${p.protocol.toUpperCase()} ${p.fromPort}${p.toPort !== p.fromPort ? `-${p.toPort}` : ''})` : ` (${p.protocol === '-1' ? 'All' : p.protocol.toUpperCase()})`}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
