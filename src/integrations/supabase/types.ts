@@ -98,6 +98,39 @@ export type Database = {
         }
         Relationships: []
       }
+      cloudhub_roles: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          max_session_duration_seconds: number
+          role_arn: string
+          role_name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          max_session_duration_seconds?: number
+          role_arn: string
+          role_name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          max_session_duration_seconds?: number
+          role_arn?: string
+          role_name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       compliance_remediation_log: {
         Row: {
           compliance_check_id: string
