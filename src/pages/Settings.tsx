@@ -515,7 +515,7 @@ export default function Settings() {
                         <Sun className="h-5 w-5" />
                         Appearance
                       </CardTitle>
-                      <CardDescription>Customize how CloudHub looks and feels</CardDescription>
+                      <CardDescription>Customize how Clodaro looks and feels</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-6">
                       <div className="space-y-4">

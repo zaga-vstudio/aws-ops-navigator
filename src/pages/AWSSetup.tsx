@@ -169,7 +169,7 @@ const AWSSetup = () => {
             <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-glow rounded-lg flex items-center justify-center">
               <Cloud className="h-5 w-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold text-foreground">CloudHub Setup</h1>
+            <h1 className="text-xl font-bold text-foreground">Clodaro Setup</h1>
           </div>
         </div>
       </header>
@@ -239,7 +239,7 @@ const AWSSetup = () => {
                   <Shield className="h-4 w-4" />
                   <AlertDescription>
                     <strong>Security Note:</strong> Your AWS credentials are encrypted before storage and are never shared with third parties. 
-                    We recommend using IAM users with limited permissions for CloudHub access.
+                    We recommend using IAM users with limited permissions for Clodaro access.
                   </AlertDescription>
                 </Alert>
 
@@ -262,7 +262,7 @@ const AWSSetup = () => {
                         <li>Guarda el Access Key ID y Secret Access Key</li>
                       </ol>
                       <p className="text-xs text-muted-foreground mt-2">
-                        <strong>Importante:</strong> Solo se requiere acceso de lectura. CloudHub nunca modifica tu infraestructura.
+                        <strong>Importante:</strong> Solo se requiere acceso de lectura. Clodaro nunca modifica tu infraestructura.
                       </p>
                     </div>
                   </AlertDescription>
@@ -338,7 +338,7 @@ const AWSSetup = () => {
                   <h3 className="font-semibold">Read-Only Access</h3>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  CloudHub only reads your AWS resources and never makes changes to your infrastructure.
+                  Clodaro only reads your AWS resources and never makes changes to your infrastructure.
                 </p>
               </CardContent>
             </Card>

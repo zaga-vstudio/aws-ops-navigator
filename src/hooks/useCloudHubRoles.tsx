@@ -96,10 +96,10 @@ export function useCloudHubRoles() {
       if (data?.error) throw new Error(data.error);
 
       const msg = deleteFromAWS && data?.awsDeleted
-        ? "Role deleted from CloudHub and AWS."
+        ? "Role deleted from Clodaro and AWS."
         : deleteFromAWS && !data?.awsDeleted
-        ? `Role removed from CloudHub. AWS deletion failed: ${data?.error || "unknown error"}`
-        : "Role removed from CloudHub.";
+        ? `Role removed from Clodaro. AWS deletion failed: ${data?.error || "unknown error"}`
+        : "Role removed from Clodaro.";
 
       toast({ title: "Role Deleted", description: msg });
       await fetchRoles();

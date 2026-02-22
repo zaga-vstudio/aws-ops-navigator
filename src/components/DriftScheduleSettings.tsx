@@ -167,7 +167,7 @@ export function DriftScheduleSettings() {
                 </SelectContent>
               </Select>
               <p className="text-sm text-muted-foreground">
-                How often CloudHub should check for configuration changes
+                How often Clodaro should check for configuration changes
               </p>
             </div>
 

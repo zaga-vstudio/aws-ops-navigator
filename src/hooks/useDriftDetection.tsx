@@ -76,7 +76,7 @@ export function useDriftDetection() {
         
         if (data.newDriftCount > 0) {
           toast.warning(`Detected ${data.newDriftCount} new drift event(s)`, {
-            description: "Resources were changed outside of CloudHub"
+            description: "Resources were changed outside of Clodaro"
           });
         } else {
           toast.success("Drift scan complete", {
