@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -118,6 +118,7 @@ export function ManageIAMPermissionsDialog({
   const [confirmStep, setConfirmStep] = useState(false);
   const [scopeInputs, setScopeInputs] = useState<Record<string, string>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const previewRef = useRef<HTMLDivElement>(null);
 
   // Initialize empty perms
   useEffect(() => {
@@ -557,7 +558,12 @@ export function ManageIAMPermissionsDialog({
 
             {/* Policy JSON Preview */}
             {!loading && !confirmStep && Object.keys(policyPreview).length > 0 && (
-              <Collapsible open={previewOpen} onOpenChange={setPreviewOpen}>
+              <Collapsible open={previewOpen} onOpenChange={(open) => {
+                setPreviewOpen(open);
+                if (open) {
+                  setTimeout(() => previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+                }
+              }}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" size="sm" className="w-full justify-between text-xs">
                     Policy JSON Preview
@@ -565,6 +571,7 @@ export function ManageIAMPermissionsDialog({
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
+                  <div ref={previewRef}></div>
                   <div className="relative">
                     <Button
                       variant="ghost"
