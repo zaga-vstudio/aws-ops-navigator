@@ -12,6 +12,7 @@ import { SecurityGroupDetailsDialog } from "@/components/SecurityGroupDetailsDia
 import { IAMUserDetailsDialog } from "@/components/IAMUserDetailsDialog";
 import { ComplianceDetailsDialog } from "@/components/ComplianceDetailsDialog";
 import { ManageSecurityGroupDialog } from "@/components/ManageSecurityGroupDialog";
+import { CreateSecurityGroupDialog } from "@/components/CreateSecurityGroupDialog";
 import { ManageIAMUserDialog } from "@/components/ManageIAMUserDialog";
 import { RemediationDialog } from "@/components/RemediationDialog";
 import { NotificationPreferencesDialog } from "@/components/NotificationPreferencesDialog";
@@ -56,6 +57,7 @@ export default function Security() {
   const [remediationOpen, setRemediationOpen] = useState(false);
   const [remediationData, setRemediationData] = useState<any>(null);
   const [notificationPrefsOpen, setNotificationPrefsOpen] = useState(false);
+  const [createSecurityGroupOpen, setCreateSecurityGroupOpen] = useState(false);
 
   // Calculate security score based on real AWS data
   const securityScore = useMemo(() => {
@@ -331,9 +333,15 @@ export default function Security() {
 
                 <TabsContent value="security-groups" className="space-y-4">
                   <Card>
-                    <CardHeader>
-                      <CardTitle>Security Groups</CardTitle>
-                      <CardDescription>Manage your EC2 security groups and firewall rules</CardDescription>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <CardTitle>Security Groups</CardTitle>
+                        <CardDescription>Manage your EC2 security groups and firewall rules</CardDescription>
+                      </div>
+                      <Button size="sm" onClick={() => setCreateSecurityGroupOpen(true)}>
+                        <Plus className="h-4 w-4 mr-1" />
+                        Create
+                      </Button>
                     </CardHeader>
                     <CardContent>
                       <Table>
@@ -733,6 +741,13 @@ export default function Security() {
           onOpenChange={setNotificationPrefsOpen}
         />
       )}
+
+      <CreateSecurityGroupDialog
+        open={createSecurityGroupOpen}
+        onOpenChange={setCreateSecurityGroupOpen}
+        vpcs={(awsData?.vpcs || []).map((v: any) => ({ id: v.id, name: v.name }))}
+        onSuccess={refetch}
+      />
     </SidebarProvider>
   );
 }
