@@ -69,6 +69,12 @@ export function CreateSubnetDialog({ open, onOpenChange, vpc, onSuccess }: Props
       return;
     }
 
+    const prefix = parseInt(cidrBlock.split('/')[1]);
+    if (prefix > 28) {
+      toast({ title: "Subnet too small", description: "AWS requires a minimum subnet size of /28 (16 IPs).", variant: "destructive" });
+      return;
+    }
+
     if (!isSubnetInVpc(cidrBlock, vpc.cidrBlock)) {
       toast({ title: "CIDR out of range", description: `Subnet CIDR must be within VPC range ${vpc.cidrBlock}. Try: ${suggestedCidrs[0] || 'a smaller block'}`, variant: "destructive" });
       return;
