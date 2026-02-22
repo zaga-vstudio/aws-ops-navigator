@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SESClient, SendEmailCommand } from "npm:@aws-sdk/client-ses";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +13,7 @@ interface EmailRequest {
   subject: string;
   htmlBody: string;
   textBody?: string;
+  roleName?: string;
 }
 
 serve(async (req) => {
@@ -21,9 +23,7 @@ serve(async (req) => {
 
   try {
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('No authorization header');
-    }
+    if (!authHeader) throw new Error('No authorization header');
 
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -32,32 +32,26 @@ serve(async (req) => {
     );
 
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    if (userError || !user) {
-      throw new Error('Unauthorized');
-    }
+    if (userError || !user) throw new Error('Unauthorized');
 
-    const { to, subject, htmlBody, textBody }: EmailRequest = await req.json();
-    
-    if (!to || !subject || !htmlBody) {
-      throw new Error('Missing required fields: to, subject, htmlBody');
-    }
+    const { to, subject, htmlBody, textBody, roleName }: EmailRequest = await req.json();
+    if (!to || !subject || !htmlBody) throw new Error('Missing required fields: to, subject, htmlBody');
 
-    // Get AWS credentials
     const { data: credentials, error: credError } = await supabaseClient
       .rpc('get_user_aws_credentials', { user_id_param: user.id });
-
-    if (credError || !credentials || credentials.length === 0) {
-      throw new Error('AWS credentials not configured');
-    }
+    if (credError || !credentials || credentials.length === 0) throw new Error('AWS credentials not configured');
 
     const { access_key_id, secret_access_key, region } = credentials[0];
-    
+
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabaseClient, user.id, user.email || '',
+      { accessKeyId: access_key_id, secretAccessKey: secret_access_key },
+      region || 'us-east-1', roleName
+    );
+
     const sesClient = new SESClient({
       region: region || 'us-east-1',
-      credentials: {
-        accessKeyId: access_key_id,
-        secretAccessKey: secret_access_key,
-      },
+      credentials: awsCreds,
     });
 
     // Get per-user sender email from notification_preferences, then fallback to env var

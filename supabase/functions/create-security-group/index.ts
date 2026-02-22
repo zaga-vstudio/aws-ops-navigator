@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { EC2Client, CreateSecurityGroupCommand } from "npm:@aws-sdk/client-ec2@3.451.0";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -22,17 +23,15 @@ serve(async (req) => {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const { groupName, description, vpcId } = await req.json();
+    const { groupName, description, vpcId, roleName } = await req.json();
 
     if (!groupName || !description || !vpcId) {
       return new Response(JSON.stringify({ error: 'groupName, description, and vpcId are required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
@@ -41,20 +40,21 @@ serve(async (req) => {
     });
 
     if (credError || !credentials || credentials.length === 0) {
-      console.error('Error fetching credentials:', credError);
       return new Response(JSON.stringify({ error: 'AWS credentials not found' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     const creds = credentials[0];
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabase, user.id, user.email || '',
+      { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+      creds.region || 'us-east-1', roleName
+    );
+
     const ec2Client = new EC2Client({
       region: creds.region || 'us-east-1',
-      credentials: {
-        accessKeyId: creds.access_key_id,
-        secretAccessKey: creds.secret_access_key,
-      },
+      credentials: awsCreds,
     });
 
     const command = new CreateSecurityGroupCommand({
@@ -76,8 +76,7 @@ serve(async (req) => {
   } catch (error: any) {
     console.error('Error creating security group:', error);
     return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });

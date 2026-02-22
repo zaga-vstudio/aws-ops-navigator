@@ -10,6 +10,7 @@ import {
   DescribeAccountAttributesCommand,
   DescribeAddressesCommand,
 } from "npm:@aws-sdk/client-ec2";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,6 +41,15 @@ serve(async (req) => {
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // Parse body for roleName (optional)
+    let roleName: string | undefined;
+    try {
+      if (req.method === 'POST') {
+        const body = await req.json();
+        roleName = body.roleName;
+      }
+    } catch { /* no body */ }
+
     const { data: credentials, error: credError } = await supabaseClient
       .rpc('get_user_aws_credentials', { user_id_param: user.id });
 
@@ -51,9 +61,15 @@ serve(async (req) => {
     const { access_key_id, secret_access_key, region } = credentials[0];
     const awsRegion = region || 'us-east-1';
 
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabaseClient, user.id, user.email || '',
+      { accessKeyId: access_key_id, secretAccessKey: secret_access_key },
+      awsRegion, roleName
+    );
+
     const ec2Client = new EC2Client({
       region: awsRegion,
-      credentials: { accessKeyId: access_key_id, secretAccessKey: secret_access_key },
+      credentials: awsCreds,
     });
 
     // Fetch all advanced VPC data in parallel
