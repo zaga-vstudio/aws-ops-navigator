@@ -29,6 +29,34 @@ export function CreateSubnetDialog({ open, onOpenChange, vpc, onSuccess }: Props
 
   const region = vpc.region || "us-east-1";
 
+  // Simple check: is subnet CIDR within VPC CIDR range
+  const isSubnetInVpc = (subnetCidr: string, vpcCidr: string): boolean => {
+    try {
+      const parseCidr = (cidr: string) => {
+        const [ip, prefix] = cidr.split('/');
+        const parts = ip.split('.').map(Number);
+        const num = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+        const mask = prefix === '0' ? 0 : (~0 << (32 - parseInt(prefix))) >>> 0;
+        return { start: (num & mask) >>> 0, mask, prefix: parseInt(prefix) };
+      };
+      const vpc = parseCidr(vpcCidr);
+      const subnet = parseCidr(subnetCidr);
+      // Subnet prefix must be >= VPC prefix (smaller or equal block) and start must be within VPC range
+      return subnet.prefix >= vpc.prefix && (subnet.start & vpc.mask) === vpc.start;
+    } catch { return true; } // If parsing fails, let AWS validate
+  };
+
+  // Generate example valid subnet CIDRs
+  const suggestedCidrs = (() => {
+    try {
+      const [ip, prefix] = vpc.cidrBlock.split('/');
+      const vpcPrefix = parseInt(prefix);
+      const subnetPrefix = Math.min(vpcPrefix + 4, 28); // e.g., /16 → /20, /24 → /28
+      const parts = ip.split('.').map(Number);
+      return [`${parts[0]}.${parts[1]}.${parts[2]}.${parts[3]}/${subnetPrefix}`];
+    } catch { return []; }
+  })();
+
   const handleCreate = async () => {
     if (!cidrBlock) {
       toast({ title: "CIDR required", description: "Please enter a subnet CIDR block.", variant: "destructive" });
@@ -38,6 +66,11 @@ export function CreateSubnetDialog({ open, onOpenChange, vpc, onSuccess }: Props
     const cidrRegex = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
     if (!cidrRegex.test(cidrBlock)) {
       toast({ title: "Invalid CIDR", description: "Format: x.x.x.x/xx", variant: "destructive" });
+      return;
+    }
+
+    if (!isSubnetInVpc(cidrBlock, vpc.cidrBlock)) {
+      toast({ title: "CIDR out of range", description: `Subnet CIDR must be within VPC range ${vpc.cidrBlock}. Try: ${suggestedCidrs[0] || 'a smaller block'}`, variant: "destructive" });
       return;
     }
 
@@ -90,7 +123,9 @@ export function CreateSubnetDialog({ open, onOpenChange, vpc, onSuccess }: Props
           <div className="grid gap-2">
             <Label htmlFor="subnetCidr">IPv4 CIDR Block *</Label>
             <Input id="subnetCidr" placeholder="10.0.1.0/24" value={cidrBlock} onChange={(e) => setCidrBlock(e.target.value)} disabled={loading} />
-            <p className="text-xs text-muted-foreground">Must be a subset of VPC CIDR {vpc.cidrBlock}</p>
+            <p className="text-xs text-muted-foreground">
+              Must be within VPC CIDR {vpc.cidrBlock}{suggestedCidrs.length > 0 && <> — e.g. <button type="button" className="font-mono underline text-primary" onClick={() => setCidrBlock(suggestedCidrs[0])}>{suggestedCidrs[0]}</button></>}
+            </p>
           </div>
 
           <div className="grid gap-2">
