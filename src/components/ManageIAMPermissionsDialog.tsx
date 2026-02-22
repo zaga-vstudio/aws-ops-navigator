@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
@@ -118,7 +118,7 @@ export function ManageIAMPermissionsDialog({
   const [confirmStep, setConfirmStep] = useState(false);
   const [scopeInputs, setScopeInputs] = useState<Record<string, string>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-  const previewRef = useRef<HTMLDivElement>(null);
+  
 
   // Initialize empty perms
   useEffect(() => {
@@ -360,7 +360,7 @@ export function ManageIAMPermissionsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 pr-4">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-4">
           <div className="space-y-4">
             {/* Managed policy conflict warning */}
             {managedPolicyWarning.length > 0 && (
@@ -558,12 +558,7 @@ export function ManageIAMPermissionsDialog({
 
             {/* Policy JSON Preview */}
             {!loading && !confirmStep && Object.keys(policyPreview).length > 0 && (
-              <Collapsible open={previewOpen} onOpenChange={(open) => {
-                setPreviewOpen(open);
-                if (open) {
-                  setTimeout(() => previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
-                }
-              }}>
+              <Collapsible open={previewOpen} onOpenChange={setPreviewOpen}>
                 <CollapsibleTrigger asChild>
                   <Button variant="ghost" size="sm" className="w-full justify-between text-xs">
                     Policy JSON Preview
@@ -571,7 +566,6 @@ export function ManageIAMPermissionsDialog({
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  <div ref={previewRef}></div>
                   <div className="relative">
                     <Button
                       variant="ghost"
@@ -599,7 +593,7 @@ export function ManageIAMPermissionsDialog({
               </Alert>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="mt-4">
           {confirmStep ? (
