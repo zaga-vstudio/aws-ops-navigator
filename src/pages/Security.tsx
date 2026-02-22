@@ -14,6 +14,7 @@ import { ComplianceDetailsDialog } from "@/components/ComplianceDetailsDialog";
 import { ManageSecurityGroupDialog } from "@/components/ManageSecurityGroupDialog";
 import { CreateSecurityGroupDialog } from "@/components/CreateSecurityGroupDialog";
 import { ManageIAMUserDialog } from "@/components/ManageIAMUserDialog";
+import { ManageIAMPermissionsDialog } from "@/components/ManageIAMPermissionsDialog";
 import { RemediationDialog } from "@/components/RemediationDialog";
 import { NotificationPreferencesDialog } from "@/components/NotificationPreferencesDialog";
 import { 
@@ -58,6 +59,8 @@ export default function Security() {
   const [remediationData, setRemediationData] = useState<any>(null);
   const [notificationPrefsOpen, setNotificationPrefsOpen] = useState(false);
   const [createSecurityGroupOpen, setCreateSecurityGroupOpen] = useState(false);
+  const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false);
+  const [permissionsDialogUser, setPermissionsDialogUser] = useState<any>(null);
 
   // Calculate security score based on real AWS data
   const securityScore = useMemo(() => {
@@ -520,6 +523,18 @@ export default function Security() {
                                         size="sm"
                                         onClick={(e) => {
                                           e.stopPropagation();
+                                          setPermissionsDialogUser(user);
+                                          setPermissionsDialogOpen(true);
+                                        }}
+                                        title="Permissions"
+                                      >
+                                        <Shield className="h-4 w-4" />
+                                      </Button>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
                                           setManageIAMUserData(user);
                                           setManageIAMUserOpen(true);
                                         }}
@@ -746,6 +761,16 @@ export default function Security() {
         open={createSecurityGroupOpen}
         onOpenChange={setCreateSecurityGroupOpen}
         vpcs={(awsData?.vpcs || []).map((v: any) => ({ id: v.id, name: v.name }))}
+        onSuccess={refetch}
+      />
+
+      <ManageIAMPermissionsDialog
+        open={permissionsDialogOpen}
+        onOpenChange={setPermissionsDialogOpen}
+        user={permissionsDialogUser}
+        vpcs={(awsData?.vpcs || []).map((v: any) => ({ id: v.id, name: v.name }))}
+        ec2Instances={(awsData?.ec2Instances || []).map((i: any) => ({ id: i.id, name: i.name || i.id }))}
+        rdsInstances={(awsData?.rdsDatabases || []).map((r: any) => ({ id: r.id, name: r.name || r.id }))}
         onSuccess={refetch}
       />
     </SidebarProvider>

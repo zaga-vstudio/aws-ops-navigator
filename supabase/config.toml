@@ -62,3 +62,6 @@ verify_jwt = true
 
 [functions.create-security-group]
 verify_jwt = true
+
+[functions.manage-iam-permissions]
+verify_jwt = true
