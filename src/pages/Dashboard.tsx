@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Header } from "@/components/Header";
 import { MetricCard } from "@/components/MetricCard";
@@ -9,7 +9,7 @@ import { LaunchEC2Dialog } from "@/components/LaunchEC2Dialog";
 import { CreateRDSDialog } from "@/components/CreateRDSDialog";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { useAuth } from "@/hooks/useAuth";
+
 import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { 
   Server, 
@@ -24,32 +24,10 @@ import {
 import { Button } from "@/components/ui/button";
 
 const Dashboard = () => {
-  const { user, loading } = useAuth();
   const { data: awsData, loading: awsLoading, refetch } = useAWSDataContext();
   const navigate = useNavigate();
   const [launchEC2Open, setLaunchEC2Open] = useState(false);
   const [createRDSOpen, setCreateRDSOpen] = useState(false);
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate('/auth');
-    }
-  }, [user, loading, navigate]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return null;
-  }
 
   return (
     <SidebarProvider>
