@@ -102,7 +102,7 @@ serve(async (req) => {
         });
       }
 
-      const duration = Math.max(900, Math.min(3600, maxSessionDuration || 900));
+      const duration = Math.max(3600, Math.min(43200, maxSessionDuration || 3600));
       const fullRoleName = `CloudHub-Project-${roleName}`;
 
       // Get admin identity

@@ -40,7 +40,7 @@ interface Props {
 export function CreateRoleDialog({ open, onOpenChange, onSubmit }: Props) {
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
-  const [maxDuration, setMaxDuration] = useState(900);
+  const [maxDuration, setMaxDuration] = useState(3600);
   const [services, setServices] = useState<ServicePermission[]>(DEFAULT_SERVICES.map(s => ({ ...s })));
   const [submitting, setSubmitting] = useState(false);
 
@@ -61,7 +61,7 @@ export function CreateRoleDialog({ open, onOpenChange, onSubmit }: Props) {
     if (success) {
       setRoleName("");
       setDescription("");
-      setMaxDuration(900);
+      setMaxDuration(3600);
       setServices(DEFAULT_SERVICES.map(s => ({ ...s })));
       onOpenChange(false);
     }
@@ -113,12 +113,12 @@ export function CreateRoleDialog({ open, onOpenChange, onSubmit }: Props) {
             <Input
               id="maxDuration"
               type="number"
-              min={900}
-              max={3600}
+              min={3600}
+              max={43200}
               value={maxDuration}
               onChange={(e) => setMaxDuration(Number(e.target.value))}
             />
-            <p className="text-xs text-muted-foreground">Between 900 (15 min) and 3600 (1 hour)</p>
+            <p className="text-xs text-muted-foreground">Between 3600 (1 hour) and 43200 (12 hours)</p>
           </div>
 
           {/* Permissions */}
