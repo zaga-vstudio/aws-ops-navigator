@@ -164,26 +164,36 @@ export function SubnetBlastRadiusDialog({
           {/* Visual Dependency Map */}
           <div className="mb-4">
             <h4 className="text-sm font-medium mb-3">Dependency Map</h4>
-            <div className="relative bg-muted/30 rounded-lg p-4">
+            <div className="relative bg-muted/30 rounded-lg p-6 overflow-hidden">
+              {/* SVG connection lines */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+                {/* Left branch */}
+                <line x1="50%" y1="52" x2="50%" y2="72" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+                <line x1="50%" y1="72" x2="25%" y2="72" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+                <line x1="25%" y1="72" x2="25%" y2="92" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+                {/* Right branch */}
+                <line x1="50%" y1="72" x2="75%" y2="72" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+                <line x1="75%" y1="72" x2="75%" y2="92" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+              </svg>
+
               {/* Center Subnet Node */}
-              <div className="flex flex-col items-center mb-6">
-                <div className="bg-destructive text-destructive-foreground rounded-lg px-4 py-2 flex items-center gap-2 shadow-lg border-2 border-destructive">
+              <div className="relative flex flex-col items-center mb-12">
+                <div className="bg-destructive text-destructive-foreground rounded-lg px-4 py-2 flex items-center gap-2 shadow-lg border-2 border-destructive z-10">
                   <Globe className="h-5 w-5" />
-                  <span className="font-medium">{subnet.name || subnet.id}</span>
+                  <span className="font-medium text-sm">{subnet.name || subnet.id}</span>
                 </div>
-                <div className="w-0.5 h-4 bg-border" />
               </div>
 
               {/* Connected Resources */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="relative grid grid-cols-2 gap-6">
                 {/* EC2 Instances */}
                 <div className="flex flex-col items-center">
-                  <div className={`rounded-lg px-4 py-3 flex flex-col items-center gap-2 w-full ${
+                  <div className={`rounded-lg px-4 py-3 flex flex-col items-center gap-2 w-full z-10 ${
                     affectedEC2.length > 0 ? 'bg-green-500/10 border border-green-500/30' : 'bg-muted border border-muted-foreground/20'
                   }`}>
                     <Server className="h-5 w-5 text-green-500" />
                     <span className="text-sm font-medium">EC2 Instances</span>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap justify-center">
                       <Badge variant={affectedEC2.length > 0 ? 'destructive' : 'secondary'}>
                         {affectedEC2.length} total
                       </Badge>
@@ -198,7 +208,7 @@ export function SubnetBlastRadiusDialog({
 
                 {/* Network Interfaces */}
                 <div className="flex flex-col items-center">
-                  <div className={`rounded-lg px-4 py-3 flex flex-col items-center gap-2 w-full ${
+                  <div className={`rounded-lg px-4 py-3 flex flex-col items-center gap-2 w-full z-10 ${
                     simulatedNetworkInterfaces.length > 0 ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-muted border border-muted-foreground/20'
                   }`}>
                     <Wifi className="h-5 w-5 text-blue-500" />
@@ -210,11 +220,11 @@ export function SubnetBlastRadiusDialog({
                 </div>
               </div>
 
-              {/* Connection Lines Visual */}
+              {/* Warning footer */}
               {(affectedEC2.length > 0 || simulatedNetworkInterfaces.length > 0) && (
-                <div className="mt-4 flex justify-center">
+                <div className="relative mt-5 flex justify-center z-10">
                   <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 flex items-center gap-2">
-                    <Network className="h-4 w-4 text-yellow-500" />
+                    <Network className="h-4 w-4 text-yellow-500 shrink-0" />
                     <span className="text-xs text-muted-foreground">
                       All network connectivity in this subnet will be terminated
                     </span>
