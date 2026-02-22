@@ -1,47 +1,40 @@
 
 
-## Auto-Refresh / Polling for AWS Data
+## Create Security Group from the Security Page
 
-### Problem
-AWS data is fetched once on initial load and never refreshed automatically. If resources change (e.g., an EC2 instance terminates), the dashboard stays stale until the user manually clicks "Refresh Data."
-
-### Solution
-Add a configurable polling interval to the `useAWSData` hook that silently refetches data in the background. The polling will:
-- Default to every 5 minutes (300 seconds)
-- Only poll when the browser tab is visible (pause when hidden)
-- Use a silent refresh (no loading spinner) so the UI doesn't flash skeleton loaders
-- Show a subtle "last updated" indicator so users know data freshness
-- Expose a way for the Dashboard to display the last refresh timestamp
+### What This Adds
+A "Create Security Group" button on the Security Groups tab in `/security`, opening a dialog where you can specify a name, description, and VPC, then create the group in your AWS account.
 
 ### Changes
 
-**1. `src/hooks/useAWSData.tsx`**
-- Add a `lastUpdated` timestamp state, set after each successful fetch
-- Add a `useEffect` with `setInterval` for polling every 5 minutes
-- Use the `document.visibilitychange` event to pause/resume polling when the tab is hidden/visible
-- Introduce a silent fetch mode: when polling, skip `setLoading(true)` so the UI doesn't show skeletons -- only show loading on the initial fetch
-- Return `lastUpdated` from the hook
+**1. New Edge Function: `supabase/functions/create-security-group/index.ts`**
+- Accepts `groupName`, `description`, and `vpcId` in the request body
+- Authenticates the user and retrieves their AWS credentials
+- Calls the AWS `CreateSecurityGroupCommand` from `@aws-sdk/client-ec2`
+- Returns the newly created Security Group ID
+- Logs the action for audit purposes
 
-**2. `src/contexts/AWSDataContext.tsx`**
-- Add `lastUpdated: Date | null` to the context type so consuming components can display it
+**2. New Component: `src/components/CreateSecurityGroupDialog.tsx`**
+- Dialog with fields for:
+  - **Group Name** (required, validated: alphanumeric, hyphens, underscores)
+  - **Description** (required, min 10 characters)
+  - **VPC** (dropdown populated from existing VPCs in `awsData`)
+- Validates inputs with Zod (following the pattern used in `ManageSecurityGroupDialog`)
+- Calls the new edge function on submit
+- Shows success/error toast and triggers data refetch on success
 
-**3. `src/pages/Dashboard.tsx`**
-- Display a small "Last updated: X minutes ago" text near the "Refresh Data" button using `date-fns`'s `formatDistanceToNow`
-- The text updates reactively when polling refreshes data
+**3. Updated Page: `src/pages/Security.tsx`**
+- Add a "Create Security Group" button (with a `+` icon) in the Security Groups `CardHeader`, similar to how the IAM Users tab already has a "Create User" button
+- Wire the button to open the new `CreateSecurityGroupDialog`
+- Pass VPC list from `awsData` and `refetch` callback to the dialog
 
 ### Technical Details
 
-```text
-Polling flow:
-  useEffect (mount)
-    -> setInterval(silentFetch, 300_000)   // 5 min
-    -> visibilitychange listener
-         tab hidden  -> clearInterval
-         tab visible -> immediate fetch + restart interval
-  cleanup -> clearInterval + remove listener
-```
+The edge function follows the same pattern as `manage-security-groups/index.ts`:
+- CORS headers
+- Supabase auth check
+- AWS credentials retrieval via `get_user_aws_credentials` RPC
+- Uses `CreateSecurityGroupCommand` with `GroupName`, `Description`, and `VpcId` parameters
 
-Silent fetch means: `fetchAWSData` gets a new `{ silent: true }` option that skips `setLoading(true)`, so existing data stays visible while the refresh happens in the background.
-
-The 5-minute default balances freshness against AWS API costs. No additional edge function changes are needed since the existing `aws-dashboard-data` function is reused.
+No database migrations are needed -- this only uses the existing AWS credentials infrastructure and the existing edge function patterns.
 
