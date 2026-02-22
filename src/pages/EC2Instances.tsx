@@ -507,6 +507,9 @@ const EC2Instances = () => {
         open={launchDialogOpen}
         onOpenChange={setLaunchDialogOpen}
         onSuccess={refetch}
+        vpcs={awsData?.vpcs}
+        subnets={awsData?.subnets}
+        securityGroups={awsData?.securityGroups}
       />
 
       {sshDialogInstance && (
