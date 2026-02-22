@@ -264,8 +264,7 @@ serve(async (req) => {
         });
 
       return new Response(JSON.stringify({ 
-        error: 'Remediation failed', 
-        details: error.message 
+        error: 'Remediation failed. Please check your AWS credentials and try again.'
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -273,7 +272,7 @@ serve(async (req) => {
     }
   } catch (error: any) {
     console.error('Unexpected error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: 'An unexpected error occurred. Please try again.' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

@@ -122,7 +122,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error checking SES status:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Failed to check SES status. Please verify your AWS credentials.' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
