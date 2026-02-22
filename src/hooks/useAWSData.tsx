@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -211,6 +211,8 @@ export const useAWSData = () => {
   const [error, setError] = useState<AWSError | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const [costExplorerState, setCostExplorerState] = useState<CostExplorerState>({ enabled: false, loading: false });
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
 
   const enableCostExplorer = async (): Promise<boolean> => {
@@ -351,10 +353,10 @@ export const useAWSData = () => {
     toast(toastConfig);
   };
 
-  const fetchAWSData = useCallback(async (options: { isRetry?: boolean; forceRefreshCost?: boolean } = {}) => {
-    const { isRetry = false, forceRefreshCost = false } = options;
+  const fetchAWSData = useCallback(async (options: { isRetry?: boolean; forceRefreshCost?: boolean; silent?: boolean } = {}) => {
+    const { isRetry = false, forceRefreshCost = false, silent = false } = options;
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       if (!isRetry) {
         setError(null);
         setRetryCount(0);
@@ -387,6 +389,7 @@ export const useAWSData = () => {
 
       setData(response);
       setRetryCount(0);
+      setLastUpdated(new Date());
       
       // Update cost explorer state based on response
       if (response?.costData?.costExplorerDisabled) {
@@ -410,7 +413,7 @@ export const useAWSData = () => {
         showErrorToast(awsError);
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [toast, retryCount]);
 
@@ -422,11 +425,36 @@ export const useAWSData = () => {
     fetchAWSData({ forceRefreshCost: true });
   };
 
+  const POLL_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+  const startPolling = useCallback(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      fetchAWSData({ silent: true });
+    }, POLL_INTERVAL);
+  }, [fetchAWSData]);
+
   useEffect(() => {
     // Only fetch if we don't already have data (prevents refetch on remount)
     if (!data) {
       fetchAWSData();
     }
+    startPolling();
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+      } else {
+        fetchAWSData({ silent: true });
+        startPolling();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
@@ -435,6 +463,7 @@ export const useAWSData = () => {
     error,
     refetch,
     refetchWithForceRefreshCost,
+    lastUpdated,
     costExplorerState,
     enableCostExplorer,
     disableCostExplorer,
