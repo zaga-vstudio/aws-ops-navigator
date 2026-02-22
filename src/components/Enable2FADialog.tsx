@@ -224,11 +224,6 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
                   alt="QR Code"
                   className="w-48 h-48 border border-border rounded-lg bg-white p-1"
                 />
-              ) : rawSvgFallback ? (
-                <div
-                  className="w-48 h-48 border border-border rounded-lg bg-white p-1 [&_svg]:w-full [&_svg]:h-full"
-                  dangerouslySetInnerHTML={{ __html: rawSvgFallback }}
-                />
               ) : null}
 
               <div className="w-full space-y-2">

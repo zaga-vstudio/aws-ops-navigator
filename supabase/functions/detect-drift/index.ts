@@ -423,7 +423,7 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Drift detection error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: 'An error occurred during drift detection. Please try again.' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
