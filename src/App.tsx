@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { AWSDataProvider } from "@/contexts/AWSDataContext";
 import { ThemeProvider } from "next-themes";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import Homepage from "./pages/Homepage";
 import Auth from "./pages/Auth";
 import Setup from "./pages/Setup";
@@ -24,10 +25,12 @@ import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
-const AWSLayout = () => (
-  <AWSDataProvider>
-    <Outlet />
-  </AWSDataProvider>
+const ProtectedAWSLayout = () => (
+  <ProtectedRoute>
+    <AWSDataProvider>
+      <Outlet />
+    </AWSDataProvider>
+  </ProtectedRoute>
 );
 
 const App = () => (
@@ -41,7 +44,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Homepage />} />
               <Route path="/auth" element={<Auth />} />
-              <Route element={<AWSLayout />}>
+              <Route element={<ProtectedAWSLayout />}>
                 <Route path="/setup/*" element={<Setup />} />
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/ec2" element={<EC2Instances />} />

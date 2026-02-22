@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { checkLeakedPassword } from "@/lib/checkLeakedPassword";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -128,6 +129,14 @@ const Auth = () => {
       return;
     }
 
+    // Check for leaked passwords
+    const { leaked, count } = await checkLeakedPassword(password);
+    if (leaked) {
+      setError(`This password has appeared in ${count.toLocaleString()} data breaches. Please choose a different password.`);
+      setIsLoading(false);
+      return;
+    }
+
     const { error } = await signUp(email, password, displayName);
     
     if (error) {
@@ -179,6 +188,13 @@ const Auth = () => {
 
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
+      setIsLoading(false);
+      return;
+    }
+
+    const { leaked, count } = await checkLeakedPassword(password);
+    if (leaked) {
+      setError(`This password has appeared in ${count.toLocaleString()} data breaches. Please choose a different password.`);
       setIsLoading(false);
       return;
     }
