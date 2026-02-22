@@ -7,17 +7,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Server, AlertTriangle, DollarSign, ExternalLink, Search, Info } from "lucide-react";
+import { Loader2, Server, AlertTriangle, DollarSign, ExternalLink, Search, Info, Network } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
+import type { VPC, Subnet, SecurityGroup } from "@/hooks/useAWSData";
 
 interface LaunchEC2DialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  vpcs?: VPC[];
+  subnets?: Subnet[];
+  securityGroups?: SecurityGroup[];
 }
 
 interface OSOption {
@@ -198,7 +203,7 @@ const MARKETPLACE_OS_OPTIONS: OSOption[] = [
   },
 ];
 
-export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2DialogProps) {
+export function LaunchEC2Dialog({ open, onOpenChange, onSuccess, vpcs = [], subnets = [], securityGroups = [] }: LaunchEC2DialogProps) {
   const [loading, setLoading] = useState(false);
   const [searchingAMI, setSearchingAMI] = useState(false);
   const [name, setName] = useState('');
@@ -213,7 +218,27 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
   const [keyPairs, setKeyPairs] = useState<KeyPairInfo[]>([]);
   const [selectedKeyPair, setSelectedKeyPair] = useState<string>('');
   const [loadingKeyPairs, setLoadingKeyPairs] = useState(false);
+  const [selectedVpcId, setSelectedVpcId] = useState<string>('');
+  const [selectedSubnetId, setSelectedSubnetId] = useState<string>('');
+  const [selectedSecurityGroupIds, setSelectedSecurityGroupIds] = useState<string[]>([]);
   const { toast } = useToast();
+
+  // Default to the default VPC when vpcs load
+  useEffect(() => {
+    if (vpcs.length > 0 && !selectedVpcId) {
+      const defaultVpc = vpcs.find(v => v.isDefault);
+      setSelectedVpcId(defaultVpc?.id || vpcs[0].id);
+    }
+  }, [vpcs]);
+
+  // Reset subnet and security groups when VPC changes
+  useEffect(() => {
+    setSelectedSubnetId('');
+    setSelectedSecurityGroupIds([]);
+  }, [selectedVpcId]);
+
+  const filteredSubnets = subnets.filter(s => s.vpcId === selectedVpcId);
+  const filteredSecurityGroups = securityGroups.filter(sg => sg.vpcId === selectedVpcId);
 
   // Fetch key pairs when dialog opens
   useEffect(() => {
@@ -343,22 +368,24 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
       const osOption = allOSOptions.find(os => os.id === selectedOS);
       
       const { data, error } = await supabase.functions.invoke('manage-ec2-instances', {
-        body: {
-          action: 'launch',
-          params: {
-            name: name.trim(),
-            instanceType,
-            osType: selectedOS,
-            customAmiId: customAmiId || undefined,
-            osOwner: osOption?.owner,
-            osNamePattern: osOption?.namePattern,
-            keyName: selectedKeyPair || undefined,
+          body: {
+            action: 'launch',
+            params: {
+              name: name.trim(),
+              instanceType,
+              osType: selectedOS,
+              customAmiId: customAmiId || undefined,
+              osOwner: osOption?.owner,
+              osNamePattern: osOption?.namePattern,
+              keyName: selectedKeyPair || undefined,
+              subnetId: selectedSubnetId && selectedSubnetId !== 'auto' ? selectedSubnetId : undefined,
+              securityGroupIds: selectedSecurityGroupIds.length > 0 ? selectedSecurityGroupIds : undefined,
+            },
           },
-        },
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
 
       if (error) throw error;
 
@@ -402,6 +429,11 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
     setOpenConsoleOnLaunch(false);
     setOsTab('standard');
     setSelectedKeyPair('');
+    setSelectedSubnetId('');
+    setSelectedSecurityGroupIds([]);
+    // Reset VPC to default
+    const defaultVpc = vpcs.find(v => v.isDefault);
+    setSelectedVpcId(defaultVpc?.id || (vpcs.length > 0 ? vpcs[0].id : ''));
   };
 
   const selectMarketplaceAMI = (ami: MarketplaceAMI) => {
@@ -619,7 +651,86 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
               </Select>
             </div>
 
-            {/* Key Pair Selection */}
+            {/* Networking - VPC, Subnet, Security Groups */}
+            {vpcs.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Network className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-base font-medium">Networking</Label>
+                </div>
+
+                {/* VPC Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="vpc">VPC</Label>
+                  <Select value={selectedVpcId} onValueChange={setSelectedVpcId} disabled={loading}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a VPC" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vpcs.map((vpc) => (
+                        <SelectItem key={vpc.id} value={vpc.id}>
+                          {vpc.name || vpc.id} ({vpc.cidrBlock}){vpc.isDefault ? ' — Default' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Subnet Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="subnet">Subnet (Optional)</Label>
+                  <Select value={selectedSubnetId} onValueChange={setSelectedSubnetId} disabled={loading || !selectedVpcId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Auto-assign (default subnet)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto-assign (default subnet)</SelectItem>
+                      {filteredSubnets.map((subnet) => (
+                        <SelectItem key={subnet.id} value={subnet.id}>
+                          {subnet.name || subnet.id} · {subnet.availabilityZone} · {subnet.availableIps} IPs free
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Security Groups */}
+                {filteredSecurityGroups.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Security Groups (Optional)</Label>
+                    <div className="max-h-[140px] overflow-y-auto border rounded-md p-2 space-y-1">
+                      {filteredSecurityGroups.map((sg) => (
+                        <div
+                          key={sg.id}
+                          className="flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer"
+                          onClick={() => {
+                            setSelectedSecurityGroupIds(prev =>
+                              prev.includes(sg.id) ? prev.filter(id => id !== sg.id) : [...prev, sg.id]
+                            );
+                          }}
+                        >
+                          <Checkbox
+                            checked={selectedSecurityGroupIds.includes(sg.id)}
+                            onCheckedChange={() => {
+                              setSelectedSecurityGroupIds(prev =>
+                                prev.includes(sg.id) ? prev.filter(id => id !== sg.id) : [...prev, sg.id]
+                              );
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{sg.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">{sg.id} — {sg.description}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedSecurityGroupIds.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No selection = VPC default security group</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="keyPair">SSH Key Pair (Optional)</Label>
               <Select 
@@ -705,7 +816,6 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess }: LaunchEC2Dial
               <AlertDescription className="text-xs">
                 Requires <code className="bg-muted px-1 rounded">ec2:RunInstances</code> and{' '}
                 <code className="bg-muted px-1 rounded">ec2:DescribeImages</code> permissions.
-                The instance will be launched in your default VPC.
               </AlertDescription>
             </Alert>
           </div>
