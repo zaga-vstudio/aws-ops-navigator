@@ -13,6 +13,7 @@ interface AWSDataContextType {
   error: AWSError | null;
   refetch: () => void;
   refetchWithForceRefreshCost: () => void;
+  lastUpdated: Date | null;
   costExplorerState: CostExplorerState;
   enableCostExplorer: () => Promise<boolean>;
   disableCostExplorer: () => Promise<boolean>;

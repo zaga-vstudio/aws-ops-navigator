@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { formatDistanceToNow } from "date-fns";
 import { Header } from "@/components/Header";
 import { MetricCard } from "@/components/MetricCard";
 import { ResourceOverview } from "@/components/ResourceOverview";
@@ -24,10 +25,17 @@ import {
 import { Button } from "@/components/ui/button";
 
 const Dashboard = () => {
-  const { data: awsData, loading: awsLoading, error: awsError, refetch } = useAWSDataContext();
+  const { data: awsData, loading: awsLoading, error: awsError, refetch, lastUpdated } = useAWSDataContext();
   const navigate = useNavigate();
   const [launchEC2Open, setLaunchEC2Open] = useState(false);
   const [createRDSOpen, setCreateRDSOpen] = useState(false);
+  const [, setTick] = useState(0);
+
+  // Re-render every 30s so "last updated" text stays fresh
+  useEffect(() => {
+    const timer = setInterval(() => setTick(t => t + 1), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   return (
     <SidebarProvider>
@@ -55,16 +63,23 @@ const Dashboard = () => {
                     Monitor and manage your AWS resources from a central hub
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={refetch}
-                  disabled={awsLoading}
-                  className="flex items-center gap-2"
-                >
-                  <RefreshCw className={`h-4 w-4 ${awsLoading ? 'animate-spin' : ''}`} />
-                  Refresh Data
-                </Button>
+                <div className="flex items-center gap-3">
+                  {lastUpdated && (
+                    <span className="text-xs text-muted-foreground hidden sm:inline">
+                      Updated {formatDistanceToNow(lastUpdated, { addSuffix: true })}
+                    </span>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={refetch}
+                    disabled={awsLoading}
+                    className="flex items-center gap-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${awsLoading ? 'animate-spin' : ''}`} />
+                    Refresh Data
+                  </Button>
+                </div>
               </div>
 
               {awsError && !awsLoading && (
