@@ -447,7 +447,7 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess, vpcs = [], subn
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Server className="h-5 w-5" />
@@ -458,7 +458,7 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess, vpcs = [], subn
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <div className="flex-1 overflow-y-auto pr-4">
           <div className="space-y-6 py-4">
             {/* Instance Name */}
             <div className="space-y-2">
@@ -818,7 +818,7 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess, vpcs = [], subn
               </AlertDescription>
             </Alert>
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="pt-4 border-t">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
