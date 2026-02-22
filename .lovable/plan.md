@@ -1,30 +1,42 @@
 
 
-# Remove All Lovable Branding
+# Rename "CloudHub" to "Clodaro" -- Visual/UI Text Only
 
-## Summary
-Remove all Lovable logos, names, and references from the project code, replacing them with CloudHub branding where appropriate.
+## Scope
+Only user-visible text (labels, titles, descriptions, toast messages, email content) will be changed. Internal code identifiers like variable names, hook names, function names, localStorage keys, DB table names, and file names will remain unchanged.
 
 ## Files to Modify
 
-### 1. `index.html`
-- Change `meta description` from "Lovable Generated Project" to "CloudHub - AWS Infrastructure Management"
-- Change `meta author` from "Lovable" to "CloudHub"
-- Update `og:description` to "CloudHub - AWS Infrastructure Management"
-- Remove or replace `og:image` and `twitter:image` URLs pointing to `lovable.dev`
-- Remove `twitter:site` referencing `@lovable_dev`
+### Pages
+1. **src/pages/Homepage.tsx** -- Header brand name, footer brand name, footer copyright text
+2. **src/pages/Auth.tsx** -- "CloudHub" in header, "Welcome to CloudHub" card title
+3. **src/pages/Setup.tsx** -- "CloudHub Setup" heading
+4. **src/pages/Settings.tsx** -- "Customize how CloudHub looks and feels" description
+5. **src/pages/Alerts.tsx** -- "modified outside of CloudHub" description text
 
-### 2. `README.md`
-- Rewrite the README to be CloudHub-branded, removing all Lovable project links, instructions, and references
+### Components
+6. **src/components/CreateRoleDialog.tsx** -- Dialog title "Create CloudHub Role", AWS role preview text "CloudHub-Project-...", tag badges ("ManagedBy: CloudHub", "CloudHubUserId", "CloudHubUserEmail")
+7. **src/components/DriftScheduleSettings.tsx** -- "How often CloudHub should check..."
+8. **src/components/SESSetupCard.tsx** -- Email subject "CloudHub SES Test Email", email body text, card description "send alert emails from CloudHub"
+9. **src/components/DriftDetailsDialog.tsx** -- Any "outside of CloudHub" text
+10. **src/components/ComplianceDashboard.tsx** -- Any visible CloudHub references
+11. **src/components/ManageIAMPermissionsDialog.tsx** -- Any visible "CloudHub-Scoped-" label text
 
-### 3. `vite.config.ts`
-- Remove the `lovable-tagger` import and its usage in the plugins array
+### Hooks (toast/UI messages only)
+12. **src/hooks/useDriftDetection.tsx** -- Toast message "Resources were changed outside of CloudHub"
+13. **src/hooks/useCloudHubRoles.tsx** -- Toast descriptions: "Role deleted from CloudHub and AWS", "Role removed from CloudHub"
 
-## Files NOT Modified
-- `package.json` / `package-lock.json`: The `lovable-tagger` dev dependency will remain installed but unused after removing it from `vite.config.ts`. Removing it from package.json would require reinstalling dependencies which is handled separately.
-- `.lovable/plan.md`: This is a Lovable system file and should not be modified.
+### Metadata
+14. **index.html** -- Page title, meta description, OG title
+15. **README.md** -- All "CloudHub" brand text
 
-## Technical Details
-- The `componentTagger` from `lovable-tagger` is only used in development mode and tags components for Lovable's editor. Removing it has zero impact on the app.
-- The OG/Twitter meta images currently point to Lovable's default opengraph image. These will be cleared or pointed to a placeholder.
+## What Will NOT Change
+- File names (e.g., `useCloudHubRoles.tsx` stays as-is)
+- Variable/function/interface names (e.g., `CloudHubRole`, `useCloudHubRoles`)
+- Import paths
+- localStorage keys (e.g., `cloudhub-login-attempts`)
+- Database table names (`cloudhub_roles`)
+- Edge function directory names or internal logic
+- AWS resource naming prefixes in backend code
+- Logo asset filename (`cloudhub-logo.png`)
 
