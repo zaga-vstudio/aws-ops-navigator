@@ -2,7 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { 
   RDSClient, CreateDBInstanceCommand, DeleteDBInstanceCommand,
-  StartDBInstanceCommand, StopDBInstanceCommand, RebootDBInstanceCommand
+  StartDBInstanceCommand, StopDBInstanceCommand, RebootDBInstanceCommand,
+  CreateDBSubnetGroupCommand
 } from "npm:@aws-sdk/client-rds";
 import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
@@ -23,6 +24,8 @@ interface RDSActionRequest {
   masterPassword?: string;
   publiclyAccessible?: boolean;
   roleName?: string;
+  vpcId?: string;
+  subnetIds?: string[];
 }
 
 serve(async (req) => {
@@ -81,7 +84,8 @@ serve(async (req) => {
       case 'create': {
         const { dbInstanceIdentifier, dbName, engine = 'mysql', engineVersion,
           instanceClass = 'db.t3.micro', allocatedStorage = 20,
-          masterUsername = 'admin', masterPassword, publiclyAccessible = false } = body;
+          masterUsername = 'admin', masterPassword, publiclyAccessible = false,
+          subnetIds } = body;
         if (!dbInstanceIdentifier || !masterPassword) {
           return new Response(JSON.stringify({ error: 'DB identifier and master password are required' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -90,6 +94,19 @@ serve(async (req) => {
           return new Response(JSON.stringify({ error: 'Master password must be at least 8 characters' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         }
+
+        // Create DB Subnet Group if subnets provided
+        let dbSubnetGroupName: string | undefined;
+        if (subnetIds && subnetIds.length >= 2) {
+          dbSubnetGroupName = `${dbInstanceIdentifier}-subnet-group`;
+          await rdsClient.send(new CreateDBSubnetGroupCommand({
+            DBSubnetGroupName: dbSubnetGroupName,
+            DBSubnetGroupDescription: `Subnet group for ${dbInstanceIdentifier}`,
+            SubnetIds: subnetIds,
+          }));
+          console.log(`Created DB subnet group: ${dbSubnetGroupName}`);
+        }
+
         const createParams: any = {
           DBInstanceIdentifier: dbInstanceIdentifier, DBInstanceClass: instanceClass,
           Engine: engine, AllocatedStorage: allocatedStorage, MasterUsername: masterUsername,
@@ -98,6 +115,7 @@ serve(async (req) => {
         };
         if (dbName) createParams.DBName = dbName;
         if (engineVersion) createParams.EngineVersion = engineVersion;
+        if (dbSubnetGroupName) createParams.DBSubnetGroupName = dbSubnetGroupName;
         result = await rdsClient.send(new CreateDBInstanceCommand(createParams));
         break;
       }

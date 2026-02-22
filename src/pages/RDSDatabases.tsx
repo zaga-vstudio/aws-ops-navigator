@@ -164,6 +164,8 @@ const RDSDatabases = () => {
                   open={createDialogOpen}
                   onOpenChange={setCreateDialogOpen}
                   onSuccess={refetch}
+                  vpcs={awsData?.vpcs}
+                  subnets={awsData?.subnets}
                 />
               </div>
 
