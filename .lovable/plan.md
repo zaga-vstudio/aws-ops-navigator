@@ -1,77 +1,31 @@
 
 
-# Phase 1: Central AWS Data Provider
+## Remove Redundant Auth Check from Dashboard.tsx
 
-## Goal
-Eliminate 14 independent `useAWSData()` calls across the app, each triggering its own fetch to the `aws-dashboard-data` edge function (which makes 8+ AWS API calls). Replace with a single React Context provider so data is fetched once and shared.
+### Problem
+`Dashboard.tsx` duplicates the authentication guard that `ProtectedRoute` already provides. It imports `useAuth`, checks `loading` and `user` states, renders its own loading spinner, and redirects to `/auth` -- all of which `ProtectedRoute` handles before `Dashboard` even mounts.
 
-## Changes
+### Changes
 
-### 1. Create `src/contexts/AWSDataContext.tsx`
-- New file that creates a React Context wrapping the existing `useAWSData()` hook
-- Calls `useAWSData()` once and exposes all its return values (`data`, `loading`, `error`, `refetch`, `refetchWithForceRefreshCost`, `costExplorerState`, `enableCostExplorer`, `disableCostExplorer`) via context
-- Exports `AWSDataProvider` component and `useAWSDataContext()` consumer hook
-- The consumer hook throws if used outside the provider (standard pattern)
+**File: `src/pages/Dashboard.tsx`**
 
-### 2. Wrap authenticated routes in `src/App.tsx`
-- Import and wrap all dashboard routes (everything except `/`, `/auth`, and `*`) inside `<AWSDataProvider>`
-- The provider sits inside `AuthProvider` so it has access to auth state
+1. Remove the `useAuth` import and hook call (`const { user, loading } = useAuth()`)
+2. Remove the `useEffect` that redirects to `/auth` when no user is present (lines 33-37)
+3. Remove the loading spinner block (lines 39-48) -- `ProtectedRoute` already shows a spinner
+4. Remove the early return for `!user` (lines 50-52)
+5. Remove the unused `useEffect` import if no other effect remains
+6. Remove unused `useNavigate` import if `navigate` is no longer referenced elsewhere in the file -- but `navigate` is still used in the Quick Actions section (lines 168, 178), so `useNavigate` stays
 
-### 3. Replace all `useAWSData()` calls with `useAWSDataContext()`
-Update these 14 files to import from the context instead of calling the hook directly:
+This leaves `Dashboard` focused purely on rendering the dashboard UI, trusting `ProtectedRoute` to guarantee an authenticated user.
 
-| File | What it uses |
-|---|---|
-| `src/pages/Dashboard.tsx` | `data`, `loading`, `refetch` |
-| `src/pages/EC2Instances.tsx` | `data`, `loading`, `refetch` |
-| `src/pages/RDSDatabases.tsx` | `data`, `loading`, `error`, `refetch` |
-| `src/pages/VPCNetworking.tsx` | `data`, `loading`, `error`, `refetch` |
-| `src/pages/Security.tsx` | `data`, `loading`, `error`, `refetch` |
-| `src/pages/CostManagement.tsx` | `data`, `loading`, `refetch`, `refetchWithForceRefreshCost`, `costExplorerState`, `enableCostExplorer`, `disableCostExplorer` |
-| `src/pages/Monitoring.tsx` | `data`, `loading`, `error`, `refetch` |
-| `src/pages/Alerts.tsx` | `data`, `loading`, `error`, `refetch` |
-| `src/pages/ActivityLog.tsx` | `data`, `loading`, `refetch` |
-| `src/pages/Settings.tsx` | `data`, `costExplorerState`, `enableCostExplorer`, `disableCostExplorer` |
-| `src/components/AppSidebar.tsx` | `data` |
-| `src/components/ResourceOverview.tsx` | `data`, `loading`, `error` |
-| `src/components/CostChart.tsx` | `data`, `loading` |
-| `src/hooks/useNotifications.tsx` | `data` |
+### Lines removed (approximately)
 
-### 4. Add `staleTime` to prevent unnecessary refetches
-- Inside `AWSDataContext`, the single `useAWSData()` call already manages its own state; we keep it as-is but the key win is it only runs once instead of 14 times
+- Line 13: `import { useAuth } from "@/hooks/useAuth";` -- remove
+- Line 27: `const { user, loading } = useAuth();` -- remove  
+- Lines 33-37: `useEffect(() => { if (!loading && !user) navigate('/auth'); }, ...)` -- remove
+- Lines 39-48: Loading spinner conditional return -- remove
+- Lines 50-52: `if (!user) return null;` -- remove
+- Line 1: Remove `useEffect` from the React import (keep `useState`)
 
----
+No other files are affected.
 
-# Phase 2: Wire Up Dashboard Quick Actions
-
-## Goal
-The four Quick Action buttons on the Dashboard ("Launch EC2", "Create RDS", "Cost Analysis", "Monitor") currently do nothing. Wire them to open existing dialogs or navigate to the correct pages.
-
-## Changes
-
-### 1. Update `src/pages/Dashboard.tsx`
-- Add state variables for `launchEC2Open` and `createRDSOpen` dialog visibility
-- Import `LaunchEC2Dialog` and `CreateRDSDialog` components
-- Import `useNavigate` (already imported)
-- Wire the four buttons:
-  - **Launch EC2** -- opens `LaunchEC2Dialog` (`setLaunchEC2Open(true)`)
-  - **Create RDS** -- opens `CreateRDSDialog` (`setCreateRDSOpen(true)`)
-  - **Cost Analysis** -- navigates to `/costs` (`navigate('/costs')`)
-  - **Monitor** -- navigates to `/monitoring` (`navigate('/monitoring')`)
-- Render `<LaunchEC2Dialog>` and `<CreateRDSDialog>` at the bottom of the component, with `onSuccess` calling `refetch` to refresh data after resource creation
-
-## Technical Notes
-
-- `LaunchEC2Dialog` expects props: `open`, `onOpenChange`, `onSuccess`
-- `CreateRDSDialog` expects props: `open`, `onOpenChange`, `onSuccess`
-- Both dialogs already handle their own form state, validation, and AWS API calls internally
-- After Phase 1, the `refetch` used in `onSuccess` comes from `useAWSDataContext()`, so newly created resources appear across the entire app
-
-## File Summary
-
-| File | Phase | Action |
-|---|---|---|
-| `src/contexts/AWSDataContext.tsx` | 1 | Create -- context provider and consumer hook |
-| `src/App.tsx` | 1 | Edit -- wrap routes with `AWSDataProvider` |
-| 14 files (pages, components, hooks) | 1 | Edit -- replace `useAWSData()` with `useAWSDataContext()` |
-| `src/pages/Dashboard.tsx` | 2 | Edit -- wire Quick Actions to dialogs and navigation |
