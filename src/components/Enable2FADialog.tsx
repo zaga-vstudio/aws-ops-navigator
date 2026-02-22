@@ -90,8 +90,8 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
       // Enroll new factor with unique friendly name to avoid conflicts
       const { data, error } = await supabase.auth.mfa.enroll({
         factorType: "totp",
-        issuer: "CloudHub",
-        friendlyName: `CloudHub-${Date.now()}`,
+        issuer: "Clodaro",
+        friendlyName: `Clodaro-${Date.now()}`,
       });
 
       if (error) throw error;
@@ -228,7 +228,7 @@ export function Enable2FADialog({ open, onOpenChange, onSuccess }: Enable2FADial
 
               <div className="w-full space-y-2">
                 <Label>Or enter this code manually in your app:</Label>
-                <p className="text-xs text-muted-foreground">Issuer: <span className="font-medium">CloudHub</span></p>
+                <p className="text-xs text-muted-foreground">Issuer: <span className="font-medium">Clodaro</span></p>
                 <div className="flex gap-2">
                   <Input
                     value={formatSecret(secret)}

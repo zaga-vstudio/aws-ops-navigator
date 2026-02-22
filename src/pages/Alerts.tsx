@@ -381,7 +381,7 @@ export default function Alerts() {
                             Drift Detection
                           </CardTitle>
                           <CardDescription>
-                            Detect when resources are modified outside of CloudHub (e.g., via AWS Console)
+                            Detect when resources are modified outside of Clodaro (e.g., via AWS Console)
                           </CardDescription>
                         </div>
                         <Button onClick={scanForDrift} disabled={scanning}>

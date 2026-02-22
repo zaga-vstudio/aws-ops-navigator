@@ -71,10 +71,10 @@ export function CreateRoleDialog({ open, onOpenChange, onSubmit }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Create CloudHub Role</DialogTitle>
+          <DialogTitle>Create Clodaro Role</DialogTitle>
           <DialogDescription>
             Create an IAM Role in your AWS account. It will be named{" "}
-            <code className="text-xs bg-muted px-1 py-0.5 rounded">CloudHub-Project-{"<name>"}</code>.
+            <code className="text-xs bg-muted px-1 py-0.5 rounded">Clodaro-Project-{"<name>"}</code>.
           </DialogDescription>
         </DialogHeader>
 
@@ -92,7 +92,7 @@ export function CreateRoleDialog({ open, onOpenChange, onSubmit }: Props) {
             )}
             {roleName && nameValid && (
               <p className="text-xs text-muted-foreground">
-                AWS Role: <code className="bg-muted px-1 py-0.5 rounded">CloudHub-Project-{roleName}</code>
+                AWS Role: <code className="bg-muted px-1 py-0.5 rounded">Clodaro-Project-{roleName}</code>
               </p>
             )}
           </div>
@@ -147,9 +147,9 @@ export function CreateRoleDialog({ open, onOpenChange, onSubmit }: Props) {
           <div className="space-y-2">
             <Label className="flex items-center gap-1.5"><Tag className="h-3.5 w-3.5" /> Tags (auto-applied)</Label>
             <div className="flex flex-wrap gap-1.5">
-              <Badge variant="secondary" className="text-xs">ManagedBy: CloudHub</Badge>
-              <Badge variant="secondary" className="text-xs">CloudHubUserId: (your ID)</Badge>
-              <Badge variant="secondary" className="text-xs">CloudHubUserEmail: (your email)</Badge>
+              <Badge variant="secondary" className="text-xs">ManagedBy: Clodaro</Badge>
+              <Badge variant="secondary" className="text-xs">ClodaroUserId: (your ID)</Badge>
+              <Badge variant="secondary" className="text-xs">ClodaroUserEmail: (your email)</Badge>
               <Badge variant="secondary" className="text-xs">Environment: production</Badge>
             </div>
           </div>

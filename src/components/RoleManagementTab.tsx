@@ -43,7 +43,7 @@ export function RoleManagementTab() {
           <div>
             <CardTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5" />
-              CloudHub Roles
+              Clodaro Roles
             </CardTitle>
             <CardDescription>
               Create and manage IAM roles for STS AssumeRole. Actions performed under a role are attributed in CloudTrail.
@@ -86,7 +86,7 @@ export function RoleManagementTab() {
                 roles.map((role) => (
                   <TableRow key={role.id}>
                     <TableCell className="font-medium">
-                      CloudHub-Project-{role.role_name}
+                      Clodaro-Project-{role.role_name}
                     </TableCell>
                     <TableCell className="font-mono text-xs max-w-[200px] truncate" title={role.role_arn}>
                       {role.role_arn}
@@ -121,7 +121,7 @@ export function RoleManagementTab() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Delete Role</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Remove "CloudHub-Project-{role.role_name}" from CloudHub?
+                              Remove "Clodaro-Project-{role.role_name}" from Clodaro?
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <div className="px-6 pb-2">
@@ -196,7 +196,7 @@ export function RoleManagementTab() {
                             {entry.action}
                           </Badge>
                         </TableCell>
-                        <TableCell className="font-medium text-sm">CloudHub-Project-{entry.role_name}</TableCell>
+                        <TableCell className="font-medium text-sm">Clodaro-Project-{entry.role_name}</TableCell>
                         <TableCell className="font-mono text-xs max-w-[200px] truncate">{entry.role_arn || "—"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {formatDistanceToNow(new Date(entry.created_at), { addSuffix: true })}

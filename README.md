@@ -1,4 +1,4 @@
-# CloudHub
+# Clodaro
 
 AWS Infrastructure Management Platform — monitor, manage, and optimize your AWS resources from a unified dashboard.
 
@@ -19,4 +19,4 @@ npm run dev
 
 ## License
 
-© 2026 CloudHub. All rights reserved.
+© 2026 Clodaro. All rights reserved.

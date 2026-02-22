@@ -68,7 +68,7 @@ export function DriftDetailsDialog({
             </Badge>
           </DialogTitle>
           <DialogDescription>
-            Changes detected outside of CloudHub
+            Changes detected outside of Clodaro
           </DialogDescription>
         </DialogHeader>
 

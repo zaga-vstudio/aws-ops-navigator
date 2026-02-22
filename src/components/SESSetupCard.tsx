@@ -96,15 +96,15 @@ export function SESSetupCard() {
       const { data, error } = await supabase.functions.invoke("send-ses-email", {
         body: {
           to: session.user.email,
-          subject: "CloudHub SES Test Email",
+          subject: "Clodaro SES Test Email",
           htmlBody: `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
               <h1 style="color: #10b981;">✅ SES Email Test Successful</h1>
-              <p>This test email confirms that your Amazon SES configuration in CloudHub is working correctly.</p>
+              <p>This test email confirms that your Amazon SES configuration in Clodaro is working correctly.</p>
               <p style="color: #6b7280; font-size: 14px;">Sent at: ${new Date().toISOString()}</p>
             </div>
           `,
-          textBody: "SES Email Test Successful. Your Amazon SES configuration in CloudHub is working correctly.",
+          textBody: "SES Email Test Successful. Your Amazon SES configuration in Clodaro is working correctly.",
         },
       });
 
@@ -137,7 +137,7 @@ export function SESSetupCard() {
           )}
         </CardTitle>
         <CardDescription>
-          Configure Amazon SES to send alert emails from CloudHub
+          Configure Amazon SES to send alert emails from Clodaro
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

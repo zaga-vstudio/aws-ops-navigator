@@ -301,7 +301,7 @@ const Auth = () => {
               <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-glow rounded-lg flex items-center justify-center">
                 <Cloud className="h-5 w-5 text-white" />
               </div>
-              <h1 className="text-xl font-bold text-foreground">CloudHub</h1>
+              <h1 className="text-xl font-bold text-foreground">Clodaro</h1>
             </Link>
             <Link to="/">
               <Button variant="ghost">
@@ -321,7 +321,7 @@ const Auth = () => {
               <div className="w-12 h-12 bg-gradient-to-br from-primary to-primary-glow rounded-lg flex items-center justify-center mx-auto mb-4">
                 <Cloud className="h-7 w-7 text-white" />
               </div>
-              <CardTitle className="text-2xl">Welcome to CloudHub</CardTitle>
+              <CardTitle className="text-2xl">Welcome to Clodaro</CardTitle>
               <CardDescription>
                 Sign in to your account or create a new one to get started with AWS management.
               </CardDescription>

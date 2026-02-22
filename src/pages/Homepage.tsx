@@ -44,7 +44,7 @@ const Homepage = () => {
     name: "Sarah Chen",
     role: "DevOps Engineer",
     company: "TechStartup",
-    comment: "CloudHub transformed how we manage our AWS infrastructure. Setup took minutes, not hours.",
+    comment: "Clodaro transformed how we manage our AWS infrastructure. Setup took minutes, not hours.",
     rating: 5
   },
   {
@@ -74,7 +74,7 @@ const Homepage = () => {
               <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-glow rounded-lg flex items-center justify-center">
                 <Cloud className="h-5 w-5 text-white" />
               </div>
-              <h1 className="text-xl font-bold text-foreground">CloudHub</h1>
+              <h1 className="text-xl font-bold text-foreground">Clodaro</h1>
               
 
 
@@ -207,7 +207,7 @@ const Homepage = () => {
               Ready to transform your AWS experience?
             </h2>
             <p className="text-xl text-muted-foreground mb-8">
-              Join thousands of teams already using CloudHub to manage their infrastructure.
+              Join thousands of teams already using Clodaro to manage their infrastructure.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link to="/auth">
@@ -243,10 +243,10 @@ const Homepage = () => {
               <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-glow rounded-lg flex items-center justify-center">
                 <Cloud className="h-5 w-5 text-white" />
               </div>
-              <span className="text-lg font-bold text-foreground">CloudHub</span>
+              <span className="text-lg font-bold text-foreground">Clodaro</span>
             </div>
             <p className="text-muted-foreground">
-              © 2026 CloudHub. All rights reserved.
+              © 2026 Clodaro. All rights reserved.
             </p>
           </div>
         </div>
