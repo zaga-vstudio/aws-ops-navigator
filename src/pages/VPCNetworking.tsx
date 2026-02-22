@@ -33,6 +33,9 @@ import { SecurityNACLAuditor } from "@/components/vpc/SecurityNACLAuditor";
 import { NACLRulesManager } from "@/components/vpc/NACLRulesManager";
 import { ConnectivityTroubleshooter } from "@/components/vpc/ConnectivityTroubleshooter";
 import { GlobalResourceView } from "@/components/vpc/GlobalResourceView";
+import { VPCDetailsDialog } from "@/components/vpc/VPCDetailsDialog";
+import { CreateSubnetDialog } from "@/components/vpc/CreateSubnetDialog";
+import { ManageRouteTablesDialog } from "@/components/vpc/ManageRouteTablesDialog";
 
 const VPCNetworking = () => {
   const { user, loading: authLoading } = useAuth();
@@ -47,6 +50,12 @@ const VPCNetworking = () => {
   const [subnetBlastRadiusDialogOpen, setSubnetBlastRadiusDialogOpen] = useState(false);
   const [selectedSubnetForDeletion, setSelectedSubnetForDeletion] = useState<Subnet | null>(null);
   const [safetyMode, setSafetyMode] = useState(false);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [selectedVPCForDetails, setSelectedVPCForDetails] = useState<VPC | null>(null);
+  const [createSubnetDialogOpen, setCreateSubnetDialogOpen] = useState(false);
+  const [selectedVPCForSubnet, setSelectedVPCForSubnet] = useState<VPC | null>(null);
+  const [routeTablesDialogOpen, setRouteTablesDialogOpen] = useState(false);
+  const [selectedVPCForRoutes, setSelectedVPCForRoutes] = useState<VPC | null>(null);
 
   const vpcs = awsData?.vpcs || [];
   const subnets = awsData?.subnets || [];
@@ -204,6 +213,30 @@ const VPCNetworking = () => {
                 onConfirmDelete={handleConfirmSubnetDelete}
                 isDeleting={actionLoading !== null}
               />
+              <VPCDetailsDialog
+                open={detailsDialogOpen}
+                onOpenChange={(open) => { setDetailsDialogOpen(open); if (!open) setSelectedVPCForDetails(null); }}
+                vpc={selectedVPCForDetails}
+                subnets={subnets}
+                securityGroups={securityGroups}
+                routeTables={advancedData?.routeTables || []}
+                nacls={advancedData?.nacls || []}
+                internetGateways={advancedData?.internetGateways || []}
+                natGateways={advancedData?.natGateways || []}
+              />
+              <CreateSubnetDialog
+                open={createSubnetDialogOpen}
+                onOpenChange={(open) => { setCreateSubnetDialogOpen(open); if (!open) setSelectedVPCForSubnet(null); }}
+                vpc={selectedVPCForSubnet}
+                onSuccess={handleRefreshAll}
+              />
+              <ManageRouteTablesDialog
+                open={routeTablesDialogOpen}
+                onOpenChange={(open) => { setRouteTablesDialogOpen(open); if (!open) setSelectedVPCForRoutes(null); }}
+                vpc={selectedVPCForRoutes}
+                routeTables={advancedData?.routeTables || []}
+                subnets={subnets}
+              />
 
               {error && (
                 <Alert variant="destructive">
@@ -329,9 +362,9 @@ const VPCNetworking = () => {
                                           <Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
-                                          <DropdownMenuItem>View Details</DropdownMenuItem>
-                                          <DropdownMenuItem>Create Subnet</DropdownMenuItem>
-                                          <DropdownMenuItem>Manage Route Tables</DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => { setSelectedVPCForDetails(vpc); setDetailsDialogOpen(true); }}>View Details</DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => { setSelectedVPCForSubnet(vpc); setCreateSubnetDialogOpen(true); }}>Create Subnet</DropdownMenuItem>
+                                          <DropdownMenuItem onClick={() => { setSelectedVPCForRoutes(vpc); setRouteTablesDialogOpen(true); }}>Manage Route Tables</DropdownMenuItem>
                                           <DropdownMenuItem
                                             className="text-destructive"
                                             onClick={() => handleOpenBlastRadius(vpc)}
