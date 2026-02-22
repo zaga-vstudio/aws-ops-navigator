@@ -55,36 +55,21 @@ interface ExistingRule {
 
 function extractRules(securityGroup: any): ExistingRule[] {
   const rules: ExistingRule[] = [];
-  if (securityGroup?.inboundRules) {
-    for (const rule of securityGroup.inboundRules) {
-      const cidrs = rule.ipRanges?.map((r: any) => r.cidrIp || r.CidrIp) || 
-                    rule.IpRanges?.map((r: any) => r.CidrIp) || [];
-      for (const cidr of cidrs) {
-        rules.push({
-          protocol: rule.ipProtocol || rule.IpProtocol || '-1',
-          fromPort: rule.fromPort ?? rule.FromPort ?? 0,
-          toPort: rule.toPort ?? rule.ToPort ?? 0,
-          cidr,
-          type: 'ingress',
-        });
-      }
+  const processRules = (ruleList: any[], type: 'ingress' | 'egress') => {
+    if (!ruleList) return;
+    for (const rule of ruleList) {
+      const cidr = rule.cidrIpv4 || rule.cidrIpv6 || rule.sourceSecurityGroupId || rule.prefixListId || 'N/A';
+      rules.push({
+        protocol: rule.ipProtocol || '-1',
+        fromPort: rule.fromPort ?? 0,
+        toPort: rule.toPort ?? 0,
+        cidr,
+        type,
+      });
     }
-  }
-  if (securityGroup?.outboundRules) {
-    for (const rule of securityGroup.outboundRules) {
-      const cidrs = rule.ipRanges?.map((r: any) => r.cidrIp || r.CidrIp) || 
-                    rule.IpRanges?.map((r: any) => r.CidrIp) || [];
-      for (const cidr of cidrs) {
-        rules.push({
-          protocol: rule.ipProtocol || rule.IpProtocol || '-1',
-          fromPort: rule.fromPort ?? rule.FromPort ?? 0,
-          toPort: rule.toPort ?? rule.ToPort ?? 0,
-          cidr,
-          type: 'egress',
-        });
-      }
-    }
-  }
+  };
+  processRules(securityGroup?.inboundRules, 'ingress');
+  processRules(securityGroup?.outboundRules, 'egress');
   return rules;
 }
 
