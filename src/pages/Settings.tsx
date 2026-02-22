@@ -139,6 +139,7 @@ export default function Settings() {
   const [company, setCompany] = useState("");
   const [timezone, setTimezone] = useState("UTC");
   const [awsDefaultRegion, setAwsDefaultRegion] = useState("us-east-1");
+  const [projectTags, setProjectTags] = useState("");
 
   // Security dialogs state
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -162,7 +163,7 @@ export default function Settings() {
 
         const { data: profile } = await supabase
           .from("profiles")
-          .select("display_name, company, timezone, aws_default_region")
+          .select("display_name, company, timezone, aws_default_region, project_tags")
           .eq("user_id", user.id)
           .maybeSingle();
 
@@ -171,6 +172,7 @@ export default function Settings() {
           setCompany(profile.company || "");
           setTimezone((profile as any).timezone || "UTC");
           setAwsDefaultRegion(profile.aws_default_region || "us-east-1");
+          setProjectTags((profile as any).project_tags || "");
         }
       } catch (err) {
         console.error("Failed to load profile:", err);
@@ -205,6 +207,7 @@ export default function Settings() {
           company: company || null,
           timezone,
           aws_default_region: awsDefaultRegion,
+          project_tags: projectTags,
         } as any)
         .eq("user_id", user.id);
 
@@ -360,7 +363,8 @@ export default function Settings() {
                         <Textarea
                           id="projects"
                           placeholder="Enter project names separated by commas (e.g., production, staging, development)"
-                          defaultValue="production, staging, development, testing" />
+                          value={projectTags}
+                          onChange={(e) => setProjectTags(e.target.value)} />
 
                       </div>
 
