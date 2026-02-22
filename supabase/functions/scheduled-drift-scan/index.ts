@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { EC2Client, DescribeInstancesCommand, DescribeSecurityGroupsCommand, DescribeVpcsCommand } from "npm:@aws-sdk/client-ec2";
 import { RDSClient, DescribeDBInstancesCommand } from "npm:@aws-sdk/client-rds";
 import { SESClient, SendEmailCommand } from "npm:@aws-sdk/client-ses";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +13,7 @@ interface AWSConfig {
   accessKeyId: string;
   secretAccessKey: string;
   region: string;
+  sessionToken?: string;
 }
 
 // Simple hash function for configuration comparison
@@ -210,6 +212,7 @@ async function sendDriftNotifications(
         credentials: {
           accessKeyId: awsConfig.accessKeyId,
           secretAccessKey: awsConfig.secretAccessKey,
+          ...(awsConfig.sessionToken && { sessionToken: awsConfig.sessionToken }),
         },
       });
 
@@ -284,7 +287,6 @@ async function sendDriftNotifications(
   const discordWebhook = await decryptWebhook(preferences.encrypted_discord_webhook, preferences.webhook_nonce);
   const webhookUrl = await decryptWebhook(preferences.encrypted_webhook_url, preferences.webhook_nonce);
 
-  // Send Slack notification if configured
   if (slackWebhook) {
     try {
       const slackPayload = {
@@ -314,7 +316,6 @@ async function sendDriftNotifications(
     }
   }
 
-  // Send Discord notification if configured
   if (discordWebhook) {
     try {
       const discordPayload = {
@@ -345,7 +346,6 @@ async function sendDriftNotifications(
     }
   }
 
-  // Send custom webhook if configured
   if (webhookUrl) {
     try {
       const webhookRes = await fetch(webhookUrl, {
@@ -370,7 +370,7 @@ async function sendDriftNotifications(
   return results;
 }
 
-async function scanUserForDrift(supabase: any, userId: string, userEmail: string, preferences: any) {
+async function scanUserForDrift(supabase: any, userId: string, userEmail: string, preferences: any, roleName?: string) {
   console.log(`Scanning drift for user ${userId}`);
   
   // Get AWS credentials
@@ -380,10 +380,19 @@ async function scanUserForDrift(supabase: any, userId: string, userEmail: string
     return { success: false, error: 'No AWS credentials' };
   }
 
+  const region = creds[0].region || 'us-east-1';
+
+  const { credentials: awsCreds } = await resolveCredentials(
+    supabase, userId, userEmail,
+    { accessKeyId: creds[0].access_key_id, secretAccessKey: creds[0].secret_access_key },
+    region, roleName
+  );
+
   const awsConfig: AWSConfig = {
-    accessKeyId: creds[0].access_key_id,
-    secretAccessKey: creds[0].secret_access_key,
-    region: creds[0].region || 'us-east-1',
+    accessKeyId: awsCreds.accessKeyId,
+    secretAccessKey: awsCreds.secretAccessKey,
+    region,
+    sessionToken: awsCreds.sessionToken,
   };
 
   const clientConfig = {
@@ -391,6 +400,7 @@ async function scanUserForDrift(supabase: any, userId: string, userEmail: string
     credentials: {
       accessKeyId: awsConfig.accessKeyId,
       secretAccessKey: awsConfig.secretAccessKey,
+      ...(awsConfig.sessionToken && { sessionToken: awsConfig.sessionToken }),
     }
   };
 
@@ -565,7 +575,7 @@ Deno.serve(async (req) => {
         .eq('user_id', user.id)
         .single();
 
-      const result = await scanUserForDrift(supabase, user.id, user.email || '', prefs || {});
+      const result = await scanUserForDrift(supabase, user.id, user.email || '', prefs || {}, body.roleName);
 
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -600,6 +610,7 @@ Deno.serve(async (req) => {
         const { data: { user } } = await supabase.auth.admin.getUserById(prefs.user_id);
         const userEmail = user?.email || '';
 
+        // Scheduled scans use admin creds (no roleName)
         const result = await scanUserForDrift(supabase, prefs.user_id, userEmail, prefs);
         results.push({ userId: prefs.user_id, ...result });
       } catch (e) {

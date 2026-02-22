@@ -7,6 +7,7 @@ import { CloudWatchClient, GetMetricStatisticsCommand, DescribeAlarmsCommand } f
 import { IAMClient, ListUsersCommand, GetUserCommand, ListAccessKeysCommand } from "npm:@aws-sdk/client-iam@3.451.0";
 import { ConfigServiceClient, DescribeComplianceByResourceCommand, DescribeConfigRulesCommand } from "npm:@aws-sdk/client-config-service@3.451.0";
 import { CostExplorerClient, GetCostAndUsageCommand, GetAnomaliesCommand } from "npm:@aws-sdk/client-cost-explorer@3.451.0";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -19,6 +20,8 @@ interface AWSConfig {
   aws_region: string;
   session_token?: string;
 }
+
+// Interfaces for AWS resources and dashboard data
 
 interface EC2Instance {
   id: string;
@@ -207,51 +210,22 @@ interface DashboardData {
   };
 }
 
-async function getAWSCredentials(supabase: any, userId: string): Promise<AWSConfig | null> {
-  try {
-    // Use the secure database function to get decrypted credentials
-    const { data, error } = await supabase
-      .rpc('get_user_aws_credentials', { user_id_param: userId });
-
-    if (error) {
-      console.error('Error fetching AWS credentials:', error);
-      return null;
-    }
-
-    if (!data || data.length === 0) {
-      console.error('No AWS credentials found for user');
-      return null;
-    }
-
-    const credentials = data[0];
-
-    return {
-      access_key_id: credentials.access_key_id,
-      secret_access_key: credentials.secret_access_key,
-      aws_region: credentials.region || 'us-east-1',
-    };
-  } catch (error) {
-    console.error('Error in getAWSCredentials:', error);
-    return null;
-  }
+function makeClientConfig(config: AWSConfig) {
+  return {
+    region: config.aws_region,
+    credentials: {
+      accessKeyId: config.access_key_id,
+      secretAccessKey: config.secret_access_key,
+      ...(config.session_token && { sessionToken: config.session_token }),
+    },
+  };
 }
 
 async function getEC2Instances(config: AWSConfig): Promise<EC2Instance[]> {
   console.log(`Fetching EC2 instances for region: ${config.aws_region}`);
   
   try {
-    const ec2Client = new EC2Client({
-      region: config.aws_region,
-      credentials: {
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      },
-      // Force explicit credentials, disable file-based credential lookup
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
-    });
+    const ec2Client = new EC2Client(makeClientConfig(config));
 
     const command = new DescribeInstancesCommand({});
     const response = await ec2Client.send(command);
@@ -267,7 +241,6 @@ async function getEC2Instances(config: AWSConfig): Promise<EC2Instance[]> {
             const platformIdTag = instance.Tags?.find(tag => tag.Key === 'PlatformId');
             const sshUserTag = instance.Tags?.find(tag => tag.Key === 'SSHUser');
             
-            // Extract security group IDs
             const securityGroupIds = instance.SecurityGroups?.map(sg => sg.GroupId || '').filter(Boolean) || [];
             
             instances.push({
@@ -295,11 +268,6 @@ async function getEC2Instances(config: AWSConfig): Promise<EC2Instance[]> {
     return instances;
   } catch (error: any) {
     console.error('Error fetching EC2 instances:', error);
-    console.error('Error details:', {
-      name: error.name,
-      message: error.message,
-      code: error.Code || error.$metadata?.httpStatusCode
-    });
     throw new Error(`Failed to fetch EC2 instances: ${error.message}`);
   }
 }
@@ -308,18 +276,7 @@ async function getRDSDatabases(config: AWSConfig): Promise<RDSDatabase[]> {
   console.log(`Fetching RDS databases for region: ${config.aws_region}`);
   
   try {
-    const rdsClient = new RDSClient({
-      region: config.aws_region,
-      credentials: {
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      },
-      // Force explicit credentials, disable file-based credential lookup
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
-    });
+    const rdsClient = new RDSClient(makeClientConfig(config));
 
     const command = new DescribeDBInstancesCommand({});
     const response = await rdsClient.send(command);
@@ -346,11 +303,6 @@ async function getRDSDatabases(config: AWSConfig): Promise<RDSDatabase[]> {
     return databases;
   } catch (error: any) {
     console.error('Error fetching RDS databases:', error);
-    console.error('Error details:', {
-      name: error.name,
-      message: error.message,
-      code: error.Code || error.$metadata?.httpStatusCode
-    });
     throw new Error(`Failed to fetch RDS databases: ${error.message}`);
   }
 }
@@ -359,18 +311,7 @@ async function getS3Buckets(config: AWSConfig): Promise<S3Bucket[]> {
   console.log(`Fetching S3 buckets for region: ${config.aws_region}`);
   
   try {
-    const s3Client = new S3Client({
-      region: config.aws_region,
-      credentials: {
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      },
-      // Force explicit credentials, disable file-based credential lookup
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
-    });
+    const s3Client = new S3Client(makeClientConfig(config));
 
     const command = new ListBucketsCommand({});
     const response = await s3Client.send(command);
@@ -381,7 +322,7 @@ async function getS3Buckets(config: AWSConfig): Promise<S3Bucket[]> {
       for (const bucket of response.Buckets) {
         buckets.push({
           name: bucket.Name || '',
-          region: config.aws_region, // Note: S3 bucket region needs separate call to get exact region
+          region: config.aws_region,
           creationDate: bucket.CreationDate?.toISOString() || '',
         });
       }
@@ -391,58 +332,37 @@ async function getS3Buckets(config: AWSConfig): Promise<S3Bucket[]> {
     return buckets;
   } catch (error: any) {
     console.error('Error fetching S3 buckets:', error);
-    console.error('Error details:', {
-      name: error.name,
-      message: error.message,
-      code: error.Code || error.$metadata?.httpStatusCode
-    });
     throw new Error(`Failed to fetch S3 buckets: ${error.message}`);
   }
 }
 
 function calculateEstimatedCost(ec2Instances: EC2Instance[], rdsDatabases: RDSDatabase[], s3Buckets: S3Bucket[]): number {
-  // Basic cost estimation - in a real app you'd want to call AWS Cost Explorer API
   let totalCost = 0;
   
-  // EC2 cost estimation (rough hourly rates in USD per hour)
   for (const instance of ec2Instances) {
     if (instance.state === 'running') {
       const hourlyRates: { [key: string]: number } = {
-        't2.nano': 0.0058,
-        't2.micro': 0.0116,
-        't2.small': 0.023,
-        't2.medium': 0.0464,
-        't3.nano': 0.0052,
-        't3.micro': 0.0104,
-        't3.small': 0.0208,
-        't3.medium': 0.0416,
-        't3.large': 0.0832,
-        't3.xlarge': 0.1664,
+        't2.nano': 0.0058, 't2.micro': 0.0116, 't2.small': 0.023, 't2.medium': 0.0464,
+        't3.nano': 0.0052, 't3.micro': 0.0104, 't3.small': 0.0208, 't3.medium': 0.0416,
+        't3.large': 0.0832, 't3.xlarge': 0.1664,
       };
-      
-      const hourlyRate = hourlyRates[instance.type] || 0.05; // default rate
-      totalCost += hourlyRate * 24 * 30; // monthly cost
+      const hourlyRate = hourlyRates[instance.type] || 0.05;
+      totalCost += hourlyRate * 24 * 30;
     }
   }
   
-  // RDS cost estimation
   for (const db of rdsDatabases) {
     if (db.state === 'available') {
       const hourlyRates: { [key: string]: number } = {
-        'db.t3.micro': 0.017,
-        'db.t3.small': 0.034,
-        'db.t3.medium': 0.068,
-        'db.t3.large': 0.136,
+        'db.t3.micro': 0.017, 'db.t3.small': 0.034, 'db.t3.medium': 0.068, 'db.t3.large': 0.136,
       };
-      
       const hourlyRate = hourlyRates[db.instanceClass] || 0.05;
-      totalCost += hourlyRate * 24 * 30; // monthly cost
-      totalCost += db.allocatedStorage * 0.10; // storage cost per GB
+      totalCost += hourlyRate * 24 * 30;
+      totalCost += db.allocatedStorage * 0.10;
     }
   }
   
-  // S3 cost estimation (minimal for typical usage)
-  totalCost += s3Buckets.length * 0.50; // roughly $0.50 per bucket per month for minimal usage
+  totalCost += s3Buckets.length * 0.50;
   
   return Math.round(totalCost * 100) / 100;
 }
@@ -451,18 +371,7 @@ async function getVPCs(config: AWSConfig): Promise<VPC[]> {
   console.log(`Fetching VPCs for region: ${config.aws_region}`);
   
   try {
-    const ec2Client = new EC2Client({
-      region: config.aws_region,
-      credentials: {
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      },
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
-    });
-
+    const ec2Client = new EC2Client(makeClientConfig(config));
     const command = new DescribeVpcsCommand({});
     const response = await ec2Client.send(command);
     
@@ -494,18 +403,7 @@ async function getSubnets(config: AWSConfig): Promise<Subnet[]> {
   console.log(`Fetching Subnets for region: ${config.aws_region}`);
   
   try {
-    const ec2Client = new EC2Client({
-      region: config.aws_region,
-      credentials: {
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      },
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
-    });
-
+    const ec2Client = new EC2Client(makeClientConfig(config));
     const command = new DescribeSubnetsCommand({});
     const response = await ec2Client.send(command);
     
@@ -537,18 +435,7 @@ async function getVpcPeeringConnections(config: AWSConfig): Promise<VPCPeeringCo
   console.log(`Fetching VPC Peering Connections for region: ${config.aws_region}`);
   
   try {
-    const ec2Client = new EC2Client({
-      region: config.aws_region,
-      credentials: {
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      },
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
-    });
-
+    const ec2Client = new EC2Client(makeClientConfig(config));
     const command = new DescribeVpcPeeringConnectionsCommand({});
     const response = await ec2Client.send(command);
     
@@ -575,7 +462,7 @@ async function getVpcPeeringConnections(config: AWSConfig): Promise<VPCPeeringCo
     return peeringConnections;
   } catch (error: any) {
     console.error('Error fetching VPC Peering Connections:', error);
-    return []; // Return empty array on error to not block other data
+    return [];
   }
 }
 
@@ -591,51 +478,26 @@ function parseSecurityGroupRules(ipPermissions: any[] | undefined): SecurityGrou
       toPort: permission.ToPort,
     };
     
-    // Handle IPv4 CIDR ranges
     if (permission.IpRanges) {
       for (const range of permission.IpRanges) {
-        rules.push({
-          ...baseRule,
-          cidrIpv4: range.CidrIp,
-          description: range.Description,
-        });
+        rules.push({ ...baseRule, cidrIpv4: range.CidrIp, description: range.Description });
       }
     }
-    
-    // Handle IPv6 CIDR ranges
     if (permission.Ipv6Ranges) {
       for (const range of permission.Ipv6Ranges) {
-        rules.push({
-          ...baseRule,
-          cidrIpv6: range.CidrIpv6,
-          description: range.Description,
-        });
+        rules.push({ ...baseRule, cidrIpv6: range.CidrIpv6, description: range.Description });
       }
     }
-    
-    // Handle security group references
     if (permission.UserIdGroupPairs) {
       for (const pair of permission.UserIdGroupPairs) {
-        rules.push({
-          ...baseRule,
-          sourceSecurityGroupId: pair.GroupId,
-          description: pair.Description,
-        });
+        rules.push({ ...baseRule, sourceSecurityGroupId: pair.GroupId, description: pair.Description });
       }
     }
-    
-    // Handle prefix lists
     if (permission.PrefixListIds) {
       for (const prefix of permission.PrefixListIds) {
-        rules.push({
-          ...baseRule,
-          prefixListId: prefix.PrefixListId,
-          description: prefix.Description,
-        });
+        rules.push({ ...baseRule, prefixListId: prefix.PrefixListId, description: prefix.Description });
       }
     }
-    
-    // If no sources defined, add the base rule with protocol info
     if (!permission.IpRanges?.length && !permission.Ipv6Ranges?.length && 
         !permission.UserIdGroupPairs?.length && !permission.PrefixListIds?.length) {
       rules.push(baseRule);
@@ -649,18 +511,7 @@ async function getSecurityGroups(config: AWSConfig): Promise<SecurityGroup[]> {
   console.log(`Fetching Security Groups for region: ${config.aws_region}`);
   
   try {
-    const ec2Client = new EC2Client({
-      region: config.aws_region,
-      credentials: {
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      },
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
-    });
-
+    const ec2Client = new EC2Client(makeClientConfig(config));
     const command = new DescribeSecurityGroupsCommand({});
     const response = await ec2Client.send(command);
     
@@ -698,26 +549,14 @@ async function getCloudWatchMetrics(config: AWSConfig, instanceIds: string[]): P
   }
 
   try {
-    const cloudWatchClient = new CloudWatchClient({
-      region: config.aws_region,
-      credentials: {
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      },
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
-    });
+    const cloudWatchClient = new CloudWatchClient(makeClientConfig(config));
 
     const endTime = new Date();
-    const startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000); // Last 24 hours
-    const period = 3600; // 1 hour intervals
+    const startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000);
+    const period = 3600;
 
-    // Fetch metrics for all instances aggregated
     const fetchMetric = async (metricName: string, namespace: string = 'AWS/EC2'): Promise<MetricDataPoint[]> => {
       try {
-        // Get metrics for first running instance (for simplicity, aggregate view)
         const command = new GetMetricStatisticsCommand({
           Namespace: namespace,
           MetricName: metricName,
@@ -767,18 +606,7 @@ async function getCloudWatchAlarms(config: AWSConfig): Promise<CloudWatchAlarm[]
   console.log(`Fetching CloudWatch Alarms for region: ${config.aws_region}`);
   
   try {
-    const cloudWatchClient = new CloudWatchClient({
-      region: config.aws_region,
-      credentials: {
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      },
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
-    });
-
+    const cloudWatchClient = new CloudWatchClient(makeClientConfig(config));
     const command = new DescribeAlarmsCommand({});
     const response = await cloudWatchClient.send(command);
     
@@ -816,15 +644,12 @@ async function getIAMUsers(config: AWSConfig): Promise<IAMUser[]> {
   
   try {
     const iamClient = new IAMClient({
-      region: 'us-east-1', // IAM is global, but client needs a region
+      region: 'us-east-1',
       credentials: {
         accessKeyId: config.access_key_id,
         secretAccessKey: config.secret_access_key,
+        ...(config.session_token && { sessionToken: config.session_token }),
       },
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
     });
 
     const listUsersCommand = new ListUsersCommand({});
@@ -834,7 +659,6 @@ async function getIAMUsers(config: AWSConfig): Promise<IAMUser[]> {
     
     if (response.Users) {
       for (const user of response.Users) {
-        // Get access keys count for each user
         let accessKeysCount = 0;
         try {
           const accessKeysCommand = new ListAccessKeysCommand({ UserName: user.UserName });
@@ -850,7 +674,7 @@ async function getIAMUsers(config: AWSConfig): Promise<IAMUser[]> {
           arn: user.Arn || '',
           createDate: user.CreateDate?.toISOString() || '',
           passwordLastUsed: user.PasswordLastUsed?.toISOString(),
-          mfaEnabled: false, // Note: Checking MFA requires additional permissions
+          mfaEnabled: false,
           accessKeys: accessKeysCount,
         });
       }
@@ -860,7 +684,6 @@ async function getIAMUsers(config: AWSConfig): Promise<IAMUser[]> {
     return users;
   } catch (error: any) {
     console.error('Error fetching IAM Users:', error);
-    // Return empty array if no IAM permissions
     if (error.message?.includes('AccessDenied') || error.message?.includes('UnauthorizedOperation')) {
       console.log('No IAM permissions, returning empty array');
       return [];
@@ -873,27 +696,15 @@ async function getComplianceChecks(config: AWSConfig): Promise<ComplianceCheck[]
   console.log(`Fetching AWS Config compliance for region: ${config.aws_region}`);
   
   try {
-    const configClient = new ConfigServiceClient({
-      region: config.aws_region,
-      credentials: {
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      },
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
-    });
+    const configClient = new ConfigServiceClient(makeClientConfig(config));
 
-    // First get config rules
     const rulesCommand = new DescribeConfigRulesCommand({});
     const rulesResponse = await configClient.send(rulesCommand);
     
     const checks: ComplianceCheck[] = [];
     
     if (rulesResponse.ConfigRules && rulesResponse.ConfigRules.length > 0) {
-      // Get compliance status for each rule
-      for (const rule of rulesResponse.ConfigRules.slice(0, 10)) { // Limit to 10 rules
+      for (const rule of rulesResponse.ConfigRules.slice(0, 10)) {
         try {
           const complianceCommand = new DescribeComplianceByResourceCommand({
             ResourceType: rule.Scope?.ComplianceResourceTypes?.[0] || 'AWS::EC2::Instance',
@@ -922,8 +733,7 @@ async function getComplianceChecks(config: AWSConfig): Promise<ComplianceCheck[]
     return checks;
   } catch (error: any) {
     console.error('Error fetching Compliance Checks:', error);
-    // Return empty array if AWS Config not enabled or no permissions
-    if (error.message?.includes('AccessDenied') || 
+    if (error.message?.includes('AccessDenied') ||
         error.message?.includes('ResourceNotFound') ||
         error.message?.includes('ConfigServiceNotEnabled')) {
       console.log('AWS Config not available, returning empty array');
@@ -933,8 +743,6 @@ async function getComplianceChecks(config: AWSConfig): Promise<ComplianceCheck[]
   }
 }
 
-// Check if cached cost data is valid
-// Get cached cost data - can optionally ignore expiration for historical view
 async function getCachedCostData(supabase: any, userId: string, ignoreExpiration: boolean = false): Promise<CostDataWithCache | null> {
   try {
     const { data, error } = await supabase
@@ -952,7 +760,6 @@ async function getCachedCostData(supabase: any, userId: string, ignoreExpiration
     const expiresAt = new Date(data.expires_at);
     const isExpired = now > expiresAt;
     
-    // Check if cache is expired (unless we're ignoring expiration for historical view)
     if (isExpired && !ignoreExpiration) {
       console.log('Cost data cache expired');
       return null;
@@ -971,7 +778,7 @@ async function getCachedCostData(supabase: any, userId: string, ignoreExpiration
       historicalCosts: data.historical_costs || [],
       cachedAt: data.cached_at,
       fromCache: true,
-      isHistoricalData: isExpired, // Flag if data is older than TTL
+      isHistoricalData: isExpired,
       totalCost: data.total_cost || 0,
     };
   } catch (err: any) {
@@ -980,7 +787,6 @@ async function getCachedCostData(supabase: any, userId: string, ignoreExpiration
   }
 }
 
-// Save cost data to cache
 async function saveCostDataToCache(
   supabase: any, 
   userId: string, 
@@ -988,8 +794,8 @@ async function saveCostDataToCache(
 ): Promise<void> {
   try {
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 6 * 60 * 60 * 1000); // 6 hours
-    const historicalExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 hours
+    const expiresAt = new Date(now.getTime() + 6 * 60 * 60 * 1000);
+    const historicalExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
     const { error } = await supabase
       .from('cost_data_cache')
@@ -1014,7 +820,6 @@ async function saveCostDataToCache(
   }
 }
 
-// Fetch historical cost data (last 6 months)
 async function getHistoricalCosts(config: AWSConfig): Promise<HistoricalCostPoint[]> {
   console.log('Fetching historical cost data from Cost Explorer');
   
@@ -1024,11 +829,8 @@ async function getHistoricalCosts(config: AWSConfig): Promise<HistoricalCostPoin
       credentials: {
         accessKeyId: config.access_key_id,
         secretAccessKey: config.secret_access_key,
+        ...(config.session_token && { sessionToken: config.session_token }),
       },
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
     });
 
     const now = new Date();
@@ -1073,7 +875,6 @@ async function getHistoricalCosts(config: AWSConfig): Promise<HistoricalCostPoin
 async function getCostData(config: AWSConfig, supabase: any, userId: string, forceRefresh: boolean = false): Promise<CostDataWithCache> {
   console.log(`Fetching AWS cost data (forceRefresh: ${forceRefresh})`);
   
-  // Check if user has enabled Cost Explorer
   const { data: prefs } = await supabase
     .from('notification_preferences')
     .select('cost_explorer_enabled')
@@ -1082,11 +883,9 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
 
   const costExplorerEnabled = prefs?.cost_explorer_enabled === true;
 
-  // If Cost Explorer is disabled, try to return any cached data (even if expired)
   if (!costExplorerEnabled) {
     console.log('Cost Explorer is disabled - checking for historical cached data');
     
-    // Get cached data, ignoring expiration (historical view)
     const historicalData = await getCachedCostData(supabase, userId, true);
     
     if (historicalData) {
@@ -1094,11 +893,10 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
       return {
         ...historicalData,
         costExplorerDisabled: true,
-        isHistoricalData: true, // Always mark as historical when disabled
+        isHistoricalData: true,
       };
     }
     
-    // No cached data exists - user has never enabled Cost Explorer
     console.log('No historical cost data found - user has never enabled Cost Explorer');
     return {
       serviceBreakdown: [],
@@ -1111,7 +909,6 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
     };
   }
   
-  // Check cache first if not forcing refresh
   if (!forceRefresh) {
     const cachedData = await getCachedCostData(supabase, userId);
     if (cachedData) {
@@ -1123,22 +920,18 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
   
   try {
     const costExplorerClient = new CostExplorerClient({
-      region: 'us-east-1', // Cost Explorer only available in us-east-1
+      region: 'us-east-1',
       credentials: {
         accessKeyId: config.access_key_id,
         secretAccessKey: config.secret_access_key,
+        ...(config.session_token && { sessionToken: config.session_token }),
       },
-      credentialDefaultProvider: () => async () => ({
-        accessKeyId: config.access_key_id,
-        secretAccessKey: config.secret_access_key,
-      }),
     });
 
     const now = new Date();
     const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     
-    // Fetch cost and usage by service AND historical costs in parallel
     const [costResponse, historicalCosts] = await Promise.all([
       costExplorerClient.send(new GetCostAndUsageCommand({
         TimePeriod: {
@@ -1147,12 +940,7 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
         },
         Granularity: 'MONTHLY',
         Metrics: ['UnblendedCost'],
-        GroupBy: [
-          {
-            Type: 'DIMENSION',
-            Key: 'SERVICE',
-          },
-        ],
+        GroupBy: [{ Type: 'DIMENSION', Key: 'SERVICE' }],
       })),
       getHistoricalCosts(config),
     ]);
@@ -1186,7 +974,6 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
       console.log(`Found ${serviceBreakdown.length} services, total: $${totalCost.toFixed(2)}`);
     }
 
-    // Fetch cost anomalies
     let anomalies: CostAnomaly[] = [];
     
     try {
@@ -1231,7 +1018,6 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
       trend: 'stable' as const,
     }));
 
-    // Save to cache
     await saveCostDataToCache(supabase, userId, {
       serviceBreakdown,
       anomalies,
@@ -1249,8 +1035,7 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
     };
   } catch (error: any) {
     console.error('Error fetching cost data:', error.message);
-    // Return empty data if Cost Explorer not enabled or no permissions
-    if (error.message?.includes('AccessDenied') || 
+    if (error.message?.includes('AccessDenied') ||
         error.message?.includes('SubscriptionRequiredException') ||
         error.message?.includes('UnauthorizedOperation')) {
       console.log('Cost Explorer not available, returning empty cost data');
@@ -1266,18 +1051,18 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Parse request body for forceRefresh flag
     let forceRefreshCost = false;
+    let roleName: string | undefined;
     try {
       if (req.method === 'POST') {
         const body = await req.json();
         forceRefreshCost = body.forceRefreshCost === true;
+        roleName = body.roleName;
       }
     } catch {
       // No body or invalid JSON, use defaults
@@ -1293,37 +1078,46 @@ serve(async (req) => {
       }
     );
 
-    // Get user from JWT token
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     
     if (authError || !user) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     console.log(`Fetching AWS data for user: ${user.id} (forceRefreshCost: ${forceRefreshCost})`);
 
-    // Get AWS credentials for the user
-    const awsConfig = await getAWSCredentials(supabaseClient, user.id);
-    
-    if (!awsConfig) {
+    // Get raw AWS credentials
+    const { data: credData, error: credError } = await supabaseClient
+      .rpc('get_user_aws_credentials', { user_id_param: user.id });
+
+    if (credError || !credData || credData.length === 0) {
       return new Response(
         JSON.stringify({ error: 'AWS credentials not configured' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    const rawCreds = credData[0];
+    const region = rawCreds.region || 'us-east-1';
+
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabaseClient, user.id, user.email || '',
+      { accessKeyId: rawCreds.access_key_id, secretAccessKey: rawCreds.secret_access_key },
+      region, roleName
+    );
+
+    const awsConfig: AWSConfig = {
+      access_key_id: awsCreds.accessKeyId,
+      secret_access_key: awsCreds.secretAccessKey,
+      aws_region: region,
+      session_token: awsCreds.sessionToken,
+    };
+
     console.log(`Using AWS region: ${awsConfig.aws_region}`);
 
-    // Fetch data from AWS with better error handling
     let ec2Instances: EC2Instance[] = [];
     let rdsDatabases: RDSDatabase[] = [];
     let s3Buckets: S3Bucket[] = [];
@@ -1344,15 +1138,12 @@ serve(async (req) => {
     };
     
     try {
-      // First fetch EC2 instances to get IDs for metrics
       ec2Instances = await getEC2Instances(awsConfig);
       
-      // Get running instance IDs for metrics
       const runningInstanceIds = ec2Instances
         .filter(i => i.state === 'running')
         .map(i => i.id);
 
-      // Fetch remaining data in parallel (cost data uses caching)
       [rdsDatabases, s3Buckets, vpcs, subnets, securityGroups, vpcPeeringConnections, alarms, iamUsers, complianceChecks, costData, cloudWatchMetrics] = await Promise.all([
         getRDSDatabases(awsConfig),
         getS3Buckets(awsConfig),
@@ -1369,7 +1160,6 @@ serve(async (req) => {
     } catch (awsError: any) {
       console.error('AWS API Error:', awsError);
       
-      // Provide specific error messages
       let errorMessage = 'Unable to connect to AWS';
       
       if (awsError.message?.includes('InvalidAccessKeyId') || awsError.message?.includes('SignatureDoesNotMatch')) {
@@ -1379,26 +1169,17 @@ serve(async (req) => {
       } else if (awsError.message?.includes('credentials')) {
         errorMessage = 'AWS credentials error. Please reconfigure your credentials in Settings.';
       }
-      
+
       return new Response(
-        JSON.stringify({ 
-          error: errorMessage,
-          details: awsError.message 
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ error: errorMessage, details: awsError.message }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Calculate metrics - prefer actual Cost Explorer data over estimation
-    // Get actual total cost from Cost Explorer if available (sum of service breakdown)
     let actualCostFromExplorer = 0;
     if (costData.serviceBreakdown && costData.serviceBreakdown.length > 0) {
       actualCostFromExplorer = costData.serviceBreakdown.reduce((sum, s) => sum + s.amount, 0);
     }
-    // Also check historical costs for current month
     if (actualCostFromExplorer === 0 && costData.historicalCosts && costData.historicalCosts.length > 0) {
       const currentMonth = costData.historicalCosts[costData.historicalCosts.length - 1];
       if (currentMonth) {
@@ -1412,7 +1193,6 @@ serve(async (req) => {
       stoppedInstances: ec2Instances.filter(i => i.state === 'stopped').length,
       totalDatabases: rdsDatabases.length,
       totalBuckets: s3Buckets.length,
-      // Use actual Cost Explorer data if available, otherwise fall back to estimation
       estimatedCost: actualCostFromExplorer > 0 
         ? Math.round(actualCostFromExplorer * 100) / 100 
         : calculateEstimatedCost(ec2Instances, rdsDatabases, s3Buckets)
@@ -1434,23 +1214,18 @@ serve(async (req) => {
       metrics
     };
 
-    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets, ${vpcs.length} VPCs, ${subnets.length} subnets, ${securityGroups.length} security groups, ${vpcPeeringConnections.length} peering connections, ${alarms.length} alarms, ${iamUsers.length} IAM users, ${complianceChecks.length} compliance checks, ${costData.serviceBreakdown.length} cost services`);
+    console.log(`Returning dashboard data with ${metrics.totalInstances} instances, ${metrics.totalDatabases} databases, ${metrics.totalBuckets} buckets`);
 
     return new Response(
       JSON.stringify(dashboardData),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: any) {
     console.error('Error in aws-dashboard-data function:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error', details: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

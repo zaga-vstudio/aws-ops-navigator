@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { EC2Client, AuthorizeSecurityGroupIngressCommand, AuthorizeSecurityGroupEgressCommand, RevokeSecurityGroupIngressCommand, RevokeSecurityGroupEgressCommand, DescribeSecurityGroupsCommand } from "npm:@aws-sdk/client-ec2@3.451.0";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,6 +18,7 @@ interface SecurityGroupRuleRequest {
   cidrIp?: string;
   sourceGroupId?: string;
   reason: string;
+  roleName?: string;
 }
 
 serve(async (req) => {
@@ -56,12 +58,17 @@ serve(async (req) => {
     }
 
     const creds = credentials[0];
+    const region = creds.region || 'us-east-1';
+
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabase, user.id, user.email || '',
+      { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+      region, requestData.roleName
+    );
+
     const ec2Client = new EC2Client({
-      region: creds.region || 'us-east-1',
-      credentials: {
-        accessKeyId: creds.access_key_id,
-        secretAccessKey: creds.secret_access_key,
-      },
+      region,
+      credentials: awsCreds,
     });
 
     // Create approval request first
@@ -85,7 +92,7 @@ serve(async (req) => {
       });
     }
 
-    // Auto-approve and execute (in production, you'd have a separate approval flow)
+    // Auto-approve and execute
     try {
       let command;
       const ipPermission: any = {

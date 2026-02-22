@@ -10,6 +10,7 @@ import {
   DescribeImagesCommand,
   DescribeKeyPairsCommand
 } from "npm:@aws-sdk/client-ec2@3.451.0";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,6 +21,7 @@ interface AWSConfig {
   access_key_id: string;
   secret_access_key: string;
   aws_region: string;
+  session_token?: string;
 }
 
 interface LaunchInstanceParams {
@@ -58,7 +60,6 @@ const OS_SSH_USERS: Record<string, string> = {
   'windows-2019': 'Administrator',
 };
 
-// Human-readable platform names
 const OS_PLATFORM_NAMES: Record<string, string> = {
   'amazon-linux-2023': 'Amazon Linux 2023',
   'amazon-linux-2': 'Amazon Linux 2',
@@ -79,95 +80,21 @@ interface SearchAMIsParams {
   searchTerm: string;
 }
 
-// OS configurations for different operating systems
 const OS_CONFIGS: Record<string, { owner: string; namePattern: string; architecture: string }> = {
-  'amazon-linux-2023': {
-    owner: 'amazon',
-    namePattern: 'al2023-ami-2023*-x86_64',
-    architecture: 'x86_64',
-  },
-  'amazon-linux-2': {
-    owner: 'amazon',
-    namePattern: 'amzn2-ami-hvm-*-x86_64-gp2',
-    architecture: 'x86_64',
-  },
-  'ubuntu-22': {
-    owner: '099720109477',
-    namePattern: 'ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*',
-    architecture: 'x86_64',
-  },
-  'ubuntu-24': {
-    owner: '099720109477',
-    namePattern: 'ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*',
-    architecture: 'x86_64',
-  },
-  'debian-12': {
-    owner: '136693071363',
-    namePattern: 'debian-12-amd64-*',
-    architecture: 'x86_64',
-  },
-  'rhel-9': {
-    owner: '309956199498',
-    namePattern: 'RHEL-9*_HVM-*-x86_64-*',
-    architecture: 'x86_64',
-  },
-  'windows-2022': {
-    owner: 'amazon',
-    namePattern: 'Windows_Server-2022-English-Full-Base-*',
-    architecture: 'x86_64',
-  },
-  'windows-2019': {
-    owner: 'amazon',
-    namePattern: 'Windows_Server-2019-English-Full-Base-*',
-    architecture: 'x86_64',
-  },
-  'kali-linux': {
-    owner: '679593333241',
-    namePattern: 'kali-linux-*',
-    architecture: 'x86_64',
-  },
-  'centos-stream-9': {
-    owner: '125523088429',
-    namePattern: 'CentOS Stream 9*',
-    architecture: 'x86_64',
-  },
-  'rocky-linux-9': {
-    owner: '792107900819',
-    namePattern: 'Rocky-9-EC2-Base-*',
-    architecture: 'x86_64',
-  },
-  'alma-linux-9': {
-    owner: '764336703387',
-    namePattern: 'AlmaLinux OS 9*',
-    architecture: 'x86_64',
-  },
-  'suse-15': {
-    owner: '013907871322',
-    namePattern: 'suse-sles-15-sp5-*',
-    architecture: 'x86_64',
-  },
+  'amazon-linux-2023': { owner: 'amazon', namePattern: 'al2023-ami-2023*-x86_64', architecture: 'x86_64' },
+  'amazon-linux-2': { owner: 'amazon', namePattern: 'amzn2-ami-hvm-*-x86_64-gp2', architecture: 'x86_64' },
+  'ubuntu-22': { owner: '099720109477', namePattern: 'ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*', architecture: 'x86_64' },
+  'ubuntu-24': { owner: '099720109477', namePattern: 'ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*', architecture: 'x86_64' },
+  'debian-12': { owner: '136693071363', namePattern: 'debian-12-amd64-*', architecture: 'x86_64' },
+  'rhel-9': { owner: '309956199498', namePattern: 'RHEL-9*_HVM-*-x86_64-*', architecture: 'x86_64' },
+  'windows-2022': { owner: 'amazon', namePattern: 'Windows_Server-2022-English-Full-Base-*', architecture: 'x86_64' },
+  'windows-2019': { owner: 'amazon', namePattern: 'Windows_Server-2019-English-Full-Base-*', architecture: 'x86_64' },
+  'kali-linux': { owner: '679593333241', namePattern: 'kali-linux-*', architecture: 'x86_64' },
+  'centos-stream-9': { owner: '125523088429', namePattern: 'CentOS Stream 9*', architecture: 'x86_64' },
+  'rocky-linux-9': { owner: '792107900819', namePattern: 'Rocky-9-EC2-Base-*', architecture: 'x86_64' },
+  'alma-linux-9': { owner: '764336703387', namePattern: 'AlmaLinux OS 9*', architecture: 'x86_64' },
+  'suse-15': { owner: '013907871322', namePattern: 'suse-sles-15-sp5-*', architecture: 'x86_64' },
 };
-
-async function getAWSCredentials(supabase: any, userId: string): Promise<AWSConfig | null> {
-  try {
-    const { data, error } = await supabase
-      .rpc('get_user_aws_credentials', { user_id_param: userId });
-
-    if (error || !data || data.length === 0) {
-      console.error('Error fetching AWS credentials:', error);
-      return null;
-    }
-
-    return {
-      access_key_id: data[0].access_key_id,
-      secret_access_key: data[0].secret_access_key,
-      aws_region: data[0].region || 'us-east-1',
-    };
-  } catch (error) {
-    console.error('Error in getAWSCredentials:', error);
-    return null;
-  }
-}
 
 async function listKeyPairs(config: AWSConfig): Promise<KeyPairInfo[]> {
   console.log(`Fetching key pairs for region: ${config.aws_region}`);
@@ -177,6 +104,7 @@ async function listKeyPairs(config: AWSConfig): Promise<KeyPairInfo[]> {
     credentials: {
       accessKeyId: config.access_key_id,
       secretAccessKey: config.secret_access_key,
+      ...(config.session_token && { sessionToken: config.session_token }),
     },
   });
 
@@ -201,7 +129,6 @@ async function listKeyPairs(config: AWSConfig): Promise<KeyPairInfo[]> {
 
 async function getLatestAMI(ec2Client: EC2Client, osType: string, customOwner?: string, customPattern?: string): Promise<string> {
   try {
-    // Use custom or predefined OS config
     const osConfig = OS_CONFIGS[osType] || {
       owner: customOwner || 'amazon',
       namePattern: customPattern || 'al2023-ami-2023*-x86_64',
@@ -223,7 +150,6 @@ async function getLatestAMI(ec2Client: EC2Client, osType: string, customOwner?: 
     const response = await ec2Client.send(command);
     
     if (response.Images && response.Images.length > 0) {
-      // Sort by creation date to get the latest
       const sortedImages = response.Images.sort((a, b) => {
         return new Date(b.CreationDate || 0).getTime() - new Date(a.CreationDate || 0).getTime();
       });
@@ -235,7 +161,7 @@ async function getLatestAMI(ec2Client: EC2Client, osType: string, customOwner?: 
     }
     
     console.log(`No AMI found for ${osType}, falling back to Amazon Linux 2`);
-    return 'ami-0c02fb55956c7d316'; // Fallback to Amazon Linux 2
+    return 'ami-0c02fb55956c7d316';
   } catch (error) {
     console.error('Error fetching AMI:', error);
     return 'ami-0c02fb55956c7d316';
@@ -246,7 +172,6 @@ async function searchMarketplaceAMIs(ec2Client: EC2Client, searchTerm: string): 
   try {
     console.log(`Searching marketplace AMIs for: ${searchTerm}`);
     
-    // Search across multiple sources
     const command = new DescribeImagesCommand({
       Filters: [
         { Name: 'name', Values: [`*${searchTerm}*`] },
@@ -263,7 +188,6 @@ async function searchMarketplaceAMIs(ec2Client: EC2Client, searchTerm: string): 
       return [];
     }
 
-    // Map and sort by creation date
     const amis = response.Images
       .sort((a, b) => new Date(b.CreationDate || 0).getTime() - new Date(a.CreationDate || 0).getTime())
       .slice(0, 10)
@@ -293,27 +217,23 @@ async function launchInstance(config: AWSConfig, params: LaunchInstanceParams): 
     credentials: {
       accessKeyId: config.access_key_id,
       secretAccessKey: config.secret_access_key,
+      ...(config.session_token && { sessionToken: config.session_token }),
     },
   });
 
-  // Determine AMI ID
   let amiId: string;
   
   if (params.customAmiId) {
-    // Use custom AMI ID directly
     amiId = params.customAmiId;
     console.log('Using custom AMI:', amiId);
   } else if (params.osType) {
-    // Find latest AMI for the selected OS
     amiId = await getLatestAMI(ec2Client, params.osType, params.osOwner, params.osNamePattern);
   } else {
-    // Default to Amazon Linux 2023
     amiId = await getLatestAMI(ec2Client, 'amazon-linux-2023');
   }
   
   console.log('Final AMI ID:', amiId);
 
-  // Determine OS-specific tags for Connect feature
   const osType = params.osType || 'amazon-linux-2023';
   const platformName = OS_PLATFORM_NAMES[osType] || 'Custom';
   const sshUser = OS_SSH_USERS[osType] || 'ec2-user';
@@ -360,13 +280,11 @@ async function startInstance(config: AWSConfig, instanceId: string): Promise<any
     credentials: {
       accessKeyId: config.access_key_id,
       secretAccessKey: config.secret_access_key,
+      ...(config.session_token && { sessionToken: config.session_token }),
     },
   });
 
-  const command = new StartInstancesCommand({
-    InstanceIds: [instanceId],
-  });
-
+  const command = new StartInstancesCommand({ InstanceIds: [instanceId] });
   const response = await ec2Client.send(command);
   console.log('Instance start initiated:', response.StartingInstances?.[0]?.CurrentState?.Name);
   
@@ -385,13 +303,11 @@ async function stopInstance(config: AWSConfig, instanceId: string): Promise<any>
     credentials: {
       accessKeyId: config.access_key_id,
       secretAccessKey: config.secret_access_key,
+      ...(config.session_token && { sessionToken: config.session_token }),
     },
   });
 
-  const command = new StopInstancesCommand({
-    InstanceIds: [instanceId],
-  });
-
+  const command = new StopInstancesCommand({ InstanceIds: [instanceId] });
   const response = await ec2Client.send(command);
   console.log('Instance stop initiated:', response.StoppingInstances?.[0]?.CurrentState?.Name);
   
@@ -410,13 +326,11 @@ async function rebootInstance(config: AWSConfig, instanceId: string): Promise<an
     credentials: {
       accessKeyId: config.access_key_id,
       secretAccessKey: config.secret_access_key,
+      ...(config.session_token && { sessionToken: config.session_token }),
     },
   });
 
-  const command = new RebootInstancesCommand({
-    InstanceIds: [instanceId],
-  });
-
+  const command = new RebootInstancesCommand({ InstanceIds: [instanceId] });
   await ec2Client.send(command);
   console.log('Instance reboot initiated');
   
@@ -431,13 +345,11 @@ async function terminateInstance(config: AWSConfig, instanceId: string): Promise
     credentials: {
       accessKeyId: config.access_key_id,
       secretAccessKey: config.secret_access_key,
+      ...(config.session_token && { sessionToken: config.session_token }),
     },
   });
 
-  const command = new TerminateInstancesCommand({
-    InstanceIds: [instanceId],
-  });
-
+  const command = new TerminateInstancesCommand({ InstanceIds: [instanceId] });
   const response = await ec2Client.send(command);
   console.log('Instance termination initiated:', response.TerminatingInstances?.[0]?.CurrentState?.Name);
   
@@ -473,9 +385,11 @@ serve(async (req) => {
       );
     }
 
-    const awsConfig = await getAWSCredentials(supabaseClient, user.id);
-    
-    if (!awsConfig) {
+    // Get raw credentials from DB
+    const { data: credData, error: credError } = await supabaseClient
+      .rpc('get_user_aws_credentials', { user_id_param: user.id });
+
+    if (credError || !credData || credData.length === 0) {
       return new Response(
         JSON.stringify({ error: 'AWS credentials not configured' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -483,7 +397,24 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { action, instanceId, params } = body;
+    const { action, instanceId, params, roleName } = body;
+
+    const rawCreds = credData[0];
+    const region = rawCreds.region || 'us-east-1';
+
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabaseClient, user.id, user.email || '',
+      { accessKeyId: rawCreds.access_key_id, secretAccessKey: rawCreds.secret_access_key },
+      region, roleName
+    );
+
+    // Build AWSConfig with resolved credentials
+    const awsConfig: AWSConfig = {
+      access_key_id: awsCreds.accessKeyId,
+      secret_access_key: awsCreds.secretAccessKey,
+      aws_region: region,
+      session_token: awsCreds.sessionToken,
+    };
 
     console.log(`Processing EC2 action: ${action} for user: ${user.id}`);
 
@@ -512,6 +443,7 @@ serve(async (req) => {
           credentials: {
             accessKeyId: awsConfig.access_key_id,
             secretAccessKey: awsConfig.secret_access_key,
+            ...(awsConfig.session_token && { sessionToken: awsConfig.session_token }),
           },
         });
         const amis = await searchMarketplaceAMIs(searchEc2Client, params.searchTerm);

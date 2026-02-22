@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { IAMClient, CreateUserCommand, DeleteUserCommand, CreateAccessKeyCommand, DeleteAccessKeyCommand, UpdateAccessKeyCommand, ListAccessKeysCommand } from "npm:@aws-sdk/client-iam@3.451.0";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,6 +13,7 @@ interface IAMUserRequest {
   userName?: string;
   accessKeyId?: string;
   reason: string;
+  roleName?: string;
 }
 
 serve(async (req) => {
@@ -51,12 +53,16 @@ serve(async (req) => {
     }
 
     const creds = credentials[0];
+
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabase, user.id, user.email || '',
+      { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+      creds.region || 'us-east-1', requestData.roleName
+    );
+
     const iamClient = new IAMClient({
       region: 'us-east-1', // IAM is global
-      credentials: {
-        accessKeyId: creds.access_key_id,
-        secretAccessKey: creds.secret_access_key,
-      },
+      credentials: awsCreds,
     });
 
     // Determine change type
