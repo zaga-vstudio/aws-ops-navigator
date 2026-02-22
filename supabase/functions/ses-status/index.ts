@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SESClient, GetAccountCommand, ListIdentitiesCommand, GetIdentityVerificationAttributesCommand } from "npm:@aws-sdk/client-ses";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,7 +32,15 @@ serve(async (req) => {
     }
     const userId = claimsData.claims.sub;
 
-    // Get AWS credentials
+    // Parse body for roleName (POST) or use no role (GET)
+    let roleName: string | undefined;
+    try {
+      if (req.method === 'POST') {
+        const body = await req.json();
+        roleName = body.roleName;
+      }
+    } catch { /* no body */ }
+
     const { data: credentials, error: credError } = await supabaseClient
       .rpc('get_user_aws_credentials', { user_id_param: userId });
 
@@ -44,12 +53,15 @@ serve(async (req) => {
 
     const { access_key_id, secret_access_key, region } = credentials[0];
 
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabaseClient, userId, '',
+      { accessKeyId: access_key_id, secretAccessKey: secret_access_key },
+      region || 'us-east-1', roleName
+    );
+
     const sesClient = new SESClient({
       region: region || 'us-east-1',
-      credentials: {
-        accessKeyId: access_key_id,
-        secretAccessKey: secret_access_key,
-      },
+      credentials: awsCreds,
     });
 
     // Fetch account info and identities in parallel
@@ -64,12 +76,10 @@ serve(async (req) => {
       }),
     ]);
 
-    // Determine sandbox mode from account result
     let sandboxMode = true;
     let sendingLimits = { max24HourSend: 0, maxSendRate: 0, sentLast24Hours: 0 };
 
     if (accountResult) {
-      // If max24HourSend > 200 (default sandbox limit), likely production
       const max24 = accountResult.MaxSendRate ?? 0;
       const max24Hour = accountResult.Max24HourSend ?? 200;
       sendingLimits = {
@@ -77,11 +87,9 @@ serve(async (req) => {
         maxSendRate: max24,
         sentLast24Hours: accountResult.SentLast24Hours ?? 0,
       };
-      // Sandbox accounts typically have max 200 emails/24h
       sandboxMode = max24Hour <= 200;
     }
 
-    // Get verification status for identities
     let verifiedIdentities: { identity: string; status: string }[] = [];
     if (identitiesResult?.Identities && identitiesResult.Identities.length > 0) {
       const verificationResult = await sesClient.send(
@@ -96,7 +104,6 @@ serve(async (req) => {
       }));
     }
 
-    // Get current ses_sender_email from notification_preferences
     const { data: prefs } = await supabaseClient
       .from('notification_preferences')
       .select('ses_sender_email')

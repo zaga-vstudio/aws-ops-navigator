@@ -7,6 +7,7 @@ import {
   DescribeNetworkInsightsAnalysesCommand,
   DeleteNetworkInsightsPathCommand,
 } from "npm:@aws-sdk/client-ec2";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,6 +38,9 @@ serve(async (req) => {
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    const body = await req.json();
+    const { action, roleName } = body;
+
     const { data: credentials, error: credError } = await supabaseClient
       .rpc('get_user_aws_credentials', { user_id_param: user.id });
 
@@ -47,13 +51,16 @@ serve(async (req) => {
 
     const { access_key_id, secret_access_key, region } = credentials[0];
 
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabaseClient, user.id, user.email || '',
+      { accessKeyId: access_key_id, secretAccessKey: secret_access_key },
+      region || 'us-east-1', roleName
+    );
+
     const ec2Client = new EC2Client({
       region: region || 'us-east-1',
-      credentials: { accessKeyId: access_key_id, secretAccessKey: secret_access_key },
+      credentials: awsCreds,
     });
-
-    const body = await req.json();
-    const { action } = body;
 
     if (action === 'analyze') {
       const { sourceId, destinationId, protocol = 'tcp', destinationPort = 443 } = body;
