@@ -472,7 +472,86 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess, vpcs = [], subn
               />
             </div>
 
-            {/* Operating System Selection */}
+            {/* Networking - VPC, Subnet, Security Groups */}
+            {vpcs.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Network className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-base font-medium">Networking</Label>
+                </div>
+
+                {/* VPC Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="vpc">VPC</Label>
+                  <Select value={selectedVpcId} onValueChange={setSelectedVpcId} disabled={loading}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a VPC" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vpcs.map((vpc) => (
+                        <SelectItem key={vpc.id} value={vpc.id}>
+                          {vpc.name || vpc.id} ({vpc.cidrBlock}){vpc.isDefault ? ' — Default' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Subnet Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="subnet">Subnet (Optional)</Label>
+                  <Select value={selectedSubnetId} onValueChange={setSelectedSubnetId} disabled={loading || !selectedVpcId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Auto-assign (default subnet)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto-assign (default subnet)</SelectItem>
+                      {filteredSubnets.map((subnet) => (
+                        <SelectItem key={subnet.id} value={subnet.id}>
+                          {subnet.name || subnet.id} · {subnet.availabilityZone} · {subnet.availableIps} IPs free
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Security Groups */}
+                {filteredSecurityGroups.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Security Groups (Optional)</Label>
+                    <div className="max-h-[120px] overflow-y-auto border rounded-md p-2 space-y-1">
+                      {filteredSecurityGroups.map((sg) => (
+                        <div
+                          key={sg.id}
+                          className="flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer"
+                          onClick={() => {
+                            setSelectedSecurityGroupIds(prev =>
+                              prev.includes(sg.id) ? prev.filter(id => id !== sg.id) : [...prev, sg.id]
+                            );
+                          }}
+                        >
+                          <Checkbox
+                            checked={selectedSecurityGroupIds.includes(sg.id)}
+                            onCheckedChange={() => {
+                              setSelectedSecurityGroupIds(prev =>
+                                prev.includes(sg.id) ? prev.filter(id => id !== sg.id) : [...prev, sg.id]
+                              );
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{sg.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">{sg.id} — {sg.description}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedSecurityGroupIds.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No selection = VPC default security group</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <div className="space-y-3">
               <Label>Operating System</Label>
               <Tabs value={osTab} onValueChange={setOsTab}>
@@ -651,86 +730,6 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess, vpcs = [], subn
               </Select>
             </div>
 
-            {/* Networking - VPC, Subnet, Security Groups */}
-            {vpcs.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Network className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-base font-medium">Networking</Label>
-                </div>
-
-                {/* VPC Selection */}
-                <div className="space-y-2">
-                  <Label htmlFor="vpc">VPC</Label>
-                  <Select value={selectedVpcId} onValueChange={setSelectedVpcId} disabled={loading}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a VPC" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {vpcs.map((vpc) => (
-                        <SelectItem key={vpc.id} value={vpc.id}>
-                          {vpc.name || vpc.id} ({vpc.cidrBlock}){vpc.isDefault ? ' — Default' : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Subnet Selection */}
-                <div className="space-y-2">
-                  <Label htmlFor="subnet">Subnet (Optional)</Label>
-                  <Select value={selectedSubnetId} onValueChange={setSelectedSubnetId} disabled={loading || !selectedVpcId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Auto-assign (default subnet)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="auto">Auto-assign (default subnet)</SelectItem>
-                      {filteredSubnets.map((subnet) => (
-                        <SelectItem key={subnet.id} value={subnet.id}>
-                          {subnet.name || subnet.id} · {subnet.availabilityZone} · {subnet.availableIps} IPs free
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Security Groups */}
-                {filteredSecurityGroups.length > 0 && (
-                  <div className="space-y-2">
-                    <Label>Security Groups (Optional)</Label>
-                    <div className="max-h-[140px] overflow-y-auto border rounded-md p-2 space-y-1">
-                      {filteredSecurityGroups.map((sg) => (
-                        <div
-                          key={sg.id}
-                          className="flex items-center gap-2 p-1.5 rounded hover:bg-muted cursor-pointer"
-                          onClick={() => {
-                            setSelectedSecurityGroupIds(prev =>
-                              prev.includes(sg.id) ? prev.filter(id => id !== sg.id) : [...prev, sg.id]
-                            );
-                          }}
-                        >
-                          <Checkbox
-                            checked={selectedSecurityGroupIds.includes(sg.id)}
-                            onCheckedChange={() => {
-                              setSelectedSecurityGroupIds(prev =>
-                                prev.includes(sg.id) ? prev.filter(id => id !== sg.id) : [...prev, sg.id]
-                              );
-                            }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{sg.name}</div>
-                            <div className="text-xs text-muted-foreground truncate">{sg.id} — {sg.description}</div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {selectedSecurityGroupIds.length === 0 && (
-                      <p className="text-xs text-muted-foreground">No selection = VPC default security group</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
             <div className="space-y-2">
               <Label htmlFor="keyPair">SSH Key Pair (Optional)</Label>
               <Select 
