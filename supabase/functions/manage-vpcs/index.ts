@@ -2,7 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { 
   EC2Client, CreateVpcCommand, DeleteVpcCommand, CreateSubnetCommand,
-  DeleteSubnetCommand, ModifyVpcAttributeCommand, CreateTagsCommand
+  DeleteSubnetCommand, ModifyVpcAttributeCommand, CreateTagsCommand,
+  CreateRouteTableCommand, CreateRouteCommand, AssociateRouteTableCommand,
+  ModifySubnetAttributeCommand, DescribeInternetGatewaysCommand,
+  CreateInternetGatewayCommand, AttachInternetGatewayCommand
 } from "npm:@aws-sdk/client-ec2";
 import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
@@ -15,7 +18,7 @@ interface VPCActionRequest {
   action: 'create-vpc' | 'delete-vpc' | 'create-subnet' | 'delete-subnet';
   cidrBlock?: string; name?: string; enableDnsHostnames?: boolean; enableDnsSupport?: boolean;
   vpcId?: string; subnetCidrBlock?: string; availabilityZone?: string; subnetName?: string;
-  subnetId?: string; roleName?: string;
+  subnetId?: string; roleName?: string; subnetType?: 'public' | 'private';
 }
 
 serve(async (req) => {
@@ -96,13 +99,49 @@ serve(async (req) => {
         break;
       }
       case 'create-subnet': {
-        const { vpcId, subnetCidrBlock, availabilityZone, subnetName } = body;
+        const { vpcId, subnetCidrBlock, availabilityZone, subnetName, subnetType = 'private' } = body;
         if (!vpcId || !subnetCidrBlock) return new Response(JSON.stringify({ error: 'VPC ID and subnet CIDR block are required' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         const createSubnetParams: any = { VpcId: vpcId, CidrBlock: subnetCidrBlock };
         if (availabilityZone) createSubnetParams.AvailabilityZone = availabilityZone;
         if (subnetName) createSubnetParams.TagSpecifications = [{ ResourceType: 'subnet', Tags: [{ Key: 'Name', Value: subnetName }] }];
-        result = await ec2Client.send(new CreateSubnetCommand(createSubnetParams));
+        const subnetResult = await ec2Client.send(new CreateSubnetCommand(createSubnetParams));
+        const newSubnetId = subnetResult.Subnet?.SubnetId;
+
+        if (newSubnetId && subnetType === 'public') {
+          // 1. Find or create an Internet Gateway for this VPC
+          const igwDesc = await ec2Client.send(new DescribeInternetGatewaysCommand({
+            Filters: [{ Name: 'attachment.vpc-id', Values: [vpcId!] }]
+          }));
+          let igwId = igwDesc.InternetGateways?.[0]?.InternetGatewayId;
+          if (!igwId) {
+            const newIgw = await ec2Client.send(new CreateInternetGatewayCommand({}));
+            igwId = newIgw.InternetGateway?.InternetGatewayId;
+            if (igwId) await ec2Client.send(new AttachInternetGatewayCommand({ InternetGatewayId: igwId, VpcId: vpcId }));
+          }
+
+          // 2. Create a dedicated route table with IGW route
+          const rtResult = await ec2Client.send(new CreateRouteTableCommand({ VpcId: vpcId }));
+          const rtId = rtResult.RouteTable?.RouteTableId;
+          if (rtId && igwId) {
+            await ec2Client.send(new CreateRouteCommand({
+              RouteTableId: rtId, DestinationCidrBlock: '0.0.0.0/0', GatewayId: igwId
+            }));
+            await ec2Client.send(new AssociateRouteTableCommand({ RouteTableId: rtId, SubnetId: newSubnetId }));
+            // Tag the route table
+            await ec2Client.send(new CreateTagsCommand({
+              Resources: [rtId],
+              Tags: [{ Key: 'Name', Value: `${subnetName || newSubnetId}-public-rt` }]
+            }));
+          }
+
+          // 3. Enable auto-assign public IP
+          await ec2Client.send(new ModifySubnetAttributeCommand({
+            SubnetId: newSubnetId, MapPublicIpOnLaunch: { Value: true }
+          }));
+        }
+
+        result = subnetResult;
         break;
       }
       case 'delete-subnet': {

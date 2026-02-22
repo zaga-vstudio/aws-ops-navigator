@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Globe } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Loader2, Globe, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { VPC } from "@/hooks/useAWSData";
@@ -24,6 +25,7 @@ export function CreateSubnetDialog({ open, onOpenChange, vpc, onSuccess }: Props
   const [subnetName, setSubnetName] = useState("");
   const [cidrBlock, setCidrBlock] = useState("");
   const [azSuffix, setAzSuffix] = useState("a");
+  const [subnetType, setSubnetType] = useState<"public" | "private">("private");
 
   if (!vpc) return null;
 
@@ -89,15 +91,18 @@ export function CreateSubnetDialog({ open, onOpenChange, vpc, onSuccess }: Props
           subnetCidrBlock: cidrBlock,
           availabilityZone: `${region}${azSuffix}`,
           subnetName: subnetName || undefined,
+          subnetType,
         },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      toast({ title: "Subnet created", description: `Subnet ${subnetName || cidrBlock} created in ${vpc.name || vpc.id}` });
+      const typeLabel = subnetType === "public" ? "Public" : "Private";
+      toast({ title: "Subnet created", description: `${typeLabel} subnet ${subnetName || cidrBlock} created in ${vpc.name || vpc.id}. Route table configured automatically.` });
       setSubnetName("");
       setCidrBlock("");
       setAzSuffix("a");
+      setSubnetType("private");
       onOpenChange(false);
       onSuccess();
     } catch (err: any) {
@@ -131,6 +136,26 @@ export function CreateSubnetDialog({ open, onOpenChange, vpc, onSuccess }: Props
             <Input id="subnetCidr" placeholder="10.0.1.0/24" value={cidrBlock} onChange={(e) => setCidrBlock(e.target.value)} disabled={loading} />
             <p className="text-xs text-muted-foreground">
               Must be within VPC CIDR {vpc.cidrBlock}{suggestedCidrs.length > 0 && <> — e.g. <button type="button" className="font-mono underline text-primary" onClick={() => setCidrBlock(suggestedCidrs[0])}>{suggestedCidrs[0]}</button></>}
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Subnet Type</Label>
+            <RadioGroup value={subnetType} onValueChange={(v) => setSubnetType(v as "public" | "private")} className="flex gap-4" disabled={loading}>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="public" id="public" />
+                <Label htmlFor="public" className="font-normal cursor-pointer">Public</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="private" id="private" />
+                <Label htmlFor="private" className="font-normal cursor-pointer">Private</Label>
+              </div>
+            </RadioGroup>
+            <p className="text-xs text-muted-foreground flex items-start gap-1">
+              <Info className="h-3 w-3 mt-0.5 shrink-0" />
+              {subnetType === "public"
+                ? "A route to the Internet Gateway will be added and auto-assign public IP enabled."
+                : "No internet route. Use a NAT Gateway for outbound access."}
             </p>
           </div>
 
