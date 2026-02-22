@@ -423,8 +423,11 @@ export const useAWSData = () => {
   };
 
   useEffect(() => {
-    fetchAWSData();
-  }, [fetchAWSData]);
+    // Only fetch if we don't already have data (prevents refetch on remount)
+    if (!data) {
+      fetchAWSData();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     data,

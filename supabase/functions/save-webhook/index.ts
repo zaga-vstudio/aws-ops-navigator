@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Encrypt the webhook URL using the DB function
+    // Encrypt the webhook URL using the DB function (returns bytea)
     const { data: encrypted, error: encryptError } = await serviceClient.rpc(
       "encrypt_secret",
       { secret: webhookUrl }
@@ -114,9 +114,15 @@ Deno.serve(async (req) => {
 
     const column = COLUMN_MAP[channelType as ChannelType];
 
+    // Store encrypted value and update the shared webhook_nonce
+    // pgp_sym_encrypt embeds the nonce internally, so we store a placeholder nonce
+    // to satisfy the decrypt_secret(encrypted_data, nonce) signature
     const { error: updateError } = await serviceClient
       .from("notification_preferences")
-      .update({ [column]: encrypted })
+      .update({ 
+        [column]: encrypted,
+        webhook_nonce: encrypted, // Store same value as nonce for decrypt_secret compatibility
+      })
       .eq("user_id", userId);
 
     if (updateError) {
