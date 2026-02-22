@@ -65,3 +65,6 @@ verify_jwt = true
 
 [functions.manage-iam-permissions]
 verify_jwt = true
+
+[functions.manage-cloudhub-roles]
+verify_jwt = true
