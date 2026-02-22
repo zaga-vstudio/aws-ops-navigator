@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { AWSDataProvider } from "@/contexts/AWSDataContext";
+import { ActiveRoleProvider } from "@/contexts/ActiveRoleContext";
 import { ThemeProvider } from "next-themes";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Homepage from "./pages/Homepage";
@@ -27,9 +28,11 @@ const queryClient = new QueryClient();
 
 const ProtectedAWSLayout = () => (
   <ProtectedRoute>
-    <AWSDataProvider>
-      <Outlet />
-    </AWSDataProvider>
+    <ActiveRoleProvider>
+      <AWSDataProvider>
+        <Outlet />
+      </AWSDataProvider>
+    </ActiveRoleProvider>
   </ProtectedRoute>
 );
 

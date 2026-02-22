@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
+import { RoleManagementTab } from "@/components/RoleManagementTab";
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -328,10 +329,11 @@ export default function Security() {
 
               {/* Security Details Tabs */}
               <Tabs defaultValue="security-groups" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="security-groups">Security Groups</TabsTrigger>
                   <TabsTrigger value="iam">IAM Users</TabsTrigger>
                   <TabsTrigger value="compliance">Compliance</TabsTrigger>
+                  <TabsTrigger value="roles">Roles</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="security-groups" className="space-y-4">
@@ -682,6 +684,10 @@ export default function Security() {
                       )}
                     </CardContent>
                   </Card>
+                </TabsContent>
+
+                <TabsContent value="roles" className="space-y-4">
+                  <RoleManagementTab />
                 </TabsContent>
               </Tabs>
             </div>
