@@ -1,31 +1,47 @@
 
 
-## Remove Redundant Auth Check from Dashboard.tsx
+## Auto-Refresh / Polling for AWS Data
 
 ### Problem
-`Dashboard.tsx` duplicates the authentication guard that `ProtectedRoute` already provides. It imports `useAuth`, checks `loading` and `user` states, renders its own loading spinner, and redirects to `/auth` -- all of which `ProtectedRoute` handles before `Dashboard` even mounts.
+AWS data is fetched once on initial load and never refreshed automatically. If resources change (e.g., an EC2 instance terminates), the dashboard stays stale until the user manually clicks "Refresh Data."
+
+### Solution
+Add a configurable polling interval to the `useAWSData` hook that silently refetches data in the background. The polling will:
+- Default to every 5 minutes (300 seconds)
+- Only poll when the browser tab is visible (pause when hidden)
+- Use a silent refresh (no loading spinner) so the UI doesn't flash skeleton loaders
+- Show a subtle "last updated" indicator so users know data freshness
+- Expose a way for the Dashboard to display the last refresh timestamp
 
 ### Changes
 
-**File: `src/pages/Dashboard.tsx`**
+**1. `src/hooks/useAWSData.tsx`**
+- Add a `lastUpdated` timestamp state, set after each successful fetch
+- Add a `useEffect` with `setInterval` for polling every 5 minutes
+- Use the `document.visibilitychange` event to pause/resume polling when the tab is hidden/visible
+- Introduce a silent fetch mode: when polling, skip `setLoading(true)` so the UI doesn't show skeletons -- only show loading on the initial fetch
+- Return `lastUpdated` from the hook
 
-1. Remove the `useAuth` import and hook call (`const { user, loading } = useAuth()`)
-2. Remove the `useEffect` that redirects to `/auth` when no user is present (lines 33-37)
-3. Remove the loading spinner block (lines 39-48) -- `ProtectedRoute` already shows a spinner
-4. Remove the early return for `!user` (lines 50-52)
-5. Remove the unused `useEffect` import if no other effect remains
-6. Remove unused `useNavigate` import if `navigate` is no longer referenced elsewhere in the file -- but `navigate` is still used in the Quick Actions section (lines 168, 178), so `useNavigate` stays
+**2. `src/contexts/AWSDataContext.tsx`**
+- Add `lastUpdated: Date | null` to the context type so consuming components can display it
 
-This leaves `Dashboard` focused purely on rendering the dashboard UI, trusting `ProtectedRoute` to guarantee an authenticated user.
+**3. `src/pages/Dashboard.tsx`**
+- Display a small "Last updated: X minutes ago" text near the "Refresh Data" button using `date-fns`'s `formatDistanceToNow`
+- The text updates reactively when polling refreshes data
 
-### Lines removed (approximately)
+### Technical Details
 
-- Line 13: `import { useAuth } from "@/hooks/useAuth";` -- remove
-- Line 27: `const { user, loading } = useAuth();` -- remove  
-- Lines 33-37: `useEffect(() => { if (!loading && !user) navigate('/auth'); }, ...)` -- remove
-- Lines 39-48: Loading spinner conditional return -- remove
-- Lines 50-52: `if (!user) return null;` -- remove
-- Line 1: Remove `useEffect` from the React import (keep `useState`)
+```text
+Polling flow:
+  useEffect (mount)
+    -> setInterval(silentFetch, 300_000)   // 5 min
+    -> visibilitychange listener
+         tab hidden  -> clearInterval
+         tab visible -> immediate fetch + restart interval
+  cleanup -> clearInterval + remove listener
+```
 
-No other files are affected.
+Silent fetch means: `fetchAWSData` gets a new `{ silent: true }` option that skips `setLoading(true)`, so existing data stays visible while the refresh happens in the background.
+
+The 5-minute default balances freshness against AWS API costs. No additional edge function changes are needed since the existing `aws-dashboard-data` function is reused.
 
