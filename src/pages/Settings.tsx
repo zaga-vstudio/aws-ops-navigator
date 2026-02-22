@@ -138,6 +138,7 @@ export default function Settings() {
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
   const [timezone, setTimezone] = useState("UTC");
+  const [awsDefaultRegion, setAwsDefaultRegion] = useState("us-east-1");
 
   // Security dialogs state
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -161,7 +162,7 @@ export default function Settings() {
 
         const { data: profile } = await supabase
           .from("profiles")
-          .select("display_name, company, timezone")
+          .select("display_name, company, timezone, aws_default_region")
           .eq("user_id", user.id)
           .maybeSingle();
 
@@ -169,6 +170,7 @@ export default function Settings() {
           setDisplayName(profile.display_name || "");
           setCompany(profile.company || "");
           setTimezone((profile as any).timezone || "UTC");
+          setAwsDefaultRegion(profile.aws_default_region || "us-east-1");
         }
       } catch (err) {
         console.error("Failed to load profile:", err);
@@ -202,6 +204,7 @@ export default function Settings() {
           display_name: displayName || null,
           company: company || null,
           timezone,
+          aws_default_region: awsDefaultRegion,
         } as any)
         .eq("user_id", user.id);
 
@@ -339,7 +342,7 @@ export default function Settings() {
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="defaultRegion">Default AWS Region</Label>
-                        <Select defaultValue="us-east-1">
+                        <Select value={awsDefaultRegion} onValueChange={setAwsDefaultRegion}>
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
