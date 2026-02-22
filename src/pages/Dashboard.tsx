@@ -159,7 +159,7 @@ const Dashboard = () => {
                        </button>
                        <button 
                          onClick={() => navigate('/monitoring')}
-                         className="flex items-center gap-3 p-3 text-left bg-background border border-border/50 transition-colors"
+                         className="flex items-center gap-3 p-3 text-left bg-background border border-border/50 rounded-lg hover:bg-accent/50 transition-colors"
                        >
                          <Activity className="h-5 w-5 text-cloud-green flex-shrink-0" />
                          <div className="min-w-0">
