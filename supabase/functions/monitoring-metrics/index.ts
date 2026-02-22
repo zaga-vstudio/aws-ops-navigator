@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { CloudWatchClient, GetMetricStatisticsCommand, GetMetricDataCommand } from "npm:@aws-sdk/client-cloudwatch@3.451.0";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -111,6 +112,7 @@ serve(async (req) => {
     let timeRange = '24h';
     let forceRefresh = false;
     let includePaidMetrics = false;
+    let roleName: string | undefined;
 
     try {
       if (req.method === 'POST') {
@@ -118,6 +120,7 @@ serve(async (req) => {
         timeRange = body.timeRange || '24h';
         forceRefresh = body.forceRefresh === true;
         includePaidMetrics = body.includePaidMetrics === true;
+        roleName = body.roleName;
       }
     } catch { /* defaults */ }
 
@@ -156,25 +159,25 @@ serve(async (req) => {
       });
     }
 
-    const awsCreds = creds[0];
-    const region = awsCreds.region || 'us-east-1';
+    const awsCredsRaw = creds[0];
+    const region = awsCredsRaw.region || 'us-east-1';
+
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabaseClient, user.id, user.email || '',
+      { accessKeyId: awsCredsRaw.access_key_id, secretAccessKey: awsCredsRaw.secret_access_key },
+      region, roleName
+    );
 
     const cloudWatchClient = new CloudWatchClient({
       region,
-      credentials: {
-        accessKeyId: awsCreds.access_key_id,
-        secretAccessKey: awsCreds.secret_access_key,
-      },
+      credentials: awsCreds,
     });
 
     // Get running instance IDs from EC2
     const { EC2Client, DescribeInstancesCommand } = await import("npm:@aws-sdk/client-ec2@3.451.0");
     const ec2Client = new EC2Client({
       region,
-      credentials: {
-        accessKeyId: awsCreds.access_key_id,
-        secretAccessKey: awsCreds.secret_access_key,
-      },
+      credentials: awsCreds,
     });
 
     const ec2Response = await ec2Client.send(new DescribeInstancesCommand({
@@ -191,7 +194,6 @@ serve(async (req) => {
     const { startTime, period, cacheTTLMinutes } = getTimeRangeParams(timeRange);
     const endTime = new Date();
 
-    // Free tier metrics fetcher (GetMetricStatistics - free)
     const fetchFreeMetric = async (metricName: string, instanceId?: string): Promise<MetricDataPoint[]> => {
       try {
         const dimensions = instanceId ? [{ Name: 'InstanceId', Value: instanceId }] : undefined;
@@ -220,14 +222,12 @@ serve(async (req) => {
 
     const targetInstance = instanceIds.length > 0 ? instanceIds[0] : undefined;
 
-    // Always fetch free metrics
     const freeMetricPromises = [
       fetchFreeMetric('CPUUtilization', targetInstance),
       fetchFreeMetric('NetworkIn', targetInstance),
       fetchFreeMetric('NetworkOut', targetInstance),
     ];
 
-    // Paid metrics: DiskReadOps, DiskWriteOps, StatusCheckFailed (still GetMetricStatistics but extra API calls)
     const paidMetricPromises = includePaidMetrics ? [
       fetchFreeMetric('DiskReadOps', targetInstance),
       fetchFreeMetric('DiskWriteOps', targetInstance),
@@ -260,7 +260,6 @@ serve(async (req) => {
       cachedAt: new Date().toISOString(),
     };
 
-    // Cache the results
     await saveCachedMetrics(supabaseClient, user.id, timeRange, result, cacheTTLMinutes);
 
     return new Response(JSON.stringify(result), {

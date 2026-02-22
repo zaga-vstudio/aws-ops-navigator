@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { EC2Client, DescribeInstancesCommand, DescribeSecurityGroupsCommand, DescribeVpcsCommand, DescribeSubnetsCommand } from "npm:@aws-sdk/client-ec2";
+import { EC2Client, DescribeInstancesCommand, DescribeSecurityGroupsCommand, DescribeVpcsCommand } from "npm:@aws-sdk/client-ec2";
 import { RDSClient, DescribeDBInstancesCommand } from "npm:@aws-sdk/client-rds";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,9 +12,9 @@ interface AWSConfig {
   accessKeyId: string;
   secretAccessKey: string;
   region: string;
+  sessionToken?: string;
 }
 
-// Simple hash function for configuration comparison
 function hashConfig(config: any): string {
   const str = JSON.stringify(config, Object.keys(config).sort());
   let hash = 0;
@@ -25,7 +26,6 @@ function hashConfig(config: any): string {
   return hash.toString(16);
 }
 
-// Compare two configs and return differences
 function findChanges(previous: any, current: any, path = ''): any[] {
   const changes: any[] = [];
   
@@ -52,7 +52,6 @@ function findChanges(previous: any, current: any, path = ''): any[] {
   return changes;
 }
 
-// Determine severity based on what changed
 function determineSeverity(resourceType: string, changes: any[]): string {
   const criticalFields = ['securityGroups', 'ingressRules', 'egressRules', 'publiclyAccessible', 'iamInstanceProfile'];
   const warningFields = ['instanceType', 'vpcId', 'subnetId', 'engine', 'engineVersion'];
@@ -216,6 +215,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'scan';
+    const roleName = body.roleName;
 
     // Get AWS credentials
     const { data: creds, error: credsError } = await supabase.rpc('get_user_aws_credentials', { user_id_param: user.id });
@@ -226,18 +226,17 @@ Deno.serve(async (req) => {
       });
     }
 
-    const awsConfig: AWSConfig = {
-      accessKeyId: creds[0].access_key_id,
-      secretAccessKey: creds[0].secret_access_key,
-      region: creds[0].region || 'us-east-1',
-    };
+    const region = creds[0].region || 'us-east-1';
+
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabase, user.id, user.email || '',
+      { accessKeyId: creds[0].access_key_id, secretAccessKey: creds[0].secret_access_key },
+      region, roleName
+    );
 
     const clientConfig = {
-      region: awsConfig.region,
-      credentials: {
-        accessKeyId: awsConfig.accessKeyId,
-        secretAccessKey: awsConfig.secretAccessKey,
-      }
+      region,
+      credentials: awsCreds,
     };
 
     const ec2Client = new EC2Client(clientConfig);
@@ -273,13 +272,11 @@ Deno.serve(async (req) => {
 
         if (existingSnapshot) {
           if (existingSnapshot.snapshot_hash !== currentHash) {
-            // Drift detected!
             const changes = findChanges(existingSnapshot.configuration, resource.configuration);
             
             if (changes.length > 0) {
               const severity = determineSeverity(resource.resourceType, changes);
               
-              // Check if we already have an unacknowledged drift event for this
               const { data: existingDrift } = await supabase
                 .from('drift_events')
                 .select('id')
@@ -311,7 +308,6 @@ Deno.serve(async (req) => {
             }
           }
         } else {
-          // New resource - create initial snapshot
           await supabase
             .from('resource_snapshots')
             .upsert({
@@ -327,7 +323,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Fetch all drift events
       const { data: allDriftEvents } = await supabase
         .from('drift_events')
         .select('*')
@@ -375,7 +370,6 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'accept') {
-      // Accept drift = update snapshot to current state
       const { driftId } = body;
       if (!driftId) {
         return new Response(JSON.stringify({ error: 'Drift ID required' }), {
@@ -384,7 +378,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Get the drift event
       const { data: driftEvent, error: driftError } = await supabase
         .from('drift_events')
         .select('*')
@@ -399,7 +392,6 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Update the snapshot with the current hash
       await supabase
         .from('resource_snapshots')
         .update({ 
@@ -411,7 +403,6 @@ Deno.serve(async (req) => {
         .eq('resource_type', driftEvent.resource_type)
         .eq('resource_id', driftEvent.resource_id);
 
-      // Mark as acknowledged
       await supabase
         .from('drift_events')
         .update({ 

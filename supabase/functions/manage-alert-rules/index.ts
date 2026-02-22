@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CloudWatchClient, PutMetricAlarmCommand, DeleteAlarmsCommand, EnableAlarmActionsCommand, DisableAlarmActionsCommand } from "npm:@aws-sdk/client-cloudwatch";
 import { BudgetsClient, CreateBudgetCommand, DeleteBudgetCommand } from "npm:@aws-sdk/client-budgets";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,27 +51,35 @@ async function getAWSCredentials(supabaseClient: any, userId: string) {
   return credentials[0];
 }
 
-async function handleCreate(supabaseClient: any, user: any, body: any) {
-  const { name, metric, threshold, duration, severity, comparison_operator } = body;
+async function getResolvedAWSCreds(supabaseClient: any, user: any, roleName?: string) {
   const creds = await getAWSCredentials(supabaseClient, user.id);
+  const { credentials: awsCreds } = await resolveCredentials(
+    supabaseClient, user.id, user.email || '',
+    { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+    creds.region || 'us-east-1', roleName
+  );
+  return { awsCreds, region: creds.region || 'us-east-1' };
+}
+
+async function handleCreate(supabaseClient: any, user: any, body: any) {
+  const { name, metric, threshold, duration, severity, comparison_operator, roleName } = body;
+  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
   const config = metricMapping[metric] || { namespace: 'AWS/EC2', metricName: metric, type: 'cloudwatch' };
   const comp = comparison_operator || 'GreaterThanThreshold';
   const alarmName = `CloudHub-${user.id.substring(0, 8)}-${name.replace(/\s+/g, '-')}`;
 
   if (config.type === 'budget') {
-    // Create AWS Budget alert -- must use us-east-1
     const budgetsClient = new BudgetsClient({
       region: 'us-east-1',
-      credentials: { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+      credentials: awsCreds,
     });
 
-    // Get AWS account ID from STS (fallback to user id prefix)
     let accountId: string;
     try {
       const { STSClient, GetCallerIdentityCommand } = await import("npm:@aws-sdk/client-sts");
       const sts = new STSClient({
-        region: creds.region || 'us-east-1',
-        credentials: { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+        region: region,
+        credentials: awsCreds,
       });
       const identity = await sts.send(new GetCallerIdentityCommand({}));
       accountId = identity.Account!;
@@ -122,8 +131,8 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
 
   // CloudWatch alarm path
   const cloudwatchClient = new CloudWatchClient({
-    region: creds.region || 'us-east-1',
-    credentials: { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+    region,
+    credentials: awsCreds,
   });
 
   await cloudwatchClient.send(new PutMetricAlarmCommand({
@@ -159,8 +168,8 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
   return { success: true, rule, message: 'Alert rule created successfully' };
 }
 
-async function handleDelete(supabaseClient: any, user: any, ruleId: string) {
-  const creds = await getAWSCredentials(supabaseClient, user.id);
+async function handleDelete(supabaseClient: any, user: any, ruleId: string, roleName?: string) {
+  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
   const { data: rule, error: fetchError } = await supabaseClient
     .from('alert_rules').select('*').eq('id', ruleId).single();
 
@@ -174,13 +183,13 @@ async function handleDelete(supabaseClient: any, user: any, ruleId: string) {
       if (isBudget) {
         const { STSClient, GetCallerIdentityCommand } = await import("npm:@aws-sdk/client-sts");
         const sts = new STSClient({
-          region: creds.region || 'us-east-1',
-          credentials: { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+          region,
+          credentials: awsCreds,
         });
         const identity = await sts.send(new GetCallerIdentityCommand({}));
         const budgetsClient = new BudgetsClient({
           region: 'us-east-1',
-          credentials: { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+          credentials: awsCreds,
         });
         await budgetsClient.send(new DeleteBudgetCommand({
           AccountId: identity.Account!,
@@ -189,8 +198,8 @@ async function handleDelete(supabaseClient: any, user: any, ruleId: string) {
         console.log(`Deleted AWS Budget: ${rule.cloudwatch_alarm_name}`);
       } else {
         const cw = new CloudWatchClient({
-          region: creds.region || 'us-east-1',
-          credentials: { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+          region,
+          credentials: awsCreds,
         });
         await cw.send(new DeleteAlarmsCommand({ AlarmNames: [rule.cloudwatch_alarm_name] }));
         console.log(`Deleted CloudWatch alarm: ${rule.cloudwatch_alarm_name}`);
@@ -207,8 +216,8 @@ async function handleDelete(supabaseClient: any, user: any, ruleId: string) {
   return { success: true, message: 'Alert rule deleted successfully' };
 }
 
-async function handleToggle(supabaseClient: any, user: any, ruleId: string) {
-  const creds = await getAWSCredentials(supabaseClient, user.id);
+async function handleToggle(supabaseClient: any, user: any, ruleId: string, roleName?: string) {
+  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
   const { data: rule, error: fetchError } = await supabaseClient
     .from('alert_rules').select('*').eq('id', ruleId).single();
 
@@ -217,12 +226,11 @@ async function handleToggle(supabaseClient: any, user: any, ruleId: string) {
   const newEnabled = !rule.enabled;
   const config = metricMapping[rule.metric];
 
-  // Only toggle CW alarms (budgets don't support enable/disable)
   if (rule.cloudwatch_alarm_name && config?.type !== 'budget') {
     try {
       const cw = new CloudWatchClient({
-        region: creds.region || 'us-east-1',
-        credentials: { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+        region,
+        credentials: awsCreds,
       });
       if (newEnabled) {
         await cw.send(new EnableAlarmActionsCommand({ AlarmNames: [rule.cloudwatch_alarm_name] }));
@@ -249,7 +257,7 @@ serve(async (req) => {
   try {
     const { supabaseClient, user } = await getAuthenticatedUser(req);
     const body = await req.json();
-    const { action, ruleId } = body;
+    const { action, ruleId, roleName } = body;
     console.log(`Managing alert rule: action=${action}, ruleId=${ruleId}, name=${body.name}`);
 
     let result: any;
@@ -259,10 +267,10 @@ serve(async (req) => {
         result = await handleCreate(supabaseClient, user, body);
         break;
       case 'delete':
-        result = await handleDelete(supabaseClient, user, ruleId);
+        result = await handleDelete(supabaseClient, user, ruleId, roleName);
         break;
       case 'toggle':
-        result = await handleToggle(supabaseClient, user, ruleId);
+        result = await handleToggle(supabaseClient, user, ruleId, roleName);
         break;
       default:
         throw new Error(`Unknown action: ${action}`);

@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { EC2Client, ModifyInstanceAttributeCommand, CreateSnapshotCommand } from "npm:@aws-sdk/client-ec2@3.451.0";
 import { IAMClient, UpdateAccountPasswordPolicyCommand, EnableMFADeviceCommand } from "npm:@aws-sdk/client-iam@3.451.0";
 import { S3Client, PutBucketEncryptionCommand, PutPublicAccessBlockCommand } from "npm:@aws-sdk/client-s3@3.451.0";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,6 +16,7 @@ interface RemediationRequest {
   resourceId: string;
   resourceType: string;
   autoFix: boolean;
+  roleName?: string;
 }
 
 serve(async (req) => {
@@ -54,6 +56,14 @@ serve(async (req) => {
     }
 
     const creds = credentials[0];
+    const region = creds.region || 'us-east-1';
+
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabase, user.id, user.email || '',
+      { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+      region, requestData.roleName
+    );
+
     let result: any;
     let remediationSteps: string[] = [];
 
@@ -62,21 +72,16 @@ serve(async (req) => {
       switch (requestData.remediationType) {
         case 'enable_ebs_encryption':
           const ec2Client = new EC2Client({
-            region: creds.region || 'us-east-1',
-            credentials: {
-              accessKeyId: creds.access_key_id,
-              secretAccessKey: creds.secret_access_key,
-            },
+            region,
+            credentials: awsCreds,
           });
 
           if (requestData.autoFix) {
-            // Auto-fix: Enable encryption for EBS volumes
             remediationSteps = [
               'Creating snapshot of unencrypted volume',
               'Creating encrypted volume from snapshot',
               'Updating instance to use encrypted volume'
             ];
-            // Implementation would go here
             result = { message: 'EBS encryption enabled', steps: remediationSteps };
           } else {
             remediationSteps = [
@@ -93,11 +98,8 @@ serve(async (req) => {
 
         case 'enable_s3_encryption':
           const s3Client = new S3Client({
-            region: creds.region || 'us-east-1',
-            credentials: {
-              accessKeyId: creds.access_key_id,
-              secretAccessKey: creds.secret_access_key,
-            },
+            region,
+            credentials: awsCreds,
           });
 
           if (requestData.autoFix) {
@@ -128,11 +130,8 @@ serve(async (req) => {
 
         case 'block_s3_public_access':
           const s3PublicClient = new S3Client({
-            region: creds.region || 'us-east-1',
-            credentials: {
-              accessKeyId: creds.access_key_id,
-              secretAccessKey: creds.secret_access_key,
-            },
+            region,
+            credentials: awsCreds,
           });
 
           if (requestData.autoFix) {
@@ -163,10 +162,7 @@ serve(async (req) => {
         case 'enable_password_policy':
           const iamClient = new IAMClient({
             region: 'us-east-1',
-            credentials: {
-              accessKeyId: creds.access_key_id,
-              secretAccessKey: creds.secret_access_key,
-            },
+            credentials: awsCreds,
           });
 
           if (requestData.autoFix) {

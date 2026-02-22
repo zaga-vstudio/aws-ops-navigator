@@ -8,6 +8,7 @@ import {
   GetUserPolicyCommand,
   ListAttachedUserPoliciesCommand,
 } from "npm:@aws-sdk/client-iam@3.451.0";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -243,7 +244,7 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { action, userName, permissions, region: reqRegion } = body;
+    const { action, userName, permissions, region: reqRegion, roleName } = body;
     console.log("manage-iam-permissions request:", { action, userName });
 
     // Get AWS credentials
@@ -264,12 +265,15 @@ serve(async (req) => {
     const creds = credentials[0];
     const awsRegion = reqRegion || creds.region || "us-east-1";
 
+    const { credentials: awsCreds } = await resolveCredentials(
+      supabase, user.id, user.email || '',
+      { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
+      awsRegion, roleName
+    );
+
     const iamClient = new IAMClient({
       region: "us-east-1", // IAM is global
-      credentials: {
-        accessKeyId: creds.access_key_id,
-        secretAccessKey: creds.secret_access_key,
-      },
+      credentials: awsCreds,
     });
 
     // ── listPolicies ────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SESClient, SendEmailCommand } from "npm:@aws-sdk/client-ses";
+import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,6 +15,7 @@ interface AlertNotification {
   currentValue?: number;
   severity: string;
   resourceId?: string;
+  roleName?: string;
 }
 
 serve(async (req) => {
@@ -79,13 +81,16 @@ serve(async (req) => {
 
         if (credentials && credentials.length > 0) {
           const { access_key_id, secret_access_key, region } = credentials[0];
+
+          const { credentials: awsCreds } = await resolveCredentials(
+            supabaseClient, user.id, user.email || '',
+            { accessKeyId: access_key_id, secretAccessKey: secret_access_key },
+            region || 'us-east-1', alert.roleName
+          );
           
           const sesClient = new SESClient({
             region: region || 'us-east-1',
-            credentials: {
-              accessKeyId: access_key_id,
-              secretAccessKey: secret_access_key,
-            },
+            credentials: awsCreds,
           });
 
           // Get per-user sender email
