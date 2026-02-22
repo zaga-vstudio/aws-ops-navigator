@@ -11,9 +11,26 @@ export interface CloudHubRole {
   created_at: string;
 }
 
+export interface RoleAuditEntry {
+  id: string;
+  action: string;
+  role_name: string;
+  role_arn: string | null;
+  details: any;
+  created_at: string;
+}
+
+interface ServicePermission {
+  service: string;
+  read: boolean;
+  write: boolean;
+}
+
 export function useCloudHubRoles() {
   const [roles, setRoles] = useState<CloudHubRole[]>([]);
+  const [auditLog, setAuditLog] = useState<RoleAuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [auditLoading, setAuditLoading] = useState(false);
   const { toast } = useToast();
 
   const fetchRoles = useCallback(async () => {
@@ -37,22 +54,30 @@ export function useCloudHubRoles() {
     }
   }, []);
 
-  const createRole = async (roleName: string, roleArn: string, description: string, maxDuration: number) => {
+  const createRole = async (
+    roleName: string,
+    description: string,
+    maxDuration: number,
+    permissions: ServicePermission[]
+  ) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { error } = await supabase.from("cloudhub_roles").insert({
-        user_id: user.id,
-        role_name: roleName,
-        role_arn: roleArn,
-        description: description || null,
-        max_session_duration_seconds: maxDuration,
+      const { data, error } = await supabase.functions.invoke("manage-cloudhub-roles", {
+        body: {
+          action: "create",
+          roleName,
+          description,
+          maxSessionDuration: maxDuration,
+          permissions: permissions.filter(p => p.read || p.write),
+        },
       });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
-      toast({ title: "Role Created", description: `Role "${roleName}" has been registered.` });
+      toast({
+        title: "Role Created",
+        description: `Role "${data.roleName}" created in AWS with ARN: ${data.roleArn}`,
+      });
       await fetchRoles();
       return true;
     } catch (err: any) {
@@ -61,12 +86,22 @@ export function useCloudHubRoles() {
     }
   };
 
-  const deleteRole = async (id: string) => {
+  const deleteRole = async (id: string, deleteFromAWS: boolean = false) => {
     try {
-      const { error } = await supabase.from("cloudhub_roles").delete().eq("id", id);
-      if (error) throw error;
+      const { data, error } = await supabase.functions.invoke("manage-cloudhub-roles", {
+        body: { action: "delete", roleId: id, deleteFromAWS },
+      });
 
-      toast({ title: "Role Deleted", description: "The role has been removed." });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const msg = deleteFromAWS && data?.awsDeleted
+        ? "Role deleted from CloudHub and AWS."
+        : deleteFromAWS && !data?.awsDeleted
+        ? `Role removed from CloudHub. AWS deletion failed: ${data?.error || "unknown error"}`
+        : "Role removed from CloudHub.";
+
+      toast({ title: "Role Deleted", description: msg });
       await fetchRoles();
       return true;
     } catch (err: any) {
@@ -74,10 +109,25 @@ export function useCloudHubRoles() {
       return false;
     }
   };
+
+  const fetchAuditLog = useCallback(async () => {
+    try {
+      setAuditLoading(true);
+      const { data, error } = await supabase.functions.invoke("manage-cloudhub-roles", {
+        body: { action: "listAuditLog" },
+      });
+      if (error) throw error;
+      setAuditLog(data?.auditLog || []);
+    } catch (err: any) {
+      console.error("Error fetching audit log:", err);
+    } finally {
+      setAuditLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchRoles();
   }, [fetchRoles]);
 
-  return { roles, loading, fetchRoles, createRole, deleteRole };
+  return { roles, loading, fetchRoles, createRole, deleteRole, auditLog, auditLoading, fetchAuditLog };
 }

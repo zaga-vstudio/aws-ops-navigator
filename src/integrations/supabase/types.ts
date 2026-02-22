@@ -452,6 +452,36 @@ export type Database = {
         }
         Relationships: []
       }
+      role_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          details: Json | null
+          id: string
+          role_arn: string | null
+          role_name: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          role_arn?: string | null
+          role_name: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          role_arn?: string | null
+          role_name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       security_change_approvals: {
         Row: {
           approved_at: string | null
