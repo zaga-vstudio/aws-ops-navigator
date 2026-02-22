@@ -5,6 +5,7 @@ import { MetricCard } from "@/components/MetricCard";
 import { ResourceOverview } from "@/components/ResourceOverview";
 import { CostChart } from "@/components/CostChart";
 import { ActivityLog } from "@/components/ActivityLog";
+import { AWSErrorBanner } from "@/components/AWSErrorBanner";
 import { LaunchEC2Dialog } from "@/components/LaunchEC2Dialog";
 import { CreateRDSDialog } from "@/components/CreateRDSDialog";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -24,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 const Dashboard = () => {
-  const { data: awsData, loading: awsLoading, refetch } = useAWSDataContext();
+  const { data: awsData, loading: awsLoading, error: awsError, refetch } = useAWSDataContext();
   const navigate = useNavigate();
   const [launchEC2Open, setLaunchEC2Open] = useState(false);
   const [createRDSOpen, setCreateRDSOpen] = useState(false);
@@ -66,6 +67,10 @@ const Dashboard = () => {
                   Refresh Data
                 </Button>
               </div>
+
+              {awsError && !awsLoading && (
+                <AWSErrorBanner error={awsError} onRetry={refetch} retrying={awsLoading} />
+              )}
 
               {/* Metrics Grid - Responsive */}
               <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
