@@ -12,6 +12,36 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { MFAVerificationDialog } from "@/components/MFAVerificationDialog";
 
+const RATE_LIMIT_KEY = 'cloudhub-login-attempts';
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 60_000; // 1 minute lockout
+
+function getLoginAttempts(): { count: number; firstAttemptAt: number; lockedUntil: number } {
+  try {
+    const raw = localStorage.getItem(RATE_LIMIT_KEY);
+    return raw ? JSON.parse(raw) : { count: 0, firstAttemptAt: 0, lockedUntil: 0 };
+  } catch {
+    return { count: 0, firstAttemptAt: 0, lockedUntil: 0 };
+  }
+}
+
+function recordFailedAttempt() {
+  const state = getLoginAttempts();
+  const now = Date.now();
+  // Reset window if older than lockout duration
+  if (now - state.firstAttemptAt > LOCKOUT_DURATION_MS) {
+    localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify({ count: 1, firstAttemptAt: now, lockedUntil: 0 }));
+    return;
+  }
+  const newCount = state.count + 1;
+  const lockedUntil = newCount >= MAX_ATTEMPTS ? now + LOCKOUT_DURATION_MS : 0;
+  localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify({ count: newCount, firstAttemptAt: state.firstAttemptAt || now, lockedUntil }));
+}
+
+function clearAttempts() {
+  localStorage.removeItem(RATE_LIMIT_KEY);
+}
+
 const Auth = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,10 +49,34 @@ const Auth = () => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showMFAVerification, setShowMFAVerification] = useState(false);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
   const [searchParams] = useSearchParams();
   
   const { signIn, signUp, user } = useAuth();
   const navigate = useNavigate();
+
+  // Lockout countdown timer
+  useEffect(() => {
+    const state = getLoginAttempts();
+    const now = Date.now();
+    if (state.lockedUntil > now) {
+      setLockoutRemaining(Math.ceil((state.lockedUntil - now) / 1000));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (lockoutRemaining <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutRemaining(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutRemaining]);
 
   useEffect(() => {
     // Check if this is a password reset callback
@@ -67,6 +121,17 @@ const Auth = () => {
 
   const handleSignIn = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    // Check lockout
+    const state = getLoginAttempts();
+    const now = Date.now();
+    if (state.lockedUntil > now) {
+      const secs = Math.ceil((state.lockedUntil - now) / 1000);
+      setLockoutRemaining(secs);
+      setError(`Too many failed attempts. Please wait ${secs} seconds before trying again.`);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     
@@ -77,10 +142,23 @@ const Auth = () => {
     const { error } = await signIn(email, password);
     
     if (error) {
-      setError(error.message);
+      recordFailedAttempt();
+      const updated = getLoginAttempts();
+      if (updated.lockedUntil > Date.now()) {
+        const secs = Math.ceil((updated.lockedUntil - Date.now()) / 1000);
+        setLockoutRemaining(secs);
+        setError(`Too many failed attempts. Your account is locked for ${secs} seconds.`);
+      } else {
+        const remaining = MAX_ATTEMPTS - updated.count;
+        setError(`${error.message}${remaining <= 2 ? ` (${remaining} attempt${remaining === 1 ? '' : 's'} remaining)` : ''}`);
+      }
       setIsLoading(false);
       return;
     }
+
+    // Success — clear rate limit
+    clearAttempts();
+    setLockoutRemaining(0);
 
     // Check if MFA is required for this user
     const mfaRequired = await checkMFARequired();
@@ -363,12 +441,19 @@ const Auth = () => {
                           required
                         />
                       </div>
-                      <Button type="submit" className="w-full" disabled={isLoading}>
+                      {lockoutRemaining > 0 && (
+                        <p className="text-sm text-destructive text-center">
+                          Locked out — try again in {lockoutRemaining}s
+                        </p>
+                      )}
+                      <Button type="submit" className="w-full" disabled={isLoading || lockoutRemaining > 0}>
                         {isLoading ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             Signing in...
                           </>
+                        ) : lockoutRemaining > 0 ? (
+                          `Locked (${lockoutRemaining}s)`
                         ) : (
                           'Sign In'
                         )}
