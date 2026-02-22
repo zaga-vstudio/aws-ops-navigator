@@ -38,6 +38,9 @@ import { VPCDetailsDialog } from "@/components/vpc/VPCDetailsDialog";
 import { CreateSubnetDialog } from "@/components/vpc/CreateSubnetDialog";
 import { ManageRouteTablesDialog } from "@/components/vpc/ManageRouteTablesDialog";
 import { SubnetDetailsDialog } from "@/components/vpc/SubnetDetailsDialog";
+import { CreateSecurityGroupDialog } from "@/components/CreateSecurityGroupDialog";
+import { SecurityGroupDetailsDialog } from "@/components/SecurityGroupDetailsDialog";
+import { ManageSecurityGroupDialog } from "@/components/ManageSecurityGroupDialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const VPCNetworking = () => {
@@ -63,6 +66,10 @@ const VPCNetworking = () => {
   const [selectedSubnetForDetails, setSelectedSubnetForDetails] = useState<Subnet | null>(null);
   const [naclDialogOpen, setNaclDialogOpen] = useState(false);
   const [naclFilterVpcId, setNaclFilterVpcId] = useState<string | null>(null);
+  const [createSGDialogOpen, setCreateSGDialogOpen] = useState(false);
+  const [sgDetailsDialogOpen, setSgDetailsDialogOpen] = useState(false);
+  const [selectedSG, setSelectedSG] = useState<any>(null);
+  const [manageSGDialogOpen, setManageSGDialogOpen] = useState(false);
 
   const vpcs = awsData?.vpcs || [];
   const subnets = awsData?.subnets || [];
@@ -269,6 +276,27 @@ const VPCNetworking = () => {
                   />
                 </DialogContent>
               </Dialog>
+              <CreateSecurityGroupDialog
+                open={createSGDialogOpen}
+                onOpenChange={setCreateSGDialogOpen}
+                vpcs={vpcs.map(v => ({ id: v.id, name: v.name }))}
+                onSuccess={handleRefreshAll}
+              />
+              {selectedSG && (
+                <>
+                  <SecurityGroupDetailsDialog
+                    open={sgDetailsDialogOpen}
+                    onOpenChange={(open) => { setSgDetailsDialogOpen(open); if (!open) setSelectedSG(null); }}
+                    securityGroup={selectedSG}
+                  />
+                  <ManageSecurityGroupDialog
+                    open={manageSGDialogOpen}
+                    onOpenChange={(open) => { setManageSGDialogOpen(open); if (!open) setSelectedSG(null); }}
+                    securityGroup={selectedSG}
+                    onSuccess={handleRefreshAll}
+                  />
+                </>
+              )}
 
               {error && (
                 <Alert variant="destructive">
@@ -530,7 +558,13 @@ const VPCNetworking = () => {
                 {/* ===== Security Groups Tab ===== */}
                 <TabsContent value="security">
                   <Card>
-                    <CardHeader><CardTitle>Security Groups</CardTitle></CardHeader>
+                    <CardHeader className="flex flex-row items-center justify-between">
+                      <CardTitle>Security Groups</CardTitle>
+                      <Button size="sm" onClick={() => setCreateSGDialogOpen(true)}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Create Security Group
+                      </Button>
+                    </CardHeader>
                     <CardContent>
                       <div className="overflow-x-auto">
                         <Table>
@@ -561,20 +595,28 @@ const VPCNetworking = () => {
                                 <TableRow key={sg.id}>
                                   <TableCell className="font-mono text-sm">{sg.id}</TableCell>
                                   <TableCell className="font-medium">{sg.name}</TableCell>
-                                  <TableCell>{sg.description}</TableCell>
+                                  <TableCell className="max-w-[200px] truncate">{sg.description}</TableCell>
                                   <TableCell className="font-mono text-sm">{sg.vpcId}</TableCell>
-                                  <TableCell>{sg.inboundRules.length}</TableCell>
-                                  <TableCell>{sg.outboundRules.length}</TableCell>
+                                  <TableCell>
+                                    <Badge variant={sg.inboundRules.length > 5 ? "destructive" : "secondary"}>
+                                      {sg.inboundRules.length}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant="secondary">{sg.outboundRules.length}</Badge>
+                                  </TableCell>
                                   <TableCell className="text-right">
                                     <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
                                         <Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
                                       </DropdownMenuTrigger>
                                       <DropdownMenuContent align="end">
-                                        <DropdownMenuItem>Edit Rules</DropdownMenuItem>
-                                        <DropdownMenuItem>Copy Security Group</DropdownMenuItem>
-                                        <DropdownMenuItem>View References</DropdownMenuItem>
-                                        <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => { setSelectedSG(sg); setSgDetailsDialogOpen(true); }}>
+                                          View Details
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => { setSelectedSG(sg); setManageSGDialogOpen(true); }}>
+                                          Edit Rules
+                                        </DropdownMenuItem>
                                       </DropdownMenuContent>
                                     </DropdownMenu>
                                   </TableCell>
