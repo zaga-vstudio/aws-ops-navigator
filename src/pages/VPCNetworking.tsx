@@ -10,6 +10,7 @@ import { useVPCAdvancedData } from "@/hooks/useVPCAdvancedData";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -36,6 +37,8 @@ import { GlobalResourceView } from "@/components/vpc/GlobalResourceView";
 import { VPCDetailsDialog } from "@/components/vpc/VPCDetailsDialog";
 import { CreateSubnetDialog } from "@/components/vpc/CreateSubnetDialog";
 import { ManageRouteTablesDialog } from "@/components/vpc/ManageRouteTablesDialog";
+import { SubnetDetailsDialog } from "@/components/vpc/SubnetDetailsDialog";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 const VPCNetworking = () => {
   const { user, loading: authLoading } = useAuth();
@@ -56,6 +59,10 @@ const VPCNetworking = () => {
   const [selectedVPCForSubnet, setSelectedVPCForSubnet] = useState<VPC | null>(null);
   const [routeTablesDialogOpen, setRouteTablesDialogOpen] = useState(false);
   const [selectedVPCForRoutes, setSelectedVPCForRoutes] = useState<VPC | null>(null);
+  const [subnetDetailsDialogOpen, setSubnetDetailsDialogOpen] = useState(false);
+  const [selectedSubnetForDetails, setSelectedSubnetForDetails] = useState<Subnet | null>(null);
+  const [naclDialogOpen, setNaclDialogOpen] = useState(false);
+  const [naclFilterVpcId, setNaclFilterVpcId] = useState<string | null>(null);
 
   const vpcs = awsData?.vpcs || [];
   const subnets = awsData?.subnets || [];
@@ -237,6 +244,31 @@ const VPCNetworking = () => {
                 routeTables={advancedData?.routeTables || []}
                 subnets={subnets}
               />
+              <SubnetDetailsDialog
+                open={subnetDetailsDialogOpen}
+                onOpenChange={(open) => { setSubnetDetailsDialogOpen(open); if (!open) setSelectedSubnetForDetails(null); }}
+                subnet={selectedSubnetForDetails}
+                securityGroups={securityGroups}
+                routeTables={advancedData?.routeTables || []}
+                nacls={advancedData?.nacls || []}
+                internetGateways={advancedData?.internetGateways || []}
+              />
+              {/* NACL Dialog for subnet action */}
+              <Dialog open={naclDialogOpen} onOpenChange={(open) => { setNaclDialogOpen(open); if (!open) setNaclFilterVpcId(null); }}>
+                <DialogContent className="sm:max-w-[800px] max-h-[85vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                      <Shield className="h-5 w-5 text-primary" />
+                      Network ACLs
+                    </DialogTitle>
+                  </DialogHeader>
+                  <NACLRulesManager
+                    nacls={(advancedData?.nacls || []).filter(n => !naclFilterVpcId || n.vpcId === naclFilterVpcId)}
+                    loading={advancedLoading}
+                    onRefresh={refetchAdvanced}
+                  />
+                </DialogContent>
+              </Dialog>
 
               {error && (
                 <Alert variant="destructive">
@@ -392,90 +424,105 @@ const VPCNetworking = () => {
                   <Card>
                     <CardHeader><CardTitle>Subnets</CardTitle></CardHeader>
                     <CardContent>
-                      <div className="overflow-x-auto">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Subnet ID</TableHead>
-                              <TableHead>Name</TableHead>
-                              <TableHead>VPC</TableHead>
-                              <TableHead>CIDR Block</TableHead>
-                              <TableHead>AZ</TableHead>
-                              <TableHead>Type</TableHead>
-                              <TableHead>Available IPs</TableHead>
-                              <TableHead className="text-right">Actions</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {loading ? (
-                              Array(3).fill(0).map((_, i) => (
-                                <TableRow key={i}>
-                                  {Array(8).fill(0).map((_, j) => <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>)}
-                                </TableRow>
-                              ))
-                            ) : subnets.length === 0 ? (
-                              <TableRow>
-                                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">No subnets found</TableCell>
-                              </TableRow>
-                            ) : (
-                              subnets.map((subnet) => {
-                                // Determine subnet type from route tables
-                                const rt = advancedData?.routeTables.find(r =>
-                                  r.associations.some(a => a.subnetId === subnet.id)
-                                ) || advancedData?.routeTables.find(r =>
-                                  r.vpcId === subnet.vpcId && r.associations.some(a => a.main)
-                                );
-                                const igwIds = (advancedData?.internetGateways || [])
-                                  .filter(igw => igw.attachments.some(a => a.vpcId === subnet.vpcId))
-                                  .map(igw => igw.id);
-                                const isPublic = rt?.routes.some(r =>
-                                  r.gatewayId && igwIds.includes(r.gatewayId) && r.destinationCidr === '0.0.0.0/0'
-                                ) || false;
+                      {loading ? (
+                        <div className="space-y-3">
+                          {Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+                        </div>
+                      ) : subnets.length === 0 ? (
+                        <p className="text-center text-muted-foreground py-8">No subnets found</p>
+                      ) : (
+                        <Accordion type="multiple" defaultValue={vpcs.map(v => v.id)} className="space-y-2">
+                          {vpcs.filter(vpc => subnets.some(s => s.vpcId === vpc.id)).map(vpc => {
+                            const vpcSubnets = subnets.filter(s => s.vpcId === vpc.id);
+                            return (
+                              <AccordionItem key={vpc.id} value={vpc.id} className="border rounded-lg px-2">
+                                <AccordionTrigger className="py-3 hover:no-underline">
+                                  <div className="flex items-center gap-3">
+                                    <Network className="h-4 w-4 text-primary" />
+                                    <span className="font-medium">{vpc.name || vpc.id}</span>
+                                    <span className="font-mono text-xs text-muted-foreground">{vpc.cidrBlock}</span>
+                                    <Badge variant="outline" className="text-xs">{vpcSubnets.length} subnet{vpcSubnets.length !== 1 ? 's' : ''}</Badge>
+                                  </div>
+                                </AccordionTrigger>
+                                <AccordionContent className="pb-2">
+                                  <div className="overflow-x-auto">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead>Subnet ID</TableHead>
+                                          <TableHead>Name</TableHead>
+                                          <TableHead>CIDR Block</TableHead>
+                                          <TableHead>AZ</TableHead>
+                                          <TableHead>Type</TableHead>
+                                          <TableHead>Available IPs</TableHead>
+                                          <TableHead className="text-right">Actions</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {vpcSubnets.map((subnet) => {
+                                          const rt = advancedData?.routeTables.find(r =>
+                                            r.associations.some(a => a.subnetId === subnet.id)
+                                          ) || advancedData?.routeTables.find(r =>
+                                            r.vpcId === subnet.vpcId && r.associations.some(a => a.main)
+                                          );
+                                          const igwIds = (advancedData?.internetGateways || [])
+                                            .filter(igw => igw.attachments.some(a => a.vpcId === subnet.vpcId))
+                                            .map(igw => igw.id);
+                                          const isPublic = rt?.routes.some(r =>
+                                            r.gatewayId && igwIds.includes(r.gatewayId) && r.destinationCidr === '0.0.0.0/0'
+                                          ) || false;
 
-                                return (
-                                  <TableRow key={subnet.id}>
-                                    <TableCell className="font-mono text-sm">{subnet.id}</TableCell>
-                                    <TableCell className="font-medium">{subnet.name}</TableCell>
-                                    <TableCell className="font-mono text-sm">{subnet.vpcId}</TableCell>
-                                    <TableCell className="font-mono">{subnet.cidrBlock}</TableCell>
-                                    <TableCell>{subnet.availabilityZone}</TableCell>
-                                    <TableCell>
-                                      {advancedLoading ? (
-                                        <Skeleton className="h-5 w-16" />
-                                      ) : (
-                                        <Badge variant={isPublic ? 'default' : 'secondary'}>
-                                          {isPublic ? 'Public' : 'Private'}
-                                        </Badge>
-                                      )}
-                                    </TableCell>
-                                    <TableCell>{subnet.availableIps.toLocaleString()}</TableCell>
-                                    <TableCell className="text-right">
-                                      <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                          <Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                          <DropdownMenuItem>View Details</DropdownMenuItem>
-                                          <DropdownMenuItem>Manage Route Table</DropdownMenuItem>
-                                          <DropdownMenuItem>Network ACLs</DropdownMenuItem>
-                                          <DropdownMenuItem
-                                            className="text-destructive"
-                                            onClick={() => handleOpenSubnetBlastRadius(subnet)}
-                                            disabled={actionLoading !== null}
-                                          >
-                                            <AlertTriangle className="mr-2 h-4 w-4" />
-                                            Delete Subnet...
-                                          </DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                      </DropdownMenu>
-                                    </TableCell>
-                                  </TableRow>
-                                );
-                              })
-                            )}
-                          </TableBody>
-                        </Table>
-                      </div>
+                                          return (
+                                            <TableRow key={subnet.id}>
+                                              <TableCell className="font-mono text-sm">{subnet.id}</TableCell>
+                                              <TableCell className="font-medium">{subnet.name}</TableCell>
+                                              <TableCell className="font-mono">{subnet.cidrBlock}</TableCell>
+                                              <TableCell>{subnet.availabilityZone}</TableCell>
+                                              <TableCell>
+                                                {advancedLoading ? (
+                                                  <Skeleton className="h-5 w-16" />
+                                                ) : (
+                                                  <Badge variant={isPublic ? 'default' : 'secondary'}>
+                                                    {isPublic ? 'Public' : 'Private'}
+                                                  </Badge>
+                                                )}
+                                              </TableCell>
+                                              <TableCell>{subnet.availableIps.toLocaleString()}</TableCell>
+                                              <TableCell className="text-right">
+                                                <DropdownMenu>
+                                                  <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4" /></Button>
+                                                  </DropdownMenuTrigger>
+                                                  <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onClick={() => { setSelectedSubnetForDetails(subnet); setSubnetDetailsDialogOpen(true); }}>View Details</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => {
+                                                      const parentVpc = vpcs.find(v => v.id === subnet.vpcId);
+                                                      if (parentVpc) { setSelectedVPCForRoutes(parentVpc); setRouteTablesDialogOpen(true); }
+                                                    }}>Manage Route Table</DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => { setNaclFilterVpcId(subnet.vpcId); setNaclDialogOpen(true); }}>Network ACLs</DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                      className="text-destructive"
+                                                      onClick={() => handleOpenSubnetBlastRadius(subnet)}
+                                                      disabled={actionLoading !== null}
+                                                    >
+                                                      <AlertTriangle className="mr-2 h-4 w-4" />
+                                                      Delete Subnet...
+                                                    </DropdownMenuItem>
+                                                  </DropdownMenuContent>
+                                                </DropdownMenu>
+                                              </TableCell>
+                                            </TableRow>
+                                          );
+                                        })}
+                                      </TableBody>
+                                    </Table>
+                                  </div>
+                                </AccordionContent>
+                              </AccordionItem>
+                            );
+                          })}
+                        </Accordion>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
