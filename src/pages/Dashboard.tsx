@@ -205,7 +205,9 @@ const Dashboard = () => {
       <CreateRDSDialog 
         open={createRDSOpen} 
         onOpenChange={setCreateRDSOpen} 
-        onSuccess={refetch} 
+        onSuccess={refetch}
+        vpcs={awsData?.vpcs}
+        subnets={awsData?.subnets}
       />
     </SidebarProvider>
   );

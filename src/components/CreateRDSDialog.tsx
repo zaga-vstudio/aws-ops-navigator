@@ -18,14 +18,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Database } from "lucide-react";
+import { Loader2, Database, Network } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import type { VPC, Subnet } from "@/hooks/useAWSData";
 
 interface CreateRDSDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  vpcs?: VPC[];
+  subnets?: Subnet[];
 }
 
 const ENGINE_OPTIONS = [
@@ -41,7 +44,7 @@ const INSTANCE_CLASSES = [
   { value: 'db.m5.large', label: 'db.m5.large', description: '2 vCPU, 8 GB RAM' },
 ];
 
-export function CreateRDSDialog({ open, onOpenChange, onSuccess }: CreateRDSDialogProps) {
+export function CreateRDSDialog({ open, onOpenChange, onSuccess, vpcs = [], subnets = [] }: CreateRDSDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   
@@ -55,6 +58,12 @@ export function CreateRDSDialog({ open, onOpenChange, onSuccess }: CreateRDSDial
   const [masterPassword, setMasterPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [publiclyAccessible, setPubliclyAccessible] = useState(false);
+  const [selectedVpcId, setSelectedVpcId] = useState("");
+  const [selectedSubnetIds, setSelectedSubnetIds] = useState<string[]>([]);
+
+  const filteredSubnets = selectedVpcId 
+    ? subnets.filter(s => s.vpcId === selectedVpcId) 
+    : subnets;
 
   const selectedEngine = ENGINE_OPTIONS.find(e => e.value === engine);
 
@@ -69,6 +78,8 @@ export function CreateRDSDialog({ open, onOpenChange, onSuccess }: CreateRDSDial
     setMasterPassword("");
     setConfirmPassword("");
     setPubliclyAccessible(false);
+    setSelectedVpcId("");
+    setSelectedSubnetIds([]);
   };
 
   const handleCreate = async () => {
@@ -117,6 +128,8 @@ export function CreateRDSDialog({ open, onOpenChange, onSuccess }: CreateRDSDial
           masterUsername,
           masterPassword,
           publiclyAccessible,
+          vpcId: selectedVpcId || undefined,
+          subnetIds: selectedSubnetIds.length > 0 ? selectedSubnetIds : undefined,
         },
       });
 
@@ -293,6 +306,64 @@ export function CreateRDSDialog({ open, onOpenChange, onSuccess }: CreateRDSDial
               disabled={loading}
             />
           </div>
+
+          {/* Networking */}
+          {vpcs.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Network className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-sm font-medium">Networking</Label>
+              </div>
+
+              {/* VPC */}
+              <div className="grid gap-2">
+                <Label>VPC</Label>
+                <Select value={selectedVpcId} onValueChange={(v) => { setSelectedVpcId(v); setSelectedSubnetIds([]); }}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select VPC" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {vpcs.map((vpc) => (
+                      <SelectItem key={vpc.id} value={vpc.id}>
+                        {vpc.name || vpc.id} ({vpc.cidrBlock})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Subnets */}
+              {selectedVpcId && filteredSubnets.length > 0 && (
+                <div className="grid gap-2">
+                  <Label>Subnets (select at least 2 for DB Subnet Group)</Label>
+                  <div className="space-y-2 max-h-[150px] overflow-y-auto border rounded-md p-2">
+                    {filteredSubnets.map((subnet) => (
+                      <label key={subnet.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 p-1 rounded">
+                        <input
+                          type="checkbox"
+                          checked={selectedSubnetIds.includes(subnet.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSubnetIds(prev => [...prev, subnet.id]);
+                            } else {
+                              setSelectedSubnetIds(prev => prev.filter(id => id !== subnet.id));
+                            }
+                          }}
+                          disabled={loading}
+                          className="rounded"
+                        />
+                        <span>{subnet.name || subnet.id}</span>
+                        <span className="text-muted-foreground">({subnet.availabilityZone})</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    RDS requires subnets in at least 2 different Availability Zones.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Public Access */}
           <div className="flex items-center justify-between">
