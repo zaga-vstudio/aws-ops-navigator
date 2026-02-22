@@ -58,7 +58,14 @@ export default function Alerts() {
   const [newRuleDialogOpen, setNewRuleDialogOpen] = useState(false);
   const [channelDialogOpen, setChannelDialogOpen] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<NotificationChannel | null>(null);
-  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set());
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem('cloudhub-dismissed-alerts');
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const [selectedDrift, setSelectedDrift] = useState<typeof driftEvents[0] | null>(null);
   const [driftDialogOpen, setDriftDialogOpen] = useState(false);
 
@@ -75,7 +82,11 @@ export default function Alerts() {
   };
 
   const handleDismissAlert = (alertId: string) => {
-    setDismissedAlerts(prev => new Set(prev).add(alertId));
+    setDismissedAlerts(prev => {
+      const next = new Set(prev).add(alertId);
+      localStorage.setItem('cloudhub-dismissed-alerts', JSON.stringify([...next]));
+      return next;
+    });
   };
 
   const alarms = data?.alarms || [];
