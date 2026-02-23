@@ -50,6 +50,7 @@ interface RDSDatabase {
   instanceClass: string;
   allocatedStorage: number;
   endpoint?: string;
+  vpcSecurityGroups?: { id: string; status: string }[];
 }
 
 interface S3Bucket {
@@ -295,6 +296,10 @@ async function getRDSDatabases(config: AWSConfig): Promise<RDSDatabase[]> {
           instanceClass: dbInstance.DBInstanceClass || 'unknown',
           allocatedStorage: dbInstance.AllocatedStorage || 0,
           endpoint: dbInstance.Endpoint?.Address,
+          vpcSecurityGroups: dbInstance.VpcSecurityGroups?.map(sg => ({
+            id: sg.VpcSecurityGroupId || '',
+            status: sg.Status || 'unknown',
+          })) || [],
         });
       }
     }

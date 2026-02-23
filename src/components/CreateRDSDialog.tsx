@@ -18,10 +18,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Database, Network } from "lucide-react";
+import { Loader2, Database, Network, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import type { VPC, Subnet } from "@/hooks/useAWSData";
+import type { VPC, Subnet, SecurityGroup } from "@/hooks/useAWSData";
 
 interface CreateRDSDialogProps {
   open: boolean;
@@ -29,6 +29,7 @@ interface CreateRDSDialogProps {
   onSuccess: () => void;
   vpcs?: VPC[];
   subnets?: Subnet[];
+  securityGroups?: SecurityGroup[];
 }
 
 const ENGINE_OPTIONS = [
@@ -44,7 +45,7 @@ const INSTANCE_CLASSES = [
   { value: 'db.m5.large', label: 'db.m5.large', description: '2 vCPU, 8 GB RAM' },
 ];
 
-export function CreateRDSDialog({ open, onOpenChange, onSuccess, vpcs = [], subnets = [] }: CreateRDSDialogProps) {
+export function CreateRDSDialog({ open, onOpenChange, onSuccess, vpcs = [], subnets = [], securityGroups = [] }: CreateRDSDialogProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   
@@ -60,10 +61,15 @@ export function CreateRDSDialog({ open, onOpenChange, onSuccess, vpcs = [], subn
   const [publiclyAccessible, setPubliclyAccessible] = useState(false);
   const [selectedVpcId, setSelectedVpcId] = useState("");
   const [selectedSubnetIds, setSelectedSubnetIds] = useState<string[]>([]);
+  const [selectedSecurityGroupIds, setSelectedSecurityGroupIds] = useState<string[]>([]);
 
   const filteredSubnets = selectedVpcId 
     ? subnets.filter(s => s.vpcId === selectedVpcId) 
     : subnets;
+
+  const filteredSecurityGroups = selectedVpcId
+    ? securityGroups.filter(sg => sg.vpcId === selectedVpcId)
+    : securityGroups;
 
   const selectedEngine = ENGINE_OPTIONS.find(e => e.value === engine);
 
@@ -80,6 +86,7 @@ export function CreateRDSDialog({ open, onOpenChange, onSuccess, vpcs = [], subn
     setPubliclyAccessible(false);
     setSelectedVpcId("");
     setSelectedSubnetIds([]);
+    setSelectedSecurityGroupIds([]);
   };
 
   const handleCreate = async () => {
@@ -130,6 +137,7 @@ export function CreateRDSDialog({ open, onOpenChange, onSuccess, vpcs = [], subn
           publiclyAccessible,
           vpcId: selectedVpcId || undefined,
           subnetIds: selectedSubnetIds.length > 0 ? selectedSubnetIds : undefined,
+          vpcSecurityGroupIds: selectedSecurityGroupIds.length > 0 ? selectedSecurityGroupIds : undefined,
         },
       });
 
@@ -318,7 +326,7 @@ export function CreateRDSDialog({ open, onOpenChange, onSuccess, vpcs = [], subn
               {/* VPC */}
               <div className="grid gap-2">
                 <Label>VPC</Label>
-                <Select value={selectedVpcId} onValueChange={(v) => { setSelectedVpcId(v); setSelectedSubnetIds([]); }}>
+                <Select value={selectedVpcId} onValueChange={(v) => { setSelectedVpcId(v); setSelectedSubnetIds([]); setSelectedSecurityGroupIds([]); }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select VPC" />
                   </SelectTrigger>
@@ -359,6 +367,40 @@ export function CreateRDSDialog({ open, onOpenChange, onSuccess, vpcs = [], subn
                   </div>
                   <p className="text-xs text-muted-foreground">
                     RDS requires subnets in at least 2 different Availability Zones.
+                  </p>
+                </div>
+              )}
+
+              {/* Security Groups */}
+              {selectedVpcId && filteredSecurityGroups.length > 0 && (
+                <div className="grid gap-2">
+                  <Label className="flex items-center gap-1.5">
+                    <Shield className="h-3.5 w-3.5" />
+                    Security Groups
+                  </Label>
+                  <div className="space-y-2 max-h-[150px] overflow-y-auto border rounded-md p-2">
+                    {filteredSecurityGroups.map((sg) => (
+                      <label key={sg.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 p-1 rounded">
+                        <input
+                          type="checkbox"
+                          checked={selectedSecurityGroupIds.includes(sg.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedSecurityGroupIds(prev => [...prev, sg.id]);
+                            } else {
+                              setSelectedSecurityGroupIds(prev => prev.filter(id => id !== sg.id));
+                            }
+                          }}
+                          disabled={loading}
+                          className="rounded"
+                        />
+                        <span>{sg.name}</span>
+                        <span className="text-muted-foreground font-mono text-xs">({sg.id})</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Select security groups to control inbound/outbound traffic.
                   </p>
                 </div>
               )}
