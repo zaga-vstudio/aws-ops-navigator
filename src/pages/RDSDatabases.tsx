@@ -16,8 +16,11 @@ import {
   MoreVertical,
   Plus,
   RefreshCw,
-  Loader2
+  Loader2,
+  Copy,
+  Check
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,6 +63,18 @@ const RDSDatabases = () => {
   const { data: awsData, loading: awsLoading, error: awsError, refetch } = useAWSDataContext();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [copiedEndpoint, setCopiedEndpoint] = useState<string | null>(null);
+
+  const handleCopyEndpoint = async (endpoint: string) => {
+    try {
+      await navigator.clipboard.writeText(endpoint);
+      setCopiedEndpoint(endpoint);
+      toast({ title: "Copied!", description: "Endpoint copied to clipboard." });
+      setTimeout(() => setCopiedEndpoint(null), 2000);
+    } catch {
+      toast({ variant: "destructive", title: "Copy failed", description: "Please copy manually." });
+    }
+  };
 
   const databases = awsData?.rdsDatabases || [];
 
@@ -271,8 +286,35 @@ const RDSDatabases = () => {
                               </TableCell>
                               <TableCell>{database.allocatedStorage} GB</TableCell>
                               <TableCell>{database.region}</TableCell>
-                              <TableCell className="font-mono text-xs max-w-[200px] truncate">
-                                {database.endpoint || '-'}
+                              <TableCell className="max-w-[250px]">
+                                {database.endpoint ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <div className="flex items-center gap-1.5 group">
+                                          <span className="font-mono text-xs truncate">{database.endpoint}</span>
+                                          <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            onClick={() => handleCopyEndpoint(database.endpoint!)}
+                                          >
+                                            {copiedEndpoint === database.endpoint ? (
+                                              <Check className="h-3 w-3 text-green-500" />
+                                            ) : (
+                                              <Copy className="h-3 w-3" />
+                                            )}
+                                          </Button>
+                                        </div>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" className="max-w-sm">
+                                        <p className="font-mono text-xs break-all">{database.endpoint}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
                               </TableCell>
                               <TableCell className="text-right">
                                 <DropdownMenu>
