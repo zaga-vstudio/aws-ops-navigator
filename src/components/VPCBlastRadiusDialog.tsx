@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Separator } from "@/components/ui/separator";
 import { 
   AlertTriangle, 
@@ -132,7 +132,7 @@ export function VPCBlastRadiusDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <ScrollArea className="flex-1 max-h-[50vh] pr-4">
+        <div className="flex-1 max-h-[60vh] overflow-y-auto pr-2">
           {/* Severity Banner */}
           <Card className={`mb-4 border ${getSeverityColor()}`}>
             <CardContent className="p-4">
@@ -360,7 +360,7 @@ export function VPCBlastRadiusDialog({
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         <AlertDialogFooter className="mt-4">
           <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
