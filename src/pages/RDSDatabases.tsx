@@ -360,24 +360,24 @@ const RDSDatabases = () => {
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end">
                                     <DropdownMenuItem 
-                                      onClick={() => handleRDSAction('start', database.name)}
+                                      onClick={() => handleRDSAction('start', database.id)}
                                       disabled={database.state === 'available' || actionLoading !== null}
                                     >
-                                      {actionLoading === `start-${database.name}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                      {actionLoading === `start-${database.id}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                       Start
                                     </DropdownMenuItem>
                                     <DropdownMenuItem 
-                                      onClick={() => handleRDSAction('stop', database.name)}
+                                      onClick={() => handleRDSAction('stop', database.id)}
                                       disabled={database.state === 'stopped' || actionLoading !== null}
                                     >
-                                      {actionLoading === `stop-${database.name}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                      {actionLoading === `stop-${database.id}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                       Stop
                                     </DropdownMenuItem>
                                     <DropdownMenuItem 
-                                      onClick={() => handleRDSAction('reboot', database.name)}
+                                      onClick={() => handleRDSAction('reboot', database.id)}
                                       disabled={database.state !== 'available' || actionLoading !== null}
                                     >
-                                      {actionLoading === `reboot-${database.name}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                      {actionLoading === `reboot-${database.id}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                       Reboot
                                     </DropdownMenuItem>
                                     <DropdownMenuItem 
@@ -387,8 +387,8 @@ const RDSDatabases = () => {
                                       <Shield className="mr-2 h-4 w-4" />
                                       Manage Security Groups
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem className="text-destructive" onClick={() => handleRDSAction('delete', database.name)}>
-                                      {actionLoading === `delete-${database.name}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    <DropdownMenuItem className="text-destructive" onClick={() => handleRDSAction('delete', database.id)}>
+                                      {actionLoading === `delete-${database.id}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                       Delete
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
