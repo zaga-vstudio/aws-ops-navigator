@@ -31,10 +31,31 @@ interface SecurityGroupDetailsDialogProps {
   };
 }
 
-// Helper function to format protocol
-const formatProtocol = (protocol: string): string => {
-  if (protocol === "-1") return "All";
-  return protocol.toUpperCase();
+// Helper function to format protocol with service name based on port
+const formatProtocol = (rule: SecurityGroupRule): string => {
+  if (rule.ipProtocol === "-1") return "All Traffic";
+  const port = rule.fromPort;
+  const proto = rule.ipProtocol?.toUpperCase() || "TCP";
+  if (port === 80) return "HTTP";
+  if (port === 443) return "HTTPS";
+  if (port === 22) return "SSH";
+  if (port === 3389) return "RDP";
+  if (port === 3306) return "MySQL/Aurora";
+  if (port === 5432) return "PostgreSQL";
+  if (port === 1433) return "MSSQL";
+  if (port === 27017) return "MongoDB";
+  if (port === 6379) return "Redis";
+  if (port === 53) return "DNS";
+  if (port === 25) return "SMTP";
+  if (port === 465) return "SMTPS";
+  if (port === 143) return "IMAP";
+  if (port === 993) return "IMAPS";
+  if (port === 110) return "POP3";
+  if (port === 8080) return "HTTP Alt";
+  if (port === 8443) return "HTTPS Alt";
+  if (port === 2049) return "NFS";
+  if (port === 11211) return "Memcached";
+  return `${proto}`;
 };
 
 // Helper function to format port range
@@ -77,7 +98,7 @@ export function SecurityGroupDetailsDialog({
           severity: "high",
           rule: "SSH (Port 22) open to 0.0.0.0/0",
           recommendation: "Restrict SSH access to specific IP ranges or use AWS Systems Manager Session Manager",
-          protocol: formatProtocol(rule.ipProtocol),
+           protocol: formatProtocol(rule),
           port: "22"
         });
       }
@@ -88,7 +109,7 @@ export function SecurityGroupDetailsDialog({
           severity: "high",
           rule: "RDP (Port 3389) open to 0.0.0.0/0",
           recommendation: "Restrict RDP access to specific IP ranges or use a bastion host",
-          protocol: formatProtocol(rule.ipProtocol),
+          protocol: formatProtocol(rule),
           port: "3389"
         });
       }
@@ -243,7 +264,7 @@ export function SecurityGroupDetailsDialog({
                           const isRisky = source === "0.0.0.0/0" && !["443", "80"].includes(port);
                           return (
                             <TableRow key={index}>
-                              <TableCell><Badge variant="outline">{formatProtocol(rule.ipProtocol)}</Badge></TableCell>
+                             <TableCell><Badge variant="outline">{formatProtocol(rule)}</Badge></TableCell>
                               <TableCell className="font-mono">{port}</TableCell>
                               <TableCell className="font-mono text-sm">{source}</TableCell>
                               <TableCell className="text-sm">{rule.description || "-"}</TableCell>
@@ -288,7 +309,7 @@ export function SecurityGroupDetailsDialog({
                       <TableBody>
                         {outboundRules.map((rule, index) => (
                           <TableRow key={index}>
-                            <TableCell><Badge variant="outline">{formatProtocol(rule.ipProtocol)}</Badge></TableCell>
+                            <TableCell><Badge variant="outline">{formatProtocol(rule)}</Badge></TableCell>
                             <TableCell className="font-mono">{formatPortRange(rule)}</TableCell>
                             <TableCell className="font-mono text-sm">{getSource(rule)}</TableCell>
                             <TableCell className="text-sm">{rule.description || "-"}</TableCell>
