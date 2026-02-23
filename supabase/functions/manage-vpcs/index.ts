@@ -161,9 +161,12 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('VPC action error:', error);
+    const isClientError = error?.$metadata?.httpStatusCode === 400 || 
+      ['DependencyViolation', 'InvalidParameterValue', 'InvalidVpcID.NotFound', 'InvalidSubnetID.NotFound'].includes(error?.name);
+    const status = isClientError ? 400 : 500;
     return new Response(
       JSON.stringify({ error: error.message || 'Failed to execute VPC action', code: error.name || 'UnknownError' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
