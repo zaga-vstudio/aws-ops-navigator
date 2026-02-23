@@ -114,11 +114,16 @@ export function CreateNACLRuleDialog({ open, onOpenChange, nacls, onSubmit, load
               <Label>Protocol</Label>
               <Select value={protocol} onValueChange={setProtocol}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
+              <SelectContent>
                   <SelectItem value="-1">All Traffic</SelectItem>
-                  <SelectItem value="6">TCP</SelectItem>
-                  <SelectItem value="17">UDP</SelectItem>
-                  <SelectItem value="1">ICMP</SelectItem>
+                  <SelectItem value="6">TCP (6)</SelectItem>
+                  <SelectItem value="17">UDP (17)</SelectItem>
+                  <SelectItem value="1">ICMP (1)</SelectItem>
+                  <SelectItem value="58">ICMPv6 (58)</SelectItem>
+                  <SelectItem value="47">GRE (47)</SelectItem>
+                  <SelectItem value="50">ESP (50)</SelectItem>
+                  <SelectItem value="51">AH (51)</SelectItem>
+                  <SelectItem value="132">SCTP (132)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
