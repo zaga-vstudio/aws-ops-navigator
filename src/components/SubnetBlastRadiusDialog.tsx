@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Separator } from "@/components/ui/separator";
 import { 
   AlertTriangle, 
@@ -57,8 +57,8 @@ export function SubnetBlastRadiusDialog({
     instance.availabilityZone === subnet.availabilityZone
   );
 
-  // Simulate network interfaces (ENIs) - in production, this would come from AWS API
-  const simulatedNetworkInterfaces: NetworkInterface[] = affectedEC2.map(instance => ({
+  // Only show real network interfaces tied to actual EC2 instances in this subnet
+  const associatedNetworkInterfaces: NetworkInterface[] = affectedEC2.map(instance => ({
     id: `eni-${instance.id.substring(2, 10)}`,
     description: `Primary network interface for ${instance.name || instance.id}`,
     privateIp: instance.privateIp || '10.0.0.x',
@@ -67,25 +67,14 @@ export function SubnetBlastRadiusDialog({
     instanceName: instance.name,
   }));
 
-  // Add some standalone ENIs if there are available IPs
-  if (subnet.availableIps > 0) {
-    const standaloneCount = Math.min(2, Math.floor(subnet.availableIps / 50));
-    for (let i = 0; i < standaloneCount; i++) {
-      simulatedNetworkInterfaces.push({
-        id: `eni-standalone-${i + 1}`,
-        description: 'Standalone network interface',
-        privateIp: `10.0.${i + 10}.${i + 1}`,
-        status: 'available',
-      });
-    }
-  }
-
-  const totalAffected = affectedEC2.length + simulatedNetworkInterfaces.length;
+  const totalAffected = affectedEC2.length + associatedNetworkInterfaces.length;
   const runningInstances = affectedEC2.filter(e => e.state === 'running').length;
+  const hasEC2 = affectedEC2.length > 0;
+  const hasENIs = associatedNetworkInterfaces.length > 0;
 
   const getSeverityLevel = () => {
     if (runningInstances > 0) return 'critical';
-    if (affectedEC2.length > 0 || simulatedNetworkInterfaces.length > 3) return 'warning';
+    if (affectedEC2.length > 0 || associatedNetworkInterfaces.length > 0) return 'warning';
     return 'info';
   };
 
@@ -112,7 +101,7 @@ export function SubnetBlastRadiusDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
 
-        <ScrollArea className="flex-1 max-h-[50vh] pr-4">
+        <div className="flex-1 overflow-y-auto max-h-[60vh] pr-2">
           {/* Severity Banner */}
           <Card className={`mb-4 border ${getSeverityColor()}`}>
             <CardContent className="p-4">
@@ -129,8 +118,10 @@ export function SubnetBlastRadiusDialog({
                     {severity === 'info' && 'Low Impact - Minimal Resources Affected'}
                   </p>
                   <p className="text-sm opacity-80">
-                    {affectedEC2.length} EC2 instance{affectedEC2.length !== 1 ? 's' : ''} and{' '}
-                    {simulatedNetworkInterfaces.length} network interface{simulatedNetworkInterfaces.length !== 1 ? 's' : ''} will be affected
+                    {totalAffected === 0 
+                      ? 'No dependent resources found'
+                      : `${affectedEC2.length} EC2 instance${affectedEC2.length !== 1 ? 's' : ''}${hasENIs ? ` and ${associatedNetworkInterfaces.length} network interface${associatedNetworkInterfaces.length !== 1 ? 's' : ''}` : ''} will be affected`
+                    }
                   </p>
                 </div>
               </div>
@@ -165,70 +156,74 @@ export function SubnetBlastRadiusDialog({
           <div className="mb-4">
             <h4 className="text-sm font-medium mb-3">Dependency Map</h4>
             <div className="relative bg-muted/30 rounded-lg p-6 overflow-hidden">
-              {/* SVG connection lines */}
-              <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
-                {/* Left branch */}
-                <line x1="50%" y1="52" x2="50%" y2="72" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
-                <line x1="50%" y1="72" x2="25%" y2="72" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
-                <line x1="25%" y1="72" x2="25%" y2="92" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
-                {/* Right branch */}
-                <line x1="50%" y1="72" x2="75%" y2="72" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
-                <line x1="75%" y1="72" x2="75%" y2="92" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
-              </svg>
-
               {/* Center Subnet Node */}
-              <div className="relative flex flex-col items-center mb-12">
+              <div className="relative flex flex-col items-center mb-8">
                 <div className="bg-destructive text-destructive-foreground rounded-lg px-4 py-2 flex items-center gap-2 shadow-lg border-2 border-destructive z-10">
                   <Globe className="h-5 w-5" />
                   <span className="font-medium text-sm">{subnet.name || subnet.id}</span>
                 </div>
               </div>
 
-              {/* Connected Resources */}
-              <div className="relative grid grid-cols-2 gap-6">
-                {/* EC2 Instances */}
-                <div className="flex flex-col items-center">
-                  <div className={`rounded-lg px-4 py-3 flex flex-col items-center gap-2 w-full z-10 ${
-                    affectedEC2.length > 0 ? 'bg-green-500/10 border border-green-500/30' : 'bg-muted border border-muted-foreground/20'
-                  }`}>
-                    <Server className="h-5 w-5 text-green-500" />
-                    <span className="text-sm font-medium">EC2 Instances</span>
-                    <div className="flex gap-2 flex-wrap justify-center">
-                      <Badge variant={affectedEC2.length > 0 ? 'destructive' : 'secondary'}>
-                        {affectedEC2.length} total
-                      </Badge>
-                      {runningInstances > 0 && (
-                        <Badge variant="destructive" className="animate-pulse">
-                          {runningInstances} running
-                        </Badge>
-                      )}
+              {totalAffected > 0 ? (
+                <>
+                  {/* SVG connection lines - only render branches for existing resources */}
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none">
+                    {hasEC2 && hasENIs ? (
+                      <>
+                        <line x1="50%" y1="52" x2="50%" y2="72" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+                        <line x1="50%" y1="72" x2="25%" y2="72" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+                        <line x1="25%" y1="72" x2="25%" y2="92" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+                        <line x1="50%" y1="72" x2="75%" y2="72" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+                        <line x1="75%" y1="72" x2="75%" y2="92" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+                      </>
+                    ) : (
+                      <line x1="50%" y1="52" x2="50%" y2="92" stroke="hsl(var(--destructive))" strokeWidth="2" strokeDasharray="4 3" />
+                    )}
+                  </svg>
+
+                  {/* Connected Resources - only show categories with actual resources */}
+                  <div className={`relative grid gap-6 ${hasEC2 && hasENIs ? 'grid-cols-2' : 'grid-cols-1 max-w-xs mx-auto'}`}>
+                    {hasEC2 && (
+                      <div className="flex flex-col items-center">
+                        <div className="rounded-lg px-4 py-3 flex flex-col items-center gap-2 w-full z-10 bg-green-500/10 border border-green-500/30">
+                          <Server className="h-5 w-5 text-green-500" />
+                          <span className="text-sm font-medium">EC2 Instances</span>
+                          <div className="flex gap-2 flex-wrap justify-center">
+                            <Badge variant="destructive">{affectedEC2.length} total</Badge>
+                            {runningInstances > 0 && (
+                              <Badge variant="destructive" className="animate-pulse">
+                                {runningInstances} running
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {hasENIs && (
+                      <div className="flex flex-col items-center">
+                        <div className="rounded-lg px-4 py-3 flex flex-col items-center gap-2 w-full z-10 bg-blue-500/10 border border-blue-500/30">
+                          <Wifi className="h-5 w-5 text-blue-500" />
+                          <span className="text-sm font-medium">Network Interfaces</span>
+                          <Badge variant="destructive">{associatedNetworkInterfaces.length} ENIs</Badge>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Warning footer */}
+                  <div className="relative mt-5 flex justify-center z-10">
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 flex items-center gap-2">
+                      <Network className="h-4 w-4 text-yellow-500 shrink-0" />
+                      <span className="text-xs text-muted-foreground">
+                        All network connectivity in this subnet will be terminated
+                      </span>
                     </div>
                   </div>
-                </div>
-
-                {/* Network Interfaces */}
-                <div className="flex flex-col items-center">
-                  <div className={`rounded-lg px-4 py-3 flex flex-col items-center gap-2 w-full z-10 ${
-                    simulatedNetworkInterfaces.length > 0 ? 'bg-blue-500/10 border border-blue-500/30' : 'bg-muted border border-muted-foreground/20'
-                  }`}>
-                    <Wifi className="h-5 w-5 text-blue-500" />
-                    <span className="text-sm font-medium">Network Interfaces</span>
-                    <Badge variant={simulatedNetworkInterfaces.length > 0 ? 'destructive' : 'secondary'}>
-                      {simulatedNetworkInterfaces.length} ENIs
-                    </Badge>
-                  </div>
-                </div>
-              </div>
-
-              {/* Warning footer */}
-              {(affectedEC2.length > 0 || simulatedNetworkInterfaces.length > 0) && (
-                <div className="relative mt-5 flex justify-center z-10">
-                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 py-2 flex items-center gap-2">
-                    <Network className="h-4 w-4 text-yellow-500 shrink-0" />
-                    <span className="text-xs text-muted-foreground">
-                      All network connectivity in this subnet will be terminated
-                    </span>
-                  </div>
+                </>
+              ) : (
+                <div className="text-center py-4 text-muted-foreground z-10 relative">
+                  <p className="text-sm">No dependent resources — safe to delete</p>
                 </div>
               )}
             </div>
@@ -267,14 +262,14 @@ export function SubnetBlastRadiusDialog({
             )}
 
             {/* Network Interfaces */}
-            {simulatedNetworkInterfaces.length > 0 && (
+            {associatedNetworkInterfaces.length > 0 && (
               <div>
                 <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
                   <Wifi className="h-4 w-4 text-blue-500" />
-                  Network Interfaces ({simulatedNetworkInterfaces.length})
+                  Network Interfaces ({associatedNetworkInterfaces.length})
                 </h4>
                 <div className="space-y-1">
-                  {simulatedNetworkInterfaces.map(eni => (
+                  {associatedNetworkInterfaces.map(eni => (
                     <div key={eni.id} className="flex items-center justify-between bg-muted/50 rounded px-3 py-2 text-sm">
                       <div className="flex flex-col">
                         <span className="font-mono text-xs">{eni.id}</span>
@@ -299,7 +294,7 @@ export function SubnetBlastRadiusDialog({
               </div>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         <AlertDialogFooter className="mt-4">
           <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
