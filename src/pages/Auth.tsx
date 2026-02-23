@@ -49,6 +49,7 @@ const Auth = () => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showMFAVerification, setShowMFAVerification] = useState(false);
+  const [pendingMFACheck, setPendingMFACheck] = useState(false);
   const [lockoutRemaining, setLockoutRemaining] = useState(0);
   const [searchParams] = useSearchParams();
   
@@ -87,7 +88,7 @@ const Auth = () => {
   }, [searchParams]);
 
   useEffect(() => {
-    if (user && !showResetPassword) {
+    if (user && !showResetPassword && !showMFAVerification && !pendingMFACheck) {
       // Check if user has completed AWS setup
       const checkAWSSetup = async () => {
         const { data: setupData } = await supabase.from('user_setup')
@@ -104,7 +105,7 @@ const Auth = () => {
       
       checkAWSSetup();
     }
-  }, [user, navigate, showResetPassword]);
+  }, [user, navigate, showResetPassword, showMFAVerification, pendingMFACheck]);
 
   const checkMFARequired = async (): Promise<boolean> => {
     const { data: { totp } } = await supabase.auth.mfa.listFactors();
@@ -160,12 +161,17 @@ const Auth = () => {
     clearAttempts();
     setLockoutRemaining(0);
 
+    // Block navigation until MFA check completes
+    setPendingMFACheck(true);
+
     // Check if MFA is required for this user
     const mfaRequired = await checkMFARequired();
     if (mfaRequired) {
       setShowMFAVerification(true);
     }
     
+    // Allow navigation if no MFA needed
+    setPendingMFACheck(false);
     setIsLoading(false);
   };
 
