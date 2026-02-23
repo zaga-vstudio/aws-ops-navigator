@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { 
   RDSClient, CreateDBInstanceCommand, DeleteDBInstanceCommand,
   StartDBInstanceCommand, StopDBInstanceCommand, RebootDBInstanceCommand,
-  CreateDBSubnetGroupCommand
+  CreateDBSubnetGroupCommand, ModifyDBInstanceCommand
 } from "npm:@aws-sdk/client-rds";
 import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
@@ -13,7 +13,7 @@ const corsHeaders = {
 };
 
 interface RDSActionRequest {
-  action: 'create' | 'delete' | 'start' | 'stop' | 'reboot';
+  action: 'create' | 'delete' | 'start' | 'stop' | 'reboot' | 'modify-security-groups';
   dbInstanceIdentifier?: string;
   dbName?: string;
   engine?: string;
@@ -149,6 +149,20 @@ serve(async (req) => {
         if (!dbInstanceIdentifier) return new Response(JSON.stringify({ error: 'DB instance identifier is required' }),
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
         result = await rdsClient.send(new RebootDBInstanceCommand({ DBInstanceIdentifier: dbInstanceIdentifier }));
+        break;
+      }
+      case 'modify-security-groups': {
+        const { dbInstanceIdentifier, vpcSecurityGroupIds } = body;
+        if (!dbInstanceIdentifier) return new Response(JSON.stringify({ error: 'DB instance identifier is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        if (!vpcSecurityGroupIds || vpcSecurityGroupIds.length === 0) return new Response(JSON.stringify({ error: 'At least one security group is required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        result = await rdsClient.send(new ModifyDBInstanceCommand({
+          DBInstanceIdentifier: dbInstanceIdentifier,
+          VpcSecurityGroupIds: vpcSecurityGroupIds,
+          ApplyImmediately: true,
+        }));
+        console.log(`Modified security groups for ${dbInstanceIdentifier}: ${vpcSecurityGroupIds.join(', ')}`);
         break;
       }
       default:

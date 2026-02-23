@@ -32,6 +32,8 @@ import { useAWSDataContext } from "@/contexts/AWSDataContext";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { CreateRDSDialog } from "@/components/CreateRDSDialog";
+import { ManageRDSSecurityGroupsDialog } from "@/components/ManageRDSSecurityGroupsDialog";
+import type { RDSDatabase } from "@/hooks/useAWSData";
 
 const getStatusColor = (status: string) => {
   switch (status.toLowerCase()) {
@@ -65,6 +67,7 @@ const RDSDatabases = () => {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [copiedEndpoint, setCopiedEndpoint] = useState<string | null>(null);
+  const [sgDialogDb, setSgDialogDb] = useState<RDSDatabase | null>(null);
 
   const handleCopyEndpoint = async (endpoint: string) => {
     try {
@@ -184,6 +187,16 @@ const RDSDatabases = () => {
                   subnets={awsData?.subnets}
                   securityGroups={awsData?.securityGroups}
                 />
+
+                {sgDialogDb && (
+                  <ManageRDSSecurityGroupsDialog
+                    open={!!sgDialogDb}
+                    onOpenChange={(open) => { if (!open) setSgDialogDb(null); }}
+                    onSuccess={refetch}
+                    database={sgDialogDb}
+                    securityGroups={awsData?.securityGroups || []}
+                  />
+                )}
               </div>
 
               {/* Stats Cards */}
@@ -366,6 +379,13 @@ const RDSDatabases = () => {
                                     >
                                       {actionLoading === `reboot-${database.name}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                       Reboot
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem 
+                                      onClick={() => setSgDialogDb(database)}
+                                      disabled={actionLoading !== null}
+                                    >
+                                      <Shield className="mr-2 h-4 w-4" />
+                                      Manage Security Groups
                                     </DropdownMenuItem>
                                     <DropdownMenuItem className="text-destructive" onClick={() => handleRDSAction('delete', database.name)}>
                                       {actionLoading === `delete-${database.name}` && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
