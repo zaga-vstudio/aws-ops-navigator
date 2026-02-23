@@ -6,6 +6,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Shield } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { 
@@ -181,6 +182,7 @@ const RDSDatabases = () => {
                   onSuccess={refetch}
                   vpcs={awsData?.vpcs}
                   subnets={awsData?.subnets}
+                  securityGroups={awsData?.securityGroups}
                 />
               </div>
 
@@ -265,6 +267,7 @@ const RDSDatabases = () => {
                             <TableHead>Status</TableHead>
                             <TableHead>Storage</TableHead>
                             <TableHead>Region</TableHead>
+                            <TableHead>Security Groups</TableHead>
                             <TableHead>Endpoint</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                           </TableRow>
@@ -286,6 +289,25 @@ const RDSDatabases = () => {
                               </TableCell>
                               <TableCell>{database.allocatedStorage} GB</TableCell>
                               <TableCell>{database.region}</TableCell>
+                              <TableCell>
+                                {database.vpcSecurityGroups && database.vpcSecurityGroups.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1">
+                                    {database.vpcSecurityGroups.slice(0, 2).map((sg) => (
+                                      <Badge key={sg.id} variant="outline" className="text-xs font-mono gap-1">
+                                        <Shield className="h-3 w-3" />
+                                        {sg.id}
+                                      </Badge>
+                                    ))}
+                                    {database.vpcSecurityGroups.length > 2 && (
+                                      <Badge variant="secondary" className="text-xs">
+                                        +{database.vpcSecurityGroups.length - 2}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
                               <TableCell className="max-w-[250px]">
                                 {database.endpoint ? (
                                   <TooltipProvider>

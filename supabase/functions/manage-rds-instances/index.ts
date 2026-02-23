@@ -26,6 +26,7 @@ interface RDSActionRequest {
   roleName?: string;
   vpcId?: string;
   subnetIds?: string[];
+  vpcSecurityGroupIds?: string[];
 }
 
 serve(async (req) => {
@@ -85,7 +86,7 @@ serve(async (req) => {
         const { dbInstanceIdentifier, dbName, engine = 'mysql', engineVersion,
           instanceClass = 'db.t3.micro', allocatedStorage = 20,
           masterUsername = 'admin', masterPassword, publiclyAccessible = false,
-          subnetIds } = body;
+          subnetIds, vpcSecurityGroupIds } = body;
         if (!dbInstanceIdentifier || !masterPassword) {
           return new Response(JSON.stringify({ error: 'DB identifier and master password are required' }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -116,6 +117,7 @@ serve(async (req) => {
         if (dbName) createParams.DBName = dbName;
         if (engineVersion) createParams.EngineVersion = engineVersion;
         if (dbSubnetGroupName) createParams.DBSubnetGroupName = dbSubnetGroupName;
+        if (vpcSecurityGroupIds && vpcSecurityGroupIds.length > 0) createParams.VpcSecurityGroupIds = vpcSecurityGroupIds;
         result = await rdsClient.send(new CreateDBInstanceCommand(createParams));
         break;
       }

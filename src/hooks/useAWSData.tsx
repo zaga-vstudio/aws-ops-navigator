@@ -35,6 +35,7 @@ export interface RDSDatabase {
   instanceClass: string;
   allocatedStorage: number;
   endpoint?: string;
+  vpcSecurityGroups?: { id: string; status: string }[];
 }
 
 export interface S3Bucket {
