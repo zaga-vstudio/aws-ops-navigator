@@ -1,42 +1,44 @@
 
 
-# Rename "CloudHub" to "Clodaro" -- Visual/UI Text Only
+# Fix: MFA Verification Bypassed on Login
 
-## Scope
-Only user-visible text (labels, titles, descriptions, toast messages, email content) will be changed. Internal code identifiers like variable names, hook names, function names, localStorage keys, DB table names, and file names will remain unchanged.
+## Problem
+When a user with 2FA enabled signs in, they are redirected to the dashboard before the MFA verification dialog can appear. This happens because:
 
-## Files to Modify
+1. `handleSignIn` calls `signIn()` (line 142), which triggers `onAuthStateChange` in `useAuth.tsx`
+2. The auth listener sets `user` state
+3. The `useEffect` on line 89-107 in `Auth.tsx` sees `user` is truthy and immediately navigates to `/dashboard`
+4. Meanwhile, `checkMFARequired()` (line 164) has not yet run or completed
 
-### Pages
-1. **src/pages/Homepage.tsx** -- Header brand name, footer brand name, footer copyright text
-2. **src/pages/Auth.tsx** -- "CloudHub" in header, "Welcome to CloudHub" card title
-3. **src/pages/Setup.tsx** -- "CloudHub Setup" heading
-4. **src/pages/Settings.tsx** -- "Customize how CloudHub looks and feels" description
-5. **src/pages/Alerts.tsx** -- "modified outside of CloudHub" description text
+The navigation effect wins the race every time.
 
-### Components
-6. **src/components/CreateRoleDialog.tsx** -- Dialog title "Create CloudHub Role", AWS role preview text "CloudHub-Project-...", tag badges ("ManagedBy: CloudHub", "CloudHubUserId", "CloudHubUserEmail")
-7. **src/components/DriftScheduleSettings.tsx** -- "How often CloudHub should check..."
-8. **src/components/SESSetupCard.tsx** -- Email subject "CloudHub SES Test Email", email body text, card description "send alert emails from CloudHub"
-9. **src/components/DriftDetailsDialog.tsx** -- Any "outside of CloudHub" text
-10. **src/components/ComplianceDashboard.tsx** -- Any visible CloudHub references
-11. **src/components/ManageIAMPermissionsDialog.tsx** -- Any visible "CloudHub-Scoped-" label text
+## Solution
+Add a `pendingMFA` state flag that blocks the auto-navigation when MFA verification is still needed.
 
-### Hooks (toast/UI messages only)
-12. **src/hooks/useDriftDetection.tsx** -- Toast message "Resources were changed outside of CloudHub"
-13. **src/hooks/useCloudHubRoles.tsx** -- Toast descriptions: "Role deleted from CloudHub and AWS", "Role removed from CloudHub"
+### Changes in `src/pages/Auth.tsx`
+1. Add a new state variable `pendingMFACheck` (default `false`) that is set to `true` when sign-in succeeds and the user has MFA factors, and cleared after MFA check completes.
+2. Update the navigation `useEffect` (lines 89-107) to also bail out when `showMFAVerification` is `true` or `pendingMFACheck` is `true`.
+3. In `handleSignIn`, set `pendingMFACheck = true` before calling `signIn`, then after checking MFA:
+   - If MFA is required: show the dialog (navigation remains blocked by `showMFAVerification`)
+   - If MFA is NOT required: set `pendingMFACheck = false` to allow the navigation effect to proceed
 
-### Metadata
-14. **index.html** -- Page title, meta description, OG title
-15. **README.md** -- All "CloudHub" brand text
+### Changes in `src/hooks/useAuth.tsx`
+4. Remove the automatic redirect to `/aws-setup` inside `onAuthStateChange` (lines 52-63) since `Auth.tsx` already handles post-login routing. This secondary navigation also contributes to the race condition.
 
-## What Will NOT Change
-- File names (e.g., `useCloudHubRoles.tsx` stays as-is)
-- Variable/function/interface names (e.g., `CloudHubRole`, `useCloudHubRoles`)
-- Import paths
-- localStorage keys (e.g., `cloudhub-login-attempts`)
-- Database table names (`cloudhub_roles`)
-- Edge function directory names or internal logic
-- AWS resource naming prefixes in backend code
-- Logo asset filename (`cloudhub-logo.png`)
+## Technical Details
+
+```text
+Current flow:
+  signIn() --> user state set --> useEffect navigates --> TOO LATE for MFA
+
+Fixed flow:
+  signIn() --> pendingMFACheck=true --> user state set --> useEffect blocked
+           --> checkMFARequired()
+               --> MFA needed? Show dialog (stays blocked)
+               --> No MFA? pendingMFACheck=false --> useEffect navigates
+```
+
+### Files modified:
+- **src/pages/Auth.tsx** -- Add `pendingMFACheck` state, gate the navigation effect, restructure `handleSignIn`
+- **src/hooks/useAuth.tsx** -- Remove the `SIGNED_IN` redirect logic inside `onAuthStateChange` (lines 52-63) to prevent duplicate/competing navigation
 
