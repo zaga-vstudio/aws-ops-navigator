@@ -1,44 +1,40 @@
 
 
-# Fix: MFA Verification Bypassed on Login
+## Add Security Group Configuration for RDS Databases
 
-## Problem
-When a user with 2FA enabled signs in, they are redirected to the dashboard before the MFA verification dialog can appear. This happens because:
+Currently, the RDS database management does not expose security group information -- neither when creating new instances nor when viewing existing ones. This plan adds security group selection during creation and displays associated security groups in the database list.
 
-1. `handleSignIn` calls `signIn()` (line 142), which triggers `onAuthStateChange` in `useAuth.tsx`
-2. The auth listener sets `user` state
-3. The `useEffect` on line 89-107 in `Auth.tsx` sees `user` is truthy and immediately navigates to `/dashboard`
-4. Meanwhile, `checkMFARequired()` (line 164) has not yet run or completed
+### Changes Required
 
-The navigation effect wins the race every time.
+**1. Backend: Include security group data in RDS response**
+- File: `supabase/functions/aws-dashboard-data/index.ts`
+- Update the `RDSDatabase` interface to add `vpcSecurityGroups` field (array of `{ id: string, status: string }`)
+- Update the `getRDSDatabases` function to extract `VpcSecurityGroups` from each `dbInstance` response and map them into the new field
 
-## Solution
-Add a `pendingMFA` state flag that blocks the auto-navigation when MFA verification is still needed.
+**2. Frontend: Update RDSDatabase type**
+- File: `src/hooks/useAWSData.tsx`
+- Add `vpcSecurityGroups?: { id: string; status: string }[]` to the `RDSDatabase` interface
 
-### Changes in `src/pages/Auth.tsx`
-1. Add a new state variable `pendingMFACheck` (default `false`) that is set to `true` when sign-in succeeds and the user has MFA factors, and cleared after MFA check completes.
-2. Update the navigation `useEffect` (lines 89-107) to also bail out when `showMFAVerification` is `true` or `pendingMFACheck` is `true`.
-3. In `handleSignIn`, set `pendingMFACheck = true` before calling `signIn`, then after checking MFA:
-   - If MFA is required: show the dialog (navigation remains blocked by `showMFAVerification`)
-   - If MFA is NOT required: set `pendingMFACheck = false` to allow the navigation effect to proceed
+**3. Frontend: Show security groups in the RDS table**
+- File: `src/pages/RDSDatabases.tsx`
+- Add a "Security Groups" column to the table
+- Display each security group ID as a clickable badge that can be cross-referenced with the Security page
+- Show a count badge if multiple groups are associated
 
-### Changes in `src/hooks/useAuth.tsx`
-4. Remove the automatic redirect to `/aws-setup` inside `onAuthStateChange` (lines 52-63) since `Auth.tsx` already handles post-login routing. This secondary navigation also contributes to the race condition.
+**4. Frontend: Add security group selection to CreateRDSDialog**
+- File: `src/components/CreateRDSDialog.tsx`
+- Accept `securityGroups` as a new prop (from `awsData.securityGroups`)
+- Add a multi-select section in the Networking area (below Subnets) allowing users to pick one or more security groups filtered by the selected VPC
+- Pass selected security group IDs to the edge function
 
-## Technical Details
+**5. Backend: Accept security group IDs when creating RDS**
+- File: `supabase/functions/manage-rds-instances/index.ts`
+- Add `vpcSecurityGroupIds` to the `RDSActionRequest` interface
+- Pass `VpcSecurityGroupIds` to the `CreateDBInstanceCommand` params when provided
 
-```text
-Current flow:
-  signIn() --> user state set --> useEffect navigates --> TOO LATE for MFA
+### Technical Details
 
-Fixed flow:
-  signIn() --> pendingMFACheck=true --> user state set --> useEffect blocked
-           --> checkMFARequired()
-               --> MFA needed? Show dialog (stays blocked)
-               --> No MFA? pendingMFACheck=false --> useEffect navigates
-```
-
-### Files modified:
-- **src/pages/Auth.tsx** -- Add `pendingMFACheck` state, gate the navigation effect, restructure `handleSignIn`
-- **src/hooks/useAuth.tsx** -- Remove the `SIGNED_IN` redirect logic inside `onAuthStateChange` (lines 52-63) to prevent duplicate/competing navigation
+- The AWS `DescribeDBInstances` response already includes `VpcSecurityGroups` on each instance, so no additional API calls are needed
+- The `CreateDBInstanceCommand` supports a `VpcSecurityGroupIds` parameter natively
+- Security groups will be filtered by the selected VPC in the create dialog, matching the existing pattern for subnet filtering
 
