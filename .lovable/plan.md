@@ -1,157 +1,78 @@
 
 
-## Alert History & SNS End-to-End Wiring (Revised)
+## Cost Forecasting via AWS GetCostForecast (Revised)
 
-Incorporating all feedback: `state_value` column, index on `alert_rule_id`, proper SNS signature validation, sanitized topic names, and free-tier CloudWatch alarm compliance.
+Incorporating all feedback: `date` columns instead of `text`, nullable forecast fields, forecast next full month only, and precise UI labeling.
 
 ### Current State
 
-- `send-alert-notification` exists but is **never called** — zero references in `src/`
-- `manage-alert-rules` creates CloudWatch alarms with **no `AlarmActions`** — alarms fire silently
-- Alert dismissals use `localStorage` only — no persistent history
-- "This Month" stat card just re-displays `activeAlarms.length`
-
-### Architecture
-
-```text
-CloudWatch Alarm fires
-  → SNS Topic (AlarmActions ARN)
-    → HTTPS Subscription → sns-webhook edge function
-      → Validate SNS signature (certificate-based)
-      → Log to alert_history table
-      → Dispatch to channels (email/slack/discord/webhook)
-```
+- `aws-dashboard-data` fetches `GetCostAndUsage` (current month) and `getHistoricalCosts` (6-month history), caches in `cost_data_cache` with 6h TTL
+- `GetCostForecast` is not imported or called anywhere
+- `CostDataWithCache` has no forecast fields
+- Cost Management page shows: current month spend, spending trend chart, service breakdown, top resources, anomalies, rightsizing recommendations
+- Overview cards grid is `grid-cols-4`: This Month, EC2 Instances, RDS Databases, S3 Buckets
 
 ### Changes
 
-**1. Database Migration**
+**1. Database Migration: Add forecast columns to `cost_data_cache`**
 
 ```sql
--- alert_history table
-CREATE TABLE alert_history (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  alert_rule_id uuid REFERENCES alert_rules(id) ON DELETE SET NULL,
-  cloudwatch_alarm_name text,
-  alert_name text NOT NULL,
-  metric text NOT NULL,
-  threshold numeric,
-  current_value numeric,
-  state_value text,  -- raw AWS state: ALARM, OK, INSUFFICIENT_DATA
-  severity text NOT NULL DEFAULT 'warning',
-  event_type text NOT NULL DEFAULT 'triggered',
-  notification_results jsonb DEFAULT '{}'::jsonb,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
--- Validation trigger for event_type
-CREATE OR REPLACE FUNCTION validate_alert_history_event_type()
-  RETURNS trigger LANGUAGE plpgsql SET search_path TO 'public' AS $$
-BEGIN
-  IF NEW.event_type NOT IN ('triggered', 'resolved', 'acknowledged') THEN
-    RAISE EXCEPTION 'Invalid event_type: %. Must be triggered, resolved, or acknowledged.', NEW.event_type;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-
-CREATE TRIGGER trg_validate_alert_history_event_type
-  BEFORE INSERT OR UPDATE ON alert_history
-  FOR EACH ROW EXECUTE FUNCTION validate_alert_history_event_type();
-
--- RLS
-ALTER TABLE alert_history ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can view own alert history"
-  ON alert_history FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users can insert own alert history"
-  ON alert_history FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Service role can insert alert history"
-  ON alert_history FOR INSERT WITH CHECK (true);
-
--- Indexes
-CREATE INDEX idx_alert_history_user_created
-  ON alert_history(user_id, created_at DESC);
-CREATE INDEX idx_alert_history_rule
-  ON alert_history(alert_rule_id);
-
--- Add sns_topic_arn to notification_preferences
-ALTER TABLE notification_preferences
-  ADD COLUMN sns_topic_arn text;
+ALTER TABLE cost_data_cache
+  ADD COLUMN forecast_total numeric,
+  ADD COLUMN forecast_period_start date,
+  ADD COLUMN forecast_period_end date,
+  ADD COLUMN forecast_data jsonb;
 ```
 
-The `state_value` column stores the raw AWS `NewStateValue` (`ALARM`, `OK`, `INSUFFICIENT_DATA`) for audit clarity, separate from the derived `event_type` which represents the application-level event.
+All four columns are nullable (no defaults). When forecast fails (insufficient history, new account), they remain `NULL` — semantically cleaner than empty arrays or zero values. Using `date` type for the period columns prevents invalid values and simplifies date comparisons.
 
-**2. New Edge Function: `sns-webhook` (verify_jwt = false)**
+**2. Backend: `supabase/functions/aws-dashboard-data/index.ts`**
 
-Handles inbound SNS messages. Key responsibilities:
+- Import `GetCostForecastCommand` from `@aws-sdk/client-cost-explorer` (client already imported on line 9)
+- Add `getCostForecast(config)` function:
+  - **Forecasts next full month only** (1st to last day of next month). This is the cleanest interpretation — no blurred semantics from mixing remainder-of-current-month with next month.
+  - Metric: `UNBLENDED_COST`
+  - Granularity: `MONTHLY` (returns one data point)
+  - Returns `{ forecastTotal, forecastPeriodStart, forecastPeriodEnd }` or `null` on failure
+- Wrap in try/catch: `DataUnavailableException` (accounts with <30 days history) returns `null`, not an error
+- Call `getCostForecast` in parallel with existing `GetCostAndUsage` and `getHistoricalCosts` inside `getCostData` (line ~940)
+- Save forecast fields to `cost_data_cache` in `saveCostDataToCache`
+- Read forecast fields from cache in `getCachedCostData`
+- Add forecast fields to the response `CostDataWithCache` object
 
-- **Full SNS signature validation**: Fetch the signing certificate from `SigningCertURL` (validate it's an `*.amazonaws.com` domain), verify the `Signature` against the message body using the certificate's public key. This is the cryptographic proof that the message came from AWS — checking `TopicArn` alone does NOT prevent spoofed POSTs.
-- Handle `SubscriptionConfirmation`: fetch the `SubscribeURL` to confirm.
-- Handle `Notification`: parse CloudWatch alarm JSON from the message body, extract `AlarmName`, `NewStateValue`, `NewStateReason`, `Trigger.MetricName`, `Trigger.Threshold`.
-- Look up the `alert_rules` row by `cloudwatch_alarm_name` to resolve `user_id`, `alert_rule_id`, `severity`.
-- Map `NewStateValue`:
-  - `ALARM` → `event_type: 'triggered'`
-  - `OK` → `event_type: 'resolved'`
-  - `INSUFFICIENT_DATA` → skip (no notification)
-- Insert into `alert_history` with both `event_type` and raw `state_value`.
-- Dispatch notifications using the same logic as `send-alert-notification` (decrypt webhooks via service role, send to email/slack/discord/webhook).
-- Store per-channel delivery results in `notification_results`.
-- Uses service role client for all DB operations since there's no user JWT.
+**3. Frontend: `src/hooks/useAWSData.tsx`**
 
-**3. New Edge Function: `manage-sns-topic` (verify_jwt = true)**
+Extend `CostDataWithCache` interface:
 
-- Creates a per-user SNS topic. Topic name: `CloudHub-<first8chars_of_userId>` — SNS topic names are limited to 256 chars; we sanitize by stripping non-alphanumeric/hyphen characters and truncating.
-- Subscribes the `sns-webhook` edge function URL as an HTTPS endpoint.
-- Returns the topic ARN.
-- Stores the topic ARN in `notification_preferences.sns_topic_arn`.
-- Idempotent: if `sns_topic_arn` already exists and the topic still exists in AWS, return it without recreating.
-- Required IAM permissions: `sns:CreateTopic`, `sns:Subscribe`, `sns:GetTopicAttributes`.
+```typescript
+forecastTotal?: number;
+forecastPeriodStart?: string;  // ISO date string from DB
+forecastPeriodEnd?: string;
+```
 
-**4. Update `manage-alert-rules` Edge Function**
+No `forecastData` array needed since we forecast a single month only — `forecastTotal` is sufficient.
 
-- On `create` (CloudWatch path only, not budgets):
-  - Before `PutMetricAlarmCommand`, ensure the user has an SNS topic by checking `notification_preferences.sns_topic_arn`. If missing, create one inline (same logic as `manage-sns-topic`).
-  - Add `AlarmActions: [topicArn]` and `OKActions: [topicArn]` to the `PutMetricAlarmCommand`.
-  - **Free tier note**: CloudWatch basic alarms (standard resolution, 5-min period) are free up to 10 alarms. The `AlarmActions`/`OKActions` themselves cost nothing — SNS notifications are free for HTTPS endpoints. This stays within free tier.
-- On `delete`: No change (deleting the alarm automatically stops actions).
-- On `toggle`: No change (enable/disable alarm actions already works).
+**4. Frontend: `src/pages/CostManagement.tsx`**
 
-**5. Update `useAlertRules` Hook**
+- Add a **"Projected Next Month"** overview card as the 4th card, shifting S3 Buckets to a 5th position (grid becomes `grid-cols-5` on large screens, wraps on smaller):
+  - Big number: `$forecastTotal`
+  - Label: **"Projected next month spend"** — precise, no ambiguity
+  - Trend indicator: compares `forecastTotal` to `currentCost` (current month actual)
+  - Only rendered when `forecastTotal` exists and is > 0
+  - Small info text: "Based on AWS Cost Explorer forecast"
 
-- Add `AlertHistoryEntry` interface with fields: `id`, `alert_name`, `metric`, `threshold`, `current_value`, `state_value`, `severity`, `event_type`, `notification_results`, `created_at`.
-- Add `fetchHistory(limit?: number)` function querying `alert_history` ordered by `created_at DESC`, default limit 50.
-- Export `history`, `historyLoading`, `fetchHistory`.
-
-**6. Update `Alerts.tsx` UI**
-
-- Add a 5th tab: **"History"** between "Alert Rules" and "Notifications".
-- Tab grid changes from `grid-cols-4` to `grid-cols-5`.
-- History tab content:
-  - Table with columns: Time, Alert Name, Metric, State, Severity, Event Type, Channels
-  - Event type badges: `triggered` (red), `resolved` (green), `acknowledged` (gray)
-  - `state_value` shown as a secondary badge (e.g., `ALARM`, `OK`)
-  - Channel delivery status icons from `notification_results` (checkmark/x per channel)
-  - Pagination: "Load More" button
-- Update "This Month" stat card to query `alert_history` count where `created_at >= start of current month`.
-- Replace the `localStorage`-based dismiss with a database-backed acknowledge: clicking dismiss on an active alert inserts an `event_type: 'acknowledged'` row into `alert_history`.
-
-**7. Refactor `send-alert-notification`**
-
-- Extract the core dispatch logic (decrypt webhooks, send to SES/Slack/Discord/webhook) into a shared helper file: `supabase/functions/_shared/dispatch-notification.ts`.
-- Both `send-alert-notification` (manual test sends from UI) and `sns-webhook` (automated SNS triggers) import and use this shared helper.
-- This eliminates code duplication and ensures consistent notification formatting.
+- Extend the **Spending Trend chart**:
+  - Append the forecast month to `monthlySpendData` as a data point with a `forecast: true` flag
+  - Render forecast point with a dashed line segment (`strokeDasharray="5 5"`) using a second `<Line>` or conditional styling
+  - Tooltip differentiates "Actual: $X" vs "Forecast: $X"
+  - Visual distinction makes it clear which data is historical vs projected
 
 ### Technical Details
 
-- **SNS signature validation** is mandatory security. The implementation will:
-  1. Validate `SigningCertURL` is from `sns.<region>.amazonaws.com`
-  2. Fetch the PEM certificate
-  3. Construct the string-to-sign per AWS spec (fields vary by message type)
-  4. Verify the Base64-decoded `Signature` against the string using the certificate's public key
-  5. Reject the request with 403 if validation fails
-- **Topic name sanitization**: SNS topic names allow `[a-zA-Z0-9_-]` and max 256 chars. UUID `substring(0,8)` produces 8 hex chars — safe. Full format: `CloudHub-a1b2c3d4` (16 chars).
-- **Free tier compliance**: CloudWatch provides 10 free standard-resolution alarms. `AlarmActions` pointing to SNS HTTPS endpoints incur no additional cost. SNS HTTPS deliveries are free (first 100,000/month). No paid metrics are involved in the alarm setup.
-- **Budget alerts**: Budget notifications use a different mechanism (`NotificationsWithSubscribers` on the budget itself). Wiring budgets to the same SNS topic is possible but requires `budgets:CreateBudgetAction` — left as a future enhancement. For now, only CloudWatch alarms get SNS actions.
-- **Duplicate RLS policies on `alert_rules`**: There are duplicate SELECT, UPDATE, and DELETE policies. These are harmless (OR'd together) but could be cleaned up in a future migration.
+- **Single month forecast**: `GetCostForecast` with `TimePeriod: { Start: first-of-next-month, End: first-of-month-after-next }` and `Granularity: MONTHLY`. Returns exactly one `ForecastResult` with `MeanValue`. This is the recommended approach — forecasting a single period avoids blurred semantics.
+- **Cost**: One additional Cost Explorer API call ($0.01) per cache miss, batched with existing calls. Cached for 6h alongside other cost data. Negligible impact.
+- **IAM permissions**: `ce:GetCostForecast` — typically included in the same IAM policy as `ce:GetCostAndUsage`.
+- **When Cost Explorer is disabled**: If cached forecast data exists, it's shown with the "Historical Data" badge (same pattern as existing cost data). If no cached forecast exists, the card is hidden.
+- **DataUnavailableException**: AWS requires ~30 days of billing history. New accounts get `null` forecast — card hidden, no error shown. This is logged but not surfaced to the user.
+- **`date` column type**: PostgreSQL `date` stores `YYYY-MM-DD` without timezone. The edge function writes ISO date strings (`2026-03-01`), which PostgreSQL auto-casts to `date`. Frontend receives them as strings via JSON.
 
