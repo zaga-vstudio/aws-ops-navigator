@@ -163,6 +163,9 @@ export interface CostDataWithCache {
   isHistoricalData?: boolean;
   noCachedDataExists?: boolean;
   totalCost?: number;
+  forecastTotal?: number;
+  forecastPeriodStart?: string;
+  forecastPeriodEnd?: string;
 }
 
 export interface CostExplorerState {

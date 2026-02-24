@@ -25,7 +25,7 @@ import {
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { RightsizingRecommendations } from "@/components/RightsizingRecommendations";
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, PieChart as RechartsPieChart, Pie, Cell } from "recharts";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, PieChart as RechartsPieChart, Pie, Cell, Line, ComposedChart } from "recharts";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 
@@ -78,12 +78,26 @@ export default function CostManagement() {
   
   // Use real historical data if available, filtered by time range
   const monthlySpendData = useMemo(() => {
-    if (awsData?.costData?.historicalCosts && awsData.costData.historicalCosts.length > 0) {
-      return filterHistoricalByRange(awsData.costData.historicalCosts, timeRange);
+    const historical = awsData?.costData?.historicalCosts && awsData.costData.historicalCosts.length > 0
+      ? filterHistoricalByRange(awsData.costData.historicalCosts, timeRange)
+      : [];
+
+    // Append forecast point if available
+    if (awsData?.costData?.forecastTotal && awsData.costData.forecastTotal > 0 && awsData?.costData?.forecastPeriodStart) {
+      const forecastDate = new Date(awsData.costData.forecastPeriodStart);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const forecastMonth = monthNames[forecastDate.getMonth()];
+      
+      // Add bridge point (last actual cost) and forecast point
+      const lastActual = historical.length > 0 ? historical[historical.length - 1].cost : 0;
+      return [
+        ...historical.map(h => ({ ...h, forecast: undefined as number | undefined })),
+        { month: forecastMonth, cost: undefined as number | undefined, forecast: awsData.costData.forecastTotal, bridgeCost: lastActual },
+      ];
     }
-    // No fallback - only show real data
-    return [];
-  }, [awsData?.costData?.historicalCosts, timeRange]);
+    
+    return historical.map(h => ({ ...h, forecast: undefined as number | undefined }));
+  }, [awsData?.costData?.historicalCosts, awsData?.costData?.forecastTotal, awsData?.costData?.forecastPeriodStart, timeRange]);
 
   // Check if we have historical data to show time range options
   const hasHistoricalData = (awsData?.costData?.historicalCosts?.length ?? 0) > 0;
@@ -367,7 +381,7 @@ export default function CostManagement() {
               )}
 
               {/* Cost Overview Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              <div className={`grid grid-cols-1 md:grid-cols-2 ${awsData?.costData?.forecastTotal ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">
@@ -429,6 +443,46 @@ export default function CostManagement() {
                     )}
                   </CardContent>
                 </Card>
+
+                {/* Projected Next Month - only shown when forecast data exists */}
+                {awsData?.costData?.forecastTotal != null && awsData.costData.forecastTotal > 0 && (
+                  <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Projected Next Month</CardTitle>
+                      {awsData.costData.forecastTotal > currentCost ? (
+                        <TrendingUp className="h-4 w-4 text-destructive" />
+                      ) : (
+                        <TrendingDown className="h-4 w-4 text-success" />
+                      )}
+                    </CardHeader>
+                    <CardContent>
+                      {loading ? (
+                        <div className="h-8 w-24 bg-muted animate-pulse rounded" />
+                      ) : (
+                        <>
+                          <div className="text-2xl font-bold">${awsData.costData.forecastTotal.toFixed(2)}</div>
+                          <p className="text-xs text-muted-foreground">
+                            Projected next month spend
+                          </p>
+                          {currentCost > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {awsData.costData.forecastTotal > currentCost ? (
+                                <span className="text-destructive">
+                                  +{((awsData.costData.forecastTotal - currentCost) / currentCost * 100).toFixed(0)}% vs this month
+                                </span>
+                              ) : (
+                                <span className="text-success">
+                                  {((awsData.costData.forecastTotal - currentCost) / currentCost * 100).toFixed(0)}% vs this month
+                                </span>
+                              )}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-muted-foreground mt-1 italic">Based on AWS Cost Explorer forecast</p>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -518,7 +572,7 @@ export default function CostManagement() {
                       </div>
                     ) : monthlySpendData.length > 0 ? (
                       <ResponsiveContainer width="100%" height={300}>
-                        <AreaChart data={monthlySpendData}>
+                        <ComposedChart data={monthlySpendData}>
                           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                           <XAxis dataKey="month" className="text-muted-foreground" fontSize={12} />
                           <YAxis className="text-muted-foreground" fontSize={12} tickFormatter={(v) => `$${v}`} />
@@ -530,7 +584,11 @@ export default function CostManagement() {
                               color: 'hsl(var(--foreground))',
                             }}
                             cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
-                            formatter={(value) => [`$${value}`, 'Cost']} 
+                            formatter={(value: any, name: string) => {
+                              if (value == null) return [null, null];
+                              if (name === 'forecast') return [`$${value}`, 'Forecast'];
+                              return [`$${value}`, 'Actual'];
+                            }}
                           />
                           <Area 
                             type="monotone" 
@@ -538,8 +596,28 @@ export default function CostManagement() {
                             stroke="hsl(var(--primary))" 
                             fill="hsl(var(--primary))" 
                             fillOpacity={0.3}
+                            connectNulls={false}
                           />
-                        </AreaChart>
+                          <Line
+                            type="monotone"
+                            dataKey="forecast"
+                            stroke="hsl(var(--primary))"
+                            strokeDasharray="5 5"
+                            strokeWidth={2}
+                            dot={{ r: 4, fill: 'hsl(var(--primary))', strokeDasharray: '0' }}
+                            connectNulls={false}
+                          />
+                          {/* Bridge line connecting last actual to forecast */}
+                          <Line
+                            type="monotone"
+                            dataKey="bridgeCost"
+                            stroke="hsl(var(--primary))"
+                            strokeDasharray="5 5"
+                            strokeWidth={1}
+                            dot={false}
+                            connectNulls={false}
+                          />
+                        </ComposedChart>
                       </ResponsiveContainer>
                     ) : noCachedDataExists ? (
                       <div className="h-[300px] flex items-center justify-center text-center text-muted-foreground">

@@ -227,6 +227,10 @@ export type Database = {
           cached_at: string | null
           created_at: string | null
           expires_at: string | null
+          forecast_data: Json | null
+          forecast_period_end: string | null
+          forecast_period_start: string | null
+          forecast_total: number | null
           historical_costs: Json | null
           historical_expires_at: string | null
           id: string
@@ -241,6 +245,10 @@ export type Database = {
           cached_at?: string | null
           created_at?: string | null
           expires_at?: string | null
+          forecast_data?: Json | null
+          forecast_period_end?: string | null
+          forecast_period_start?: string | null
+          forecast_total?: number | null
           historical_costs?: Json | null
           historical_expires_at?: string | null
           id?: string
@@ -255,6 +263,10 @@ export type Database = {
           cached_at?: string | null
           created_at?: string | null
           expires_at?: string | null
+          forecast_data?: Json | null
+          forecast_period_end?: string | null
+          forecast_period_start?: string | null
+          forecast_total?: number | null
           historical_costs?: Json | null
           historical_expires_at?: string | null
           id?: string

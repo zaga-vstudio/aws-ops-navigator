@@ -6,7 +6,7 @@ import { S3Client, ListBucketsCommand } from "npm:@aws-sdk/client-s3@3.451.0";
 import { CloudWatchClient, GetMetricStatisticsCommand, DescribeAlarmsCommand } from "npm:@aws-sdk/client-cloudwatch@3.451.0";
 import { IAMClient, ListUsersCommand, GetUserCommand, ListAccessKeysCommand } from "npm:@aws-sdk/client-iam@3.451.0";
 import { ConfigServiceClient, DescribeComplianceByResourceCommand, DescribeConfigRulesCommand } from "npm:@aws-sdk/client-config-service@3.451.0";
-import { CostExplorerClient, GetCostAndUsageCommand, GetAnomaliesCommand } from "npm:@aws-sdk/client-cost-explorer@3.451.0";
+import { CostExplorerClient, GetCostAndUsageCommand, GetAnomaliesCommand, GetCostForecastCommand } from "npm:@aws-sdk/client-cost-explorer@3.451.0";
 import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
@@ -186,6 +186,9 @@ interface CostDataWithCache {
   cachedAt?: string;
   fromCache: boolean;
   costExplorerDisabled?: boolean;
+  forecastTotal?: number;
+  forecastPeriodStart?: string;
+  forecastPeriodEnd?: string;
 }
 
 interface DashboardData {
@@ -785,6 +788,9 @@ async function getCachedCostData(supabase: any, userId: string, ignoreExpiration
       fromCache: true,
       isHistoricalData: isExpired,
       totalCost: data.total_cost || 0,
+      forecastTotal: data.forecast_total ?? undefined,
+      forecastPeriodStart: data.forecast_period_start ?? undefined,
+      forecastPeriodEnd: data.forecast_period_end ?? undefined,
     };
   } catch (err: any) {
     console.error('Error checking cost cache:', err.message);
@@ -795,25 +801,33 @@ async function getCachedCostData(supabase: any, userId: string, ignoreExpiration
 async function saveCostDataToCache(
   supabase: any, 
   userId: string, 
-  costData: { serviceBreakdown: ServiceCost[]; anomalies: CostAnomaly[]; historicalCosts: HistoricalCostPoint[]; totalCost: number }
+  costData: { serviceBreakdown: ServiceCost[]; anomalies: CostAnomaly[]; historicalCosts: HistoricalCostPoint[]; totalCost: number; forecastTotal?: number; forecastPeriodStart?: string; forecastPeriodEnd?: string }
 ): Promise<void> {
   try {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 6 * 60 * 60 * 1000);
     const historicalExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
+    const upsertData: Record<string, any> = {
+      user_id: userId,
+      service_breakdown: costData.serviceBreakdown,
+      anomalies: costData.anomalies,
+      historical_costs: costData.historicalCosts,
+      total_cost: costData.totalCost,
+      cached_at: now.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      historical_expires_at: historicalExpiresAt.toISOString(),
+    };
+
+    if (costData.forecastTotal != null) {
+      upsertData.forecast_total = costData.forecastTotal;
+      upsertData.forecast_period_start = costData.forecastPeriodStart;
+      upsertData.forecast_period_end = costData.forecastPeriodEnd;
+    }
+
     const { error } = await supabase
       .from('cost_data_cache')
-      .upsert({
-        user_id: userId,
-        service_breakdown: costData.serviceBreakdown,
-        anomalies: costData.anomalies,
-        historical_costs: costData.historicalCosts,
-        total_cost: costData.totalCost,
-        cached_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        historical_expires_at: historicalExpiresAt.toISOString(),
-      }, { onConflict: 'user_id' });
+      .upsert(upsertData, { onConflict: 'user_id' });
 
     if (error) {
       console.error('Error saving cost data to cache:', error);
@@ -877,6 +891,46 @@ async function getHistoricalCosts(config: AWSConfig): Promise<HistoricalCostPoin
   }
 }
 
+async function getCostForecast(config: AWSConfig): Promise<{ forecastTotal: number; forecastPeriodStart: string; forecastPeriodEnd: string } | null> {
+  console.log('Fetching cost forecast for next month');
+  try {
+    const costExplorerClient = new CostExplorerClient({
+      region: 'us-east-1',
+      credentials: {
+        accessKeyId: config.access_key_id,
+        secretAccessKey: config.secret_access_key,
+        ...(config.session_token && { sessionToken: config.session_token }),
+      },
+    });
+
+    const now = new Date();
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const monthAfterNext = new Date(now.getFullYear(), now.getMonth() + 2, 1);
+
+    const forecastPeriodStart = nextMonthStart.toISOString().split('T')[0];
+    const forecastPeriodEnd = monthAfterNext.toISOString().split('T')[0];
+
+    const command = new GetCostForecastCommand({
+      TimePeriod: {
+        Start: forecastPeriodStart,
+        End: forecastPeriodEnd,
+      },
+      Metric: 'UNBLENDED_COST',
+      Granularity: 'MONTHLY',
+    });
+
+    const response = await costExplorerClient.send(command);
+    const forecastTotal = parseFloat(response.Total?.Amount || '0');
+
+    console.log(`Cost forecast for next month: $${forecastTotal.toFixed(2)}`);
+    return { forecastTotal: Math.round(forecastTotal * 100) / 100, forecastPeriodStart, forecastPeriodEnd };
+  } catch (error: any) {
+    // DataUnavailableException for accounts with <30 days history
+    console.log('Cost forecast not available:', error.message);
+    return null;
+  }
+}
+
 async function getCostData(config: AWSConfig, supabase: any, userId: string, forceRefresh: boolean = false): Promise<CostDataWithCache> {
   console.log(`Fetching AWS cost data (forceRefresh: ${forceRefresh})`);
   
@@ -937,7 +991,7 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
     const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
     const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     
-    const [costResponse, historicalCosts] = await Promise.all([
+    const [costResponse, historicalCosts, forecastResult] = await Promise.all([
       costExplorerClient.send(new GetCostAndUsageCommand({
         TimePeriod: {
           Start: startDate.toISOString().split('T')[0],
@@ -948,6 +1002,7 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
         GroupBy: [{ Type: 'DIMENSION', Key: 'SERVICE' }],
       })),
       getHistoricalCosts(config),
+      getCostForecast(config),
     ]);
     
     let serviceBreakdown: ServiceCost[] = [];
@@ -1028,6 +1083,9 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
       anomalies,
       historicalCosts,
       totalCost,
+      forecastTotal: forecastResult?.forecastTotal,
+      forecastPeriodStart: forecastResult?.forecastPeriodStart,
+      forecastPeriodEnd: forecastResult?.forecastPeriodEnd,
     });
 
     return {
@@ -1037,6 +1095,9 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
       historicalCosts,
       cachedAt: new Date().toISOString(),
       fromCache: false,
+      forecastTotal: forecastResult?.forecastTotal,
+      forecastPeriodStart: forecastResult?.forecastPeriodStart,
+      forecastPeriodEnd: forecastResult?.forecastPeriodEnd,
     };
   } catch (error: any) {
     console.error('Error fetching cost data:', error.message);
