@@ -121,11 +121,11 @@ const Dashboard = () => {
                     />
                     <MetricCard
                       title="Monthly Cost"
-                      value={awsData?.metrics.estimatedCost ? `$${awsData.metrics.estimatedCost}` : "$0"}
+                      value={awsData?.costData?.totalCost ? `$${awsData.costData.totalCost.toFixed(2)}` : "—"}
                       unit=""
                       change={0}
-                      changeType={awsData?.metrics.estimatedCost && awsData.metrics.estimatedCost > 0 ? "increase" : "neutral"}
-                      status={awsData?.metrics.estimatedCost && awsData.metrics.estimatedCost > 0 ? "warning" : "healthy"}
+                      changeType={awsData?.costData?.totalCost && awsData.costData.totalCost > 0 ? "increase" : "neutral"}
+                      status={awsData?.costData?.totalCost && awsData.costData.totalCost > 0 ? "warning" : "healthy"}
                       icon={<DollarSign className="h-4 w-4 text-warning" />}
                     />
                   </div>
