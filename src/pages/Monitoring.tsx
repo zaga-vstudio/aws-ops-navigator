@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Header } from "@/components/Header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
@@ -15,11 +15,18 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from "recharts";
 import { useAWSDataContext } from "@/contexts/AWSDataContext";
+import { EC2Instance } from "@/hooks/useAWSData";
 import { useMonitoringData, MetricDataPoint } from "@/hooks/useMonitoringData";
 import { ComplianceDashboard } from "@/components/ComplianceDashboard";
 import { CostBadge } from "@/components/CostBadge";
 import { MonitoringResourceCards } from "@/components/monitoring/MonitoringResourceCards";
 import { MonitoringInstanceList } from "@/components/monitoring/MonitoringInstanceList";
+
+interface SelectedResource {
+  id: string;
+  name: string;
+  type: 'ec2' | 'rds';
+}
 
 export default function Monitoring() {
   const { data, loading, error, refetch } = useAWSDataContext();
@@ -27,34 +34,60 @@ export default function Monitoring() {
   const [refreshing, setRefreshing] = useState(false);
   const [timeRange, setTimeRange] = useState("24h");
   const [includePaidMetrics, setIncludePaidMetrics] = useState(false);
-
-  // Fetch monitoring metrics on mount and when time range changes
-  useEffect(() => {
-    fetchMetrics(timeRange, { includePaidMetrics });
-  }, [timeRange, includePaidMetrics]);
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([
-      refetch(),
-      fetchMetrics(timeRange, { forceRefresh: true, includePaidMetrics }),
-    ]);
-    setRefreshing(false);
-  };
+  const [selectedResourceKey, setSelectedResourceKey] = useState("auto");
 
   const ec2Instances = data?.ec2Instances || [];
   const rdsDatabases = data?.rdsDatabases || [];
   const cloudWatchAlarms = data?.alarms || [];
   const securityGroups = data?.securityGroups || [];
 
-  const runningEC2 = ec2Instances.filter(i => i.state?.toLowerCase() === 'running').length;
+  const selectedResource: SelectedResource | null = useMemo(() => {
+    if (selectedResourceKey === "auto") return null;
+    const [type, ...idParts] = selectedResourceKey.split(":");
+    const id = idParts.join(":");
+    if (type === "ec2") {
+      const inst = ec2Instances.find(i => i.id === id);
+      return { id, name: inst?.name || id, type: 'ec2' };
+    }
+    if (type === "rds") {
+      const db = rdsDatabases.find(r => r.id === id);
+      return { id, name: db?.name || id, type: 'rds' };
+    }
+    return null;
+  }, [selectedResourceKey, ec2Instances, rdsDatabases]);
+
+  // Fetch metrics when params change
+  useEffect(() => {
+    fetchMetrics(timeRange, {
+      includePaidMetrics,
+      instanceId: selectedResource?.id,
+      resourceType: selectedResource?.type || 'ec2',
+    });
+  }, [timeRange, includePaidMetrics, selectedResource?.id, selectedResource?.type]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([
+      refetch(),
+      fetchMetrics(timeRange, {
+        forceRefresh: true,
+        includePaidMetrics,
+        instanceId: selectedResource?.id,
+        resourceType: selectedResource?.type || 'ec2',
+      }),
+    ]);
+    setRefreshing(false);
+  };
+
+  const runningEC2 = ec2Instances.filter((i: any) => i.state?.toLowerCase() === 'running').length;
   const totalEC2 = ec2Instances.length;
-  const availableRDS = rdsDatabases.filter(r => r.state?.toLowerCase() === 'available').length;
+  const availableRDS = rdsDatabases.filter((r: any) => r.state?.toLowerCase() === 'available').length;
   const totalRDS = rdsDatabases.length;
-  const alarmsInAlarm = cloudWatchAlarms.filter(a => a.state === 'ALARM').length;
+  const alarmsInAlarm = cloudWatchAlarms.filter((a: any) => a.state === 'ALARM').length;
   const totalAlarms = cloudWatchAlarms.length;
 
-  // Format metrics for charts
+  const isRDS = selectedResource?.type === 'rds' || metricsData?.resourceType === 'rds';
+
   const formatChartData = (metrics: MetricDataPoint[]) => {
     return metrics.map(m => {
       const date = new Date(m.timestamp);
@@ -68,7 +101,7 @@ export default function Monitoring() {
   const hasRealCPU = metricsData && metricsData.cpu.length > 0;
   const hasRealNetwork = metricsData && (metricsData.networkIn.length > 0 || metricsData.networkOut.length > 0);
 
-  // Simulated fallback
+  // Simulated fallback (EC2 only)
   const generateSimulated = (points: number) =>
     Array.from({ length: points }, (_, i) => ({
       time: timeRange === '7d' ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i % 7] :
@@ -78,7 +111,7 @@ export default function Monitoring() {
 
   const simPoints = timeRange === '1h' ? 6 : timeRange === '6h' ? 12 : timeRange === '24h' ? 24 : 7;
 
-  const cpuChartData = hasRealCPU ? formatChartData(metricsData.cpu) : generateSimulated(simPoints);
+  const cpuChartData = hasRealCPU ? formatChartData(metricsData.cpu) : (!isRDS ? generateSimulated(simPoints) : []);
 
   const networkChartData = hasRealNetwork
     ? metricsData.networkIn.map((m, i) => {
@@ -90,11 +123,11 @@ export default function Monitoring() {
           networkOut: Math.round((metricsData.networkOut[i]?.value || 0) / 1024 / 1024),
         };
       })
-    : generateSimulated(simPoints).map(p => ({
+    : (!isRDS ? generateSimulated(simPoints).map(p => ({
         time: p.time,
         networkIn: Math.floor(10 + Math.random() * 40),
         networkOut: Math.floor(5 + Math.random() * 25),
-      }));
+      })) : []);
 
   const diskChartData = metricsData?.diskReadOps && metricsData.diskReadOps.length > 0
     ? metricsData.diskReadOps.map((m, i) => {
@@ -107,6 +140,44 @@ export default function Monitoring() {
         };
       })
     : null;
+
+  // RDS-specific chart data
+  const connectionsChartData = metricsData?.databaseConnections && metricsData.databaseConnections.length > 0
+    ? formatChartData(metricsData.databaseConnections)
+    : [];
+
+  const storageChartData = metricsData?.freeStorageSpace && metricsData.freeStorageSpace.length > 0
+    ? metricsData.freeStorageSpace.map(m => {
+        const date = new Date(m.timestamp);
+        const time = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+        return { time, value: Math.round(m.value / 1024 / 1024 / 1024 * 100) / 100 }; // bytes -> GB
+      })
+    : [];
+
+  const latencyChartData = metricsData?.readLatency && metricsData.readLatency.length > 0
+    ? metricsData.readLatency.map((m, i) => {
+        const date = new Date(m.timestamp);
+        const time = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+        return {
+          time,
+          readLatency: Math.round(m.value * 1000 * 100) / 100, // seconds -> ms
+          writeLatency: Math.round((metricsData.writeLatency?.[i]?.value || 0) * 1000 * 100) / 100,
+        };
+      })
+    : null;
+
+  const tooltipStyle = {
+    backgroundColor: 'hsl(var(--card))',
+    border: '1px solid hsl(var(--border))',
+    color: 'hsl(var(--foreground))',
+    borderRadius: '8px',
+  };
+  const labelStyle = { color: 'hsl(var(--foreground))' };
+  const itemStyle = { color: 'hsl(var(--foreground))' };
+
+  const getInstanceName = (inst: EC2Instance) => {
+    return inst.name ? `${inst.name} (${inst.id})` : inst.id;
+  };
 
   if (error) {
     return (
@@ -145,12 +216,56 @@ export default function Monitoring() {
           <main className="flex-1 overflow-y-auto p-6">
             <div className="max-w-7xl mx-auto space-y-6">
               {/* Header */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                   <h1 className="text-3xl font-bold text-foreground">Monitoring</h1>
                   <p className="text-muted-foreground">Real-time metrics and resource status</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  {/* Instance Selector */}
+                  <Select value={selectedResourceKey} onValueChange={setSelectedResourceKey}>
+                    <SelectTrigger className="w-64">
+                      <SelectValue placeholder="Select resource" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto (first running EC2)</SelectItem>
+                      {ec2Instances.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="flex items-center gap-1.5">
+                            <Server className="h-3 w-3" /> EC2 Instances
+                          </SelectLabel>
+                          {ec2Instances.map((inst) => (
+                            <SelectItem key={inst.id} value={`ec2:${inst.id}`}>
+                              <span className="flex items-center gap-2">
+                                {getInstanceName(inst)}
+                                <Badge variant={inst.state?.toLowerCase() === 'running' ? 'default' : 'secondary'} className="text-[10px] px-1 py-0">
+                                  {inst.state}
+                                </Badge>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {rdsDatabases.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel className="flex items-center gap-1.5">
+                            <Database className="h-3 w-3" /> RDS Databases
+                          </SelectLabel>
+                          {rdsDatabases.map((db) => (
+                            <SelectItem key={db.id} value={`rds:${db.id}`}>
+                              <span className="flex items-center gap-2">
+                                {db.name} ({db.engine})
+                                <Badge variant={db.state?.toLowerCase() === 'available' ? 'default' : 'secondary'} className="text-[10px] px-1 py-0">
+                                  {db.state}
+                                </Badge>
+                              </span>
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                    </SelectContent>
+                  </Select>
+
                   <Select value={timeRange} onValueChange={setTimeRange}>
                     <SelectTrigger className="w-32">
                       <SelectValue />
@@ -169,6 +284,16 @@ export default function Monitoring() {
                 </div>
               </div>
 
+              {/* Resource Info Banner */}
+              {selectedResource && (
+                <Alert>
+                  <Info className="h-4 w-4" />
+                  <AlertDescription>
+                    Showing <strong>{selectedResource.type === 'rds' ? 'RDS' : 'EC2'}</strong> metrics for <strong>{selectedResource.name}</strong>. Metric types vary by resource.
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Cache Info */}
               {metricsData?.fromCache && metricsData.cachedAt && (
                 <Alert>
@@ -180,7 +305,12 @@ export default function Monitoring() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => fetchMetrics(timeRange, { forceRefresh: true, includePaidMetrics })}
+                      onClick={() => fetchMetrics(timeRange, {
+                        forceRefresh: true,
+                        includePaidMetrics,
+                        instanceId: selectedResource?.id,
+                        resourceType: selectedResource?.type || 'ec2',
+                      })}
                       disabled={metricsLoading}
                     >
                       Force Refresh
@@ -189,7 +319,7 @@ export default function Monitoring() {
                 </Alert>
               )}
 
-              {!hasRealCPU && !metricsLoading && (
+              {!hasRealCPU && !metricsLoading && !isRDS && (
                 <Alert>
                   <Info className="h-4 w-4" />
                   <AlertDescription>
@@ -221,12 +351,15 @@ export default function Monitoring() {
                       <CostBadge
                         type="paid"
                         label="~$0.01/1K requests"
-                        costNote="Additional GetMetricStatistics calls for Disk I/O and Status Checks. Each API call is free up to 1M/month, then $0.01 per 1,000 requests."
+                        costNote={isRDS
+                          ? "Additional GetMetricStatistics calls for Read/Write Latency. Each API call is free up to 1M/month, then $0.01 per 1,000 requests."
+                          : "Additional GetMetricStatistics calls for Disk I/O and Status Checks. Each API call is free up to 1M/month, then $0.01 per 1,000 requests."
+                        }
                       />
                     </div>
                     <div className="flex items-center gap-2">
                       <Label htmlFor="paid-metrics" className="text-sm text-muted-foreground">
-                        Enable Disk I/O & Status Checks
+                        {isRDS ? 'Enable Read/Write Latency' : 'Enable Disk I/O & Status Checks'}
                       </Label>
                       <Switch
                         id="paid-metrics"
@@ -238,143 +371,280 @@ export default function Monitoring() {
                 </CardHeader>
               </Card>
 
-              {/* FREE: CPU Usage */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>CPU Usage {!hasRealCPU && "(Simulated)"}</CardTitle>
-                        <CardDescription>Average CPU utilization</CardDescription>
-                      </div>
-                      <CostBadge
-                        type="free"
-                        label="Free Tier"
-                        costNote="GetMetricStatistics: Free for up to 1M API requests/month. Basic monitoring at 5-minute intervals is included at no charge."
-                      />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {metricsLoading && !metricsData ? (
-                      <Skeleton className="h-[250px] w-full" />
-                    ) : (
-                      <ResponsiveContainer width="100%" height={250}>
-                        <AreaChart data={cpuChartData}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="time" />
-                          <YAxis domain={[0, 100]} />
-                          <Tooltip formatter={(value) => [`${value}%`, 'CPU Usage']} contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))', borderRadius: '8px' }} labelStyle={{ color: 'hsl(var(--foreground))' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
-                          <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    )}
-                  </CardContent>
-                </Card>
+              {/* Charts - Dynamic by resource type */}
+              {isRDS ? (
+                <>
+                  {/* RDS Charts */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* CPU Usage */}
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle>CPU Usage</CardTitle>
+                            <CardDescription>Average CPU utilization</CardDescription>
+                          </div>
+                          <CostBadge type="free" label="Free Tier" costNote="RDS basic monitoring CPUUtilization metric." />
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {metricsLoading && !metricsData ? (
+                          <Skeleton className="h-[250px] w-full" />
+                        ) : cpuChartData.length > 0 ? (
+                          <ResponsiveContainer width="100%" height={250}>
+                            <AreaChart data={cpuChartData}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="time" />
+                              <YAxis domain={[0, 100]} />
+                              <Tooltip formatter={(value) => [`${value}%`, 'CPU Usage']} contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle} />
+                              <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                            <div className="text-center">
+                              <Activity className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                              <p className="text-sm">No CPU data available yet</p>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
 
-                {/* PAID: Disk I/O (when enabled) */}
-                {includePaidMetrics && (
+                    {/* Database Connections */}
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle>Database Connections</CardTitle>
+                            <CardDescription>Active database connections</CardDescription>
+                          </div>
+                          <CostBadge type="free" label="Free Tier" costNote="RDS DatabaseConnections metric via GetMetricStatistics." />
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {metricsLoading && !metricsData ? (
+                          <Skeleton className="h-[250px] w-full" />
+                        ) : connectionsChartData.length > 0 ? (
+                          <ResponsiveContainer width="100%" height={250}>
+                            <AreaChart data={connectionsChartData}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="time" />
+                              <YAxis />
+                              <Tooltip formatter={(value) => [`${value}`, 'Connections']} contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle} />
+                              <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                            <div className="text-center">
+                              <Database className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                              <p className="text-sm">No connection data available yet</p>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {/* Free Storage Space */}
                   <Card>
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <div>
-                          <CardTitle>Disk I/O {!diskChartData && "(No Data)"}</CardTitle>
-                          <CardDescription>Read/Write operations per second</CardDescription>
+                          <CardTitle>Free Storage Space</CardTitle>
+                          <CardDescription>Available storage in GB</CardDescription>
                         </div>
-                        <CostBadge
-                          type="paid"
-                          label="~$0.01/1K req"
-                          costNote="2 additional GetMetricStatistics calls per refresh. Free up to 1M requests/month, then $0.01 per 1,000 requests."
-                        />
+                        <CostBadge type="free" label="Free Tier" costNote="RDS FreeStorageSpace metric via GetMetricStatistics." />
                       </div>
                     </CardHeader>
                     <CardContent>
-                      {metricsLoading ? (
+                      {metricsLoading && !metricsData ? (
                         <Skeleton className="h-[250px] w-full" />
-                      ) : diskChartData ? (
+                      ) : storageChartData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={250}>
-                          <AreaChart data={diskChartData}>
+                          <AreaChart data={storageChartData}>
                             <CartesianGrid strokeDasharray="3 3" />
                             <XAxis dataKey="time" />
                             <YAxis />
-                             <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))', borderRadius: '8px' }} labelStyle={{ color: 'hsl(var(--foreground))' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
-                            <Area type="monotone" dataKey="readOps" name="Read Ops" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.4} />
-                            <Area type="monotone" dataKey="writeOps" name="Write Ops" stroke="hsl(var(--warning))" fill="hsl(var(--warning))" fillOpacity={0.4} />
+                            <Tooltip formatter={(value) => [`${value} GB`, 'Free Storage']} contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle} />
+                            <Area type="monotone" dataKey="value" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.3} />
                           </AreaChart>
                         </ResponsiveContainer>
                       ) : (
                         <div className="h-[250px] flex items-center justify-center text-muted-foreground">
                           <div className="text-center">
                             <HardDrive className="h-10 w-10 mx-auto mb-2 opacity-50" />
-                            <p className="text-sm">No disk I/O data available yet</p>
+                            <p className="text-sm">No storage data available yet</p>
                           </div>
                         </div>
                       )}
                     </CardContent>
                   </Card>
-                )}
-              </div>
 
-              {/* FREE: Network Traffic */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Network Traffic {!hasRealNetwork && "(Simulated)"}</CardTitle>
-                      <CardDescription>Inbound and outbound network traffic</CardDescription>
-                    </div>
-                    <CostBadge
-                      type="free"
-                      label="Free Tier"
-                      costNote="NetworkIn/NetworkOut metrics via GetMetricStatistics. Free up to 1M API requests/month."
-                    />
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {metricsLoading && !metricsData ? (
-                    <Skeleton className="h-[250px] w-full" />
-                  ) : (
-                    <ResponsiveContainer width="100%" height={250}>
-                      <AreaChart data={networkChartData}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="time" />
-                        <YAxis />
-                         <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))', borderRadius: '8px' }} labelStyle={{ color: 'hsl(var(--foreground))' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
-                        <Area type="monotone" dataKey="networkIn" name="Inbound (MB/s)" stackId="1" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.6} />
-                        <Area type="monotone" dataKey="networkOut" name="Outbound (MB/s)" stackId="1" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.6} />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                  {/* Paid: Read/Write Latency */}
+                  {includePaidMetrics && (
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle>Read/Write Latency {!latencyChartData && "(No Data)"}</CardTitle>
+                            <CardDescription>Average read and write latency in milliseconds</CardDescription>
+                          </div>
+                          <CostBadge type="paid" label="~$0.01/1K req" costNote="2 additional GetMetricStatistics calls per refresh." />
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {metricsLoading ? (
+                          <Skeleton className="h-[250px] w-full" />
+                        ) : latencyChartData ? (
+                          <ResponsiveContainer width="100%" height={250}>
+                            <AreaChart data={latencyChartData}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="time" />
+                              <YAxis />
+                              <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle} />
+                              <Area type="monotone" dataKey="readLatency" name="Read (ms)" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.4} />
+                              <Area type="monotone" dataKey="writeLatency" name="Write (ms)" stroke="hsl(var(--warning))" fill="hsl(var(--warning))" fillOpacity={0.4} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        ) : (
+                          <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                            <div className="text-center">
+                              <Activity className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                              <p className="text-sm">No latency data available yet</p>
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                   )}
-                </CardContent>
-              </Card>
+                </>
+              ) : (
+                <>
+                  {/* EC2 Charts (existing) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle>CPU Usage {!hasRealCPU && "(Simulated)"}</CardTitle>
+                            <CardDescription>Average CPU utilization</CardDescription>
+                          </div>
+                          <CostBadge type="free" label="Free Tier" costNote="GetMetricStatistics: Free for up to 1M API requests/month. Basic monitoring at 5-minute intervals is included at no charge." />
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {metricsLoading && !metricsData ? (
+                          <Skeleton className="h-[250px] w-full" />
+                        ) : (
+                          <ResponsiveContainer width="100%" height={250}>
+                            <AreaChart data={cpuChartData}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="time" />
+                              <YAxis domain={[0, 100]} />
+                              <Tooltip formatter={(value) => [`${value}%`, 'CPU Usage']} contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle} />
+                              <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        )}
+                      </CardContent>
+                    </Card>
 
-              {/* PAID: Status Check (when enabled) */}
-              {includePaidMetrics && metricsData?.statusCheckFailed && metricsData.statusCheckFailed.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <CardTitle>Status Check Failures</CardTitle>
-                        <CardDescription>Instance and system status check failures</CardDescription>
+                    {/* PAID: Disk I/O (when enabled) */}
+                    {includePaidMetrics && (
+                      <Card>
+                        <CardHeader>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle>Disk I/O {!diskChartData && "(No Data)"}</CardTitle>
+                              <CardDescription>Read/Write operations per second</CardDescription>
+                            </div>
+                            <CostBadge type="paid" label="~$0.01/1K req" costNote="2 additional GetMetricStatistics calls per refresh. Free up to 1M requests/month, then $0.01 per 1,000 requests." />
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          {metricsLoading ? (
+                            <Skeleton className="h-[250px] w-full" />
+                          ) : diskChartData ? (
+                            <ResponsiveContainer width="100%" height={250}>
+                              <AreaChart data={diskChartData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="time" />
+                                <YAxis />
+                                <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle} />
+                                <Area type="monotone" dataKey="readOps" name="Read Ops" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.4} />
+                                <Area type="monotone" dataKey="writeOps" name="Write Ops" stroke="hsl(var(--warning))" fill="hsl(var(--warning))" fillOpacity={0.4} />
+                              </AreaChart>
+                            </ResponsiveContainer>
+                          ) : (
+                            <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                              <div className="text-center">
+                                <HardDrive className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                                <p className="text-sm">No disk I/O data available yet</p>
+                              </div>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+
+                  {/* FREE: Network Traffic */}
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle>Network Traffic {!hasRealNetwork && "(Simulated)"}</CardTitle>
+                          <CardDescription>Inbound and outbound network traffic</CardDescription>
+                        </div>
+                        <CostBadge type="free" label="Free Tier" costNote="NetworkIn/NetworkOut metrics via GetMetricStatistics. Free up to 1M API requests/month." />
                       </div>
-                      <CostBadge
-                        type="paid"
-                        label="~$0.01/1K req"
-                        costNote="1 additional GetMetricStatistics call per refresh. Free up to 1M requests/month."
-                      />
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <ResponsiveContainer width="100%" height={200}>
-                      <AreaChart data={formatChartData(metricsData.statusCheckFailed)}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="time" />
-                        <YAxis />
-                        <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))', borderRadius: '8px' }} labelStyle={{ color: 'hsl(var(--foreground))' }} itemStyle={{ color: 'hsl(var(--foreground))' }} />
-                        <Area type="monotone" dataKey="value" name="Failures" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.3} />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
+                    </CardHeader>
+                    <CardContent>
+                      {metricsLoading && !metricsData ? (
+                        <Skeleton className="h-[250px] w-full" />
+                      ) : (
+                        <ResponsiveContainer width="100%" height={250}>
+                          <AreaChart data={networkChartData}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="time" />
+                            <YAxis />
+                            <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle} />
+                            <Area type="monotone" dataKey="networkIn" name="Inbound (MB/s)" stackId="1" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.6} />
+                            <Area type="monotone" dataKey="networkOut" name="Outbound (MB/s)" stackId="1" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.6} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* PAID: Status Check (when enabled) */}
+                  {includePaidMetrics && metricsData?.statusCheckFailed && metricsData.statusCheckFailed.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle>Status Check Failures</CardTitle>
+                            <CardDescription>Instance and system status check failures</CardDescription>
+                          </div>
+                          <CostBadge type="paid" label="~$0.01/1K req" costNote="1 additional GetMetricStatistics call per refresh. Free up to 1M requests/month." />
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <AreaChart data={formatChartData(metricsData.statusCheckFailed)}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="time" />
+                            <YAxis />
+                            <Tooltip contentStyle={tooltipStyle} labelStyle={labelStyle} itemStyle={itemStyle} />
+                            <Area type="monotone" dataKey="value" name="Failures" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.3} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </CardContent>
+                    </Card>
+                  )}
+                </>
               )}
 
               {/* AWS Pricing Reference */}

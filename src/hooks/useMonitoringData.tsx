@@ -14,9 +14,15 @@ export interface MonitoringData {
   diskReadOps?: MetricDataPoint[];
   diskWriteOps?: MetricDataPoint[];
   statusCheckFailed?: MetricDataPoint[];
+  databaseConnections?: MetricDataPoint[];
+  freeStorageSpace?: MetricDataPoint[];
+  readLatency?: MetricDataPoint[];
+  writeLatency?: MetricDataPoint[];
   cachedAt?: string;
   fromCache: boolean;
   timeRange: string;
+  resourceType: 'ec2' | 'rds';
+  instanceId: string;
 }
 
 export const useMonitoringData = () => {
@@ -27,9 +33,14 @@ export const useMonitoringData = () => {
 
   const fetchMetrics = useCallback(async (
     timeRange: string = '24h',
-    options: { forceRefresh?: boolean; includePaidMetrics?: boolean } = {}
+    options: {
+      forceRefresh?: boolean;
+      includePaidMetrics?: boolean;
+      instanceId?: string;
+      resourceType?: 'ec2' | 'rds';
+    } = {}
   ) => {
-    const { forceRefresh = false, includePaidMetrics = false } = options;
+    const { forceRefresh = false, includePaidMetrics = false, instanceId, resourceType = 'ec2' } = options;
     try {
       setLoading(true);
       setError(null);
@@ -42,7 +53,7 @@ export const useMonitoringData = () => {
         {
           method: 'POST',
           headers: { Authorization: `Bearer ${session.access_token}` },
-          body: { timeRange, forceRefresh, includePaidMetrics },
+          body: { timeRange, forceRefresh, includePaidMetrics, instanceId, resourceType },
         }
       );
 
