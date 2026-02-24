@@ -68,3 +68,9 @@ verify_jwt = true
 
 [functions.manage-cloudhub-roles]
 verify_jwt = true
+
+[functions.sns-webhook]
+verify_jwt = false
+
+[functions.manage-sns-topic]
+verify_jwt = false

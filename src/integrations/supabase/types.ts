@@ -14,6 +14,62 @@ export type Database = {
   }
   public: {
     Tables: {
+      alert_history: {
+        Row: {
+          alert_name: string
+          alert_rule_id: string | null
+          cloudwatch_alarm_name: string | null
+          created_at: string
+          current_value: number | null
+          event_type: string
+          id: string
+          metric: string
+          notification_results: Json | null
+          severity: string
+          state_value: string | null
+          threshold: number | null
+          user_id: string
+        }
+        Insert: {
+          alert_name: string
+          alert_rule_id?: string | null
+          cloudwatch_alarm_name?: string | null
+          created_at?: string
+          current_value?: number | null
+          event_type?: string
+          id?: string
+          metric: string
+          notification_results?: Json | null
+          severity?: string
+          state_value?: string | null
+          threshold?: number | null
+          user_id: string
+        }
+        Update: {
+          alert_name?: string
+          alert_rule_id?: string | null
+          cloudwatch_alarm_name?: string | null
+          created_at?: string
+          current_value?: number | null
+          event_type?: string
+          id?: string
+          metric?: string
+          notification_results?: Json | null
+          severity?: string
+          state_value?: string | null
+          threshold?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_history_alert_rule_id_fkey"
+            columns: ["alert_rule_id"]
+            isOneToOne: false
+            referencedRelation: "alert_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       alert_rules: {
         Row: {
           cloudwatch_alarm_name: string | null
@@ -346,6 +402,7 @@ export type Database = {
           notify_on_drift: boolean | null
           notify_on_security_alert: boolean | null
           ses_sender_email: string | null
+          sns_topic_arn: string | null
           updated_at: string
           user_id: string
           webhook_nonce: string | null
@@ -369,6 +426,7 @@ export type Database = {
           notify_on_drift?: boolean | null
           notify_on_security_alert?: boolean | null
           ses_sender_email?: string | null
+          sns_topic_arn?: string | null
           updated_at?: string
           user_id: string
           webhook_nonce?: string | null
@@ -392,6 +450,7 @@ export type Database = {
           notify_on_drift?: boolean | null
           notify_on_security_alert?: boolean | null
           ses_sender_email?: string | null
+          sns_topic_arn?: string | null
           updated_at?: string
           user_id?: string
           webhook_nonce?: string | null

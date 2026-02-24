@@ -17,10 +17,29 @@ export interface AlertRule {
   updated_at: string;
 }
 
+export interface AlertHistoryEntry {
+  id: string;
+  user_id: string;
+  alert_rule_id: string | null;
+  cloudwatch_alarm_name: string | null;
+  alert_name: string;
+  metric: string;
+  threshold: number | null;
+  current_value: number | null;
+  state_value: string | null;
+  severity: string;
+  event_type: string;
+  notification_results: Record<string, any>;
+  created_at: string;
+}
+
 export function useAlertRules() {
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [history, setHistory] = useState<AlertHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [thisMonthCount, setThisMonthCount] = useState(0);
   const { toast } = useToast();
 
   const fetchRules = useCallback(async () => {
@@ -45,9 +64,74 @@ export function useAlertRules() {
     }
   }, [toast]);
 
+  const fetchHistory = useCallback(async (limit = 50) => {
+    try {
+      setHistoryLoading(true);
+      const { data, error } = await supabase
+        .from('alert_history')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+      setHistory((data as AlertHistoryEntry[]) || []);
+    } catch (error: any) {
+      console.error('Error fetching alert history:', error);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  const fetchThisMonthCount = useCallback(async () => {
+    try {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      const { count, error } = await supabase
+        .from('alert_history')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', startOfMonth)
+        .eq('event_type', 'triggered');
+
+      if (!error) {
+        setThisMonthCount(count || 0);
+      }
+    } catch {
+      // non-critical
+    }
+  }, []);
+
   useEffect(() => {
     fetchRules();
-  }, [fetchRules]);
+    fetchHistory();
+    fetchThisMonthCount();
+  }, [fetchRules, fetchHistory, fetchThisMonthCount]);
+
+  const acknowledgeAlert = async (alarm: { id: string; name: string; metric: string; threshold?: number; severity: string }) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const { error } = await supabase
+        .from('alert_history')
+        .insert({
+          user_id: session.user.id,
+          alert_name: alarm.name,
+          metric: alarm.metric,
+          threshold: alarm.threshold || null,
+          severity: alarm.severity,
+          event_type: 'acknowledged',
+          state_value: 'ALARM',
+        });
+
+      if (error) throw error;
+      await fetchHistory();
+      await fetchThisMonthCount();
+      return true;
+    } catch (error: any) {
+      console.error('Error acknowledging alert:', error);
+      return false;
+    }
+  };
 
   const createRule = async (ruleData: {
     name: string;
@@ -164,9 +248,15 @@ export function useAlertRules() {
     rules,
     loading,
     actionLoading,
+    history,
+    historyLoading,
+    thisMonthCount,
     fetchRules,
+    fetchHistory,
+    fetchThisMonthCount,
     createRule,
     deleteRule,
     toggleRule,
+    acknowledgeAlert,
   };
 }

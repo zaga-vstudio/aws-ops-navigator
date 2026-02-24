@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { CloudWatchClient, PutMetricAlarmCommand, DeleteAlarmsCommand, EnableAlarmActionsCommand, DisableAlarmActionsCommand } from "npm:@aws-sdk/client-cloudwatch";
 import { BudgetsClient, CreateBudgetCommand, DeleteBudgetCommand } from "npm:@aws-sdk/client-budgets";
+import { SNSClient, CreateTopicCommand, SubscribeCommand, GetTopicAttributesCommand } from "npm:@aws-sdk/client-sns";
 import { resolveCredentials } from "../_shared/resolve-credentials.ts";
 
 const corsHeaders = {
@@ -130,12 +131,79 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
   }
 
   // CloudWatch alarm path
+
+  // Ensure user has an SNS topic for alarm actions
+  let topicArn: string | null = null;
+  try {
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Check if topic already exists
+    const { data: prefs } = await serviceClient
+      .from('notification_preferences')
+      .select('sns_topic_arn')
+      .eq('user_id', user.id)
+      .single();
+
+    if (prefs?.sns_topic_arn) {
+      // Verify it still exists
+      const snsClient = new SNSClient({ region, credentials: awsCreds });
+      try {
+        await snsClient.send(new GetTopicAttributesCommand({ TopicArn: prefs.sns_topic_arn }));
+        topicArn = prefs.sns_topic_arn;
+      } catch {
+        // Topic doesn't exist, recreate below
+      }
+    }
+
+    if (!topicArn) {
+      const snsClient = new SNSClient({ region, credentials: awsCreds });
+      const userPrefix = user.id.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 8);
+      const topicName = `CloudHub-${userPrefix}`;
+
+      const createResult = await snsClient.send(new CreateTopicCommand({
+        Name: topicName,
+        Tags: [
+          { Key: 'CloudHubUser', Value: user.id },
+          { Key: 'ManagedBy', Value: 'CloudHub' },
+        ],
+      }));
+
+      topicArn = createResult.TopicArn || null;
+
+      if (topicArn) {
+        // Subscribe the webhook
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+        const webhookEndpoint = `${supabaseUrl}/functions/v1/sns-webhook`;
+        await snsClient.send(new SubscribeCommand({
+          TopicArn: topicArn,
+          Protocol: 'https',
+          Endpoint: webhookEndpoint,
+        }));
+
+        // Store topic ARN
+        await serviceClient
+          .from('notification_preferences')
+          .upsert(
+            { user_id: user.id, sns_topic_arn: topicArn },
+            { onConflict: 'user_id' }
+          );
+
+        console.log('Created SNS topic and subscribed webhook:', topicArn);
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to set up SNS topic (alarm will work without notifications):', e.message);
+  }
+
   const cloudwatchClient = new CloudWatchClient({
     region,
     credentials: awsCreds,
   });
 
-  await cloudwatchClient.send(new PutMetricAlarmCommand({
+  const alarmParams: any = {
     AlarmName: alarmName,
     AlarmDescription: `CloudHub alert: ${name} - ${metric} ${comp} ${threshold}`,
     MetricName: config.metricName,
@@ -146,7 +214,15 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
     Threshold: parseFloat(threshold),
     ComparisonOperator: comp,
     TreatMissingData: 'notBreaching',
-  }));
+  };
+
+  // Wire SNS topic for alarm and OK actions
+  if (topicArn) {
+    alarmParams.AlarmActions = [topicArn];
+    alarmParams.OKActions = [topicArn];
+  }
+
+  await cloudwatchClient.send(new PutMetricAlarmCommand(alarmParams));
 
   console.log(`Created CloudWatch alarm: ${alarmName}`);
 
