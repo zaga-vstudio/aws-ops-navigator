@@ -7,38 +7,22 @@ import { useMemo } from "react";
 export const CostChart = () => {
   const { data, loading } = useAWSDataContext();
   
-  const currentCost = data?.metrics.estimatedCost || 0;
+  const hasRealCostData = (data?.costData?.totalCost ?? 0) > 0 || (data?.costData?.serviceBreakdown?.length ?? 0) > 0;
   
-  // Use real historical data if available, otherwise generate from current cost
+  const currentCost = useMemo(() => {
+    if (data?.costData?.totalCost && data.costData.totalCost > 0) return data.costData.totalCost;
+    if (data?.costData?.serviceBreakdown?.length) {
+      return data.costData.serviceBreakdown.reduce((sum, s) => sum + s.amount, 0);
+    }
+    return 0;
+  }, [data?.costData?.totalCost, data?.costData?.serviceBreakdown]);
+
   const costData = useMemo(() => {
     if (data?.costData?.historicalCosts && data.costData.historicalCosts.length > 0) {
       return data.costData.historicalCosts;
     }
-    
-    // Fallback: Generate cost data based on current estimated cost
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-    const fallbackData = [];
-    
-    for (let i = 0; i < months.length; i++) {
-      let cost = 0;
-      if (currentCost > 0) {
-        const baseVariation = currentCost * 0.8;
-        const randomVariation = (Math.random() - 0.5) * currentCost * 0.4;
-        cost = Math.max(0, baseVariation + randomVariation);
-        
-        if (i === months.length - 1) {
-          cost = currentCost;
-        }
-      }
-      
-      fallbackData.push({
-        month: months[i],
-        cost: Math.round(cost * 100) / 100
-      });
-    }
-    
-    return fallbackData;
-  }, [currentCost, data?.costData?.historicalCosts]);
+    return [];
+  }, [data?.costData?.historicalCosts]);
   
   const previousCost = costData.length > 1 ? costData[costData.length - 2].cost : 0;
   const changePercent = previousCost > 0 ? ((currentCost - previousCost) / previousCost * 100).toFixed(1) : '0.0';
@@ -66,50 +50,67 @@ export const CostChart = () => {
               <div className="w-24 h-8 bg-muted animate-pulse rounded" />
               <div className="w-32 h-4 bg-muted animate-pulse rounded" />
             </div>
-          ) : (
+          ) : hasRealCostData ? (
             <>
               <div className="text-3xl font-bold text-foreground">
-                ${currentCost}
+                ${currentCost.toFixed(2)}
               </div>
               <p className="text-sm text-muted-foreground">
-                Current month estimate
+                Current month from Cost Explorer
+              </p>
+            </>
+          ) : (
+            <>
+              <div className="text-3xl font-bold text-muted-foreground">—</div>
+              <p className="text-sm text-muted-foreground">
+                Enable Cost Explorer to view spending
               </p>
             </>
           )}
         </div>
         
         <div className="h-[200px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={costData}>
-              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-              <XAxis 
-                dataKey="month" 
-                className="text-muted-foreground"
-                fontSize={12}
-              />
-              <YAxis 
-                className="text-muted-foreground"
-                fontSize={12}
-                tickFormatter={(value) => `$${value}`}
-              />
-              <Tooltip 
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: 'var(--radius)',
-                }}
-                formatter={(value) => [`$${value}`, 'Cost']}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="cost" 
-                stroke="hsl(var(--primary))" 
-                strokeWidth={3}
-                dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 4 }}
-                activeDot={{ r: 6, stroke: 'hsl(var(--primary))', strokeWidth: 2 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {costData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={costData}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis 
+                  dataKey="month" 
+                  className="text-muted-foreground"
+                  fontSize={12}
+                />
+                <YAxis 
+                  className="text-muted-foreground"
+                  fontSize={12}
+                  tickFormatter={(value) => `$${value}`}
+                />
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    border: '1px solid hsl(var(--border))',
+                    borderRadius: 'var(--radius)',
+                  }}
+                  formatter={(value) => [`$${value}`, 'Cost']}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="cost" 
+                  stroke="hsl(var(--primary))" 
+                  strokeWidth={3}
+                  dot={{ fill: 'hsl(var(--primary))', strokeWidth: 2, r: 4 }}
+                  activeDot={{ r: 6, stroke: 'hsl(var(--primary))', strokeWidth: 2 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center text-center text-muted-foreground">
+              <div>
+                <DollarSign className="h-10 w-10 mx-auto mb-2 opacity-20" />
+                <p className="text-sm">No cost data available</p>
+                <p className="text-xs mt-1">Enable Cost Explorer in Cost Management</p>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

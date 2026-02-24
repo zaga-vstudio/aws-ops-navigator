@@ -58,23 +58,20 @@ export default function CostManagement() {
   const isCostExplorerDisabled = awsData?.costData?.costExplorerDisabled === true;
   const isHistoricalData = awsData?.costData?.isHistoricalData === true;
   const noCachedDataExists = awsData?.costData?.noCachedDataExists === true;
-  const hasRealCostData = (awsData?.costData?.serviceBreakdown?.length ?? 0) > 0 || (awsData?.costData?.totalCost ?? 0) > 0;
+  
 
-  // Prefer actual cached cost data over resource-based estimation
+  // Only use real cost data — no estimations
   const currentCost = useMemo(() => {
-    // First priority: total_cost from cache
     if (awsData?.costData?.totalCost && awsData.costData.totalCost > 0) {
       return awsData.costData.totalCost;
     }
-    // Second priority: sum of service breakdown
     if (awsData?.costData?.serviceBreakdown && awsData.costData.serviceBreakdown.length > 0) {
       return awsData.costData.serviceBreakdown.reduce((sum, s) => sum + s.amount, 0);
     }
-    // Fallback: estimated cost from metrics
-    return awsData?.metrics?.estimatedCost || 0;
-  }, [awsData?.costData?.totalCost, awsData?.costData?.serviceBreakdown, awsData?.metrics?.estimatedCost]);
+    return 0;
+  }, [awsData?.costData?.totalCost, awsData?.costData?.serviceBreakdown]);
   
-  const isEstimatedCost = !awsData?.costData?.totalCost && !awsData?.costData?.serviceBreakdown?.length;
+  const hasRealCostData = currentCost > 0;
   
   // Use real historical data if available, filtered by time range
   const monthlySpendData = useMemo(() => {
@@ -384,24 +381,27 @@ export default function CostManagement() {
               <div className={`grid grid-cols-1 md:grid-cols-2 ${awsData?.costData?.forecastTotal ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-6`}>
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">
-                      This Month {isEstimatedCost ? "(Estimated)" : ""}
-                    </CardTitle>
+                    <CardTitle className="text-sm font-medium">This Month</CardTitle>
                     <DollarSign className="h-4 w-4 text-primary" />
                   </CardHeader>
                   <CardContent>
                     {loading ? (
                       <div className="h-8 w-24 bg-muted animate-pulse rounded" />
-                    ) : (
+                    ) : hasRealCostData ? (
                       <>
                         <div className="text-2xl font-bold">${currentCost.toFixed(2)}</div>
                         <p className="text-xs text-muted-foreground">
-                          {isEstimatedCost 
-                            ? "Estimated from resources" 
-                            : isHistoricalData 
-                              ? `From ${costCacheInfo?.formattedAge || 'cache'}`
-                              : "From AWS Cost Explorer"
+                          {isHistoricalData 
+                            ? `From ${costCacheInfo?.formattedAge || 'cache'}`
+                            : "From AWS Cost Explorer"
                           }
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold text-muted-foreground">—</div>
+                        <p className="text-xs text-muted-foreground">
+                          Enable Cost Explorer to view
                         </p>
                       </>
                     )}
