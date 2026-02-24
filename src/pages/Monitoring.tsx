@@ -101,17 +101,7 @@ export default function Monitoring() {
   const hasRealCPU = metricsData && metricsData.cpu.length > 0;
   const hasRealNetwork = metricsData && (metricsData.networkIn.length > 0 || metricsData.networkOut.length > 0);
 
-  // Simulated fallback (EC2 only)
-  const generateSimulated = (points: number) =>
-    Array.from({ length: points }, (_, i) => ({
-      time: timeRange === '7d' ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i % 7] :
-        timeRange === '1h' ? `${i * 10}m` : timeRange === '6h' ? `${i * 30}m` : `${i}:00`,
-      value: Math.floor(30 + Math.random() * 50 + Math.sin(i) * 10),
-    }));
-
-  const simPoints = timeRange === '1h' ? 6 : timeRange === '6h' ? 12 : timeRange === '24h' ? 24 : 7;
-
-  const cpuChartData = hasRealCPU ? formatChartData(metricsData.cpu) : (!isRDS ? generateSimulated(simPoints) : []);
+  const cpuChartData = hasRealCPU ? formatChartData(metricsData.cpu) : [];
 
   const networkChartData = hasRealNetwork
     ? metricsData.networkIn.map((m, i) => {
@@ -123,11 +113,7 @@ export default function Monitoring() {
           networkOut: Math.round((metricsData.networkOut[i]?.value || 0) / 1024 / 1024),
         };
       })
-    : (!isRDS ? generateSimulated(simPoints).map(p => ({
-        time: p.time,
-        networkIn: Math.floor(10 + Math.random() * 40),
-        networkOut: Math.floor(5 + Math.random() * 25),
-      })) : []);
+    : [];
 
   const diskChartData = metricsData?.diskReadOps && metricsData.diskReadOps.length > 0
     ? metricsData.diskReadOps.map((m, i) => {
@@ -319,16 +305,6 @@ export default function Monitoring() {
                 </Alert>
               )}
 
-              {!hasRealCPU && !metricsLoading && !isRDS && (
-                <Alert>
-                  <Info className="h-4 w-4" />
-                  <AlertDescription>
-                    {runningEC2 === 0
-                      ? "No running EC2 instances found. Charts show simulated data."
-                      : "CloudWatch metrics not yet available. Charts show simulated data."}
-                  </AlertDescription>
-                </Alert>
-              )}
 
               {/* Resource Overview Cards */}
               <MonitoringResourceCards
@@ -528,7 +504,7 @@ export default function Monitoring() {
                       <CardHeader>
                         <div className="flex items-center justify-between">
                           <div>
-                            <CardTitle>CPU Usage {!hasRealCPU && "(Simulated)"}</CardTitle>
+                            <CardTitle>CPU Usage</CardTitle>
                             <CardDescription>Average CPU utilization</CardDescription>
                           </div>
                           <CostBadge type="free" label="Free Tier" costNote="GetMetricStatistics: Free for up to 1M API requests/month. Basic monitoring at 5-minute intervals is included at no charge." />
@@ -537,7 +513,7 @@ export default function Monitoring() {
                       <CardContent>
                         {metricsLoading && !metricsData ? (
                           <Skeleton className="h-[250px] w-full" />
-                        ) : (
+                        ) : cpuChartData.length > 0 ? (
                           <ResponsiveContainer width="100%" height={250}>
                             <AreaChart data={cpuChartData}>
                               <CartesianGrid strokeDasharray="3 3" />
@@ -547,6 +523,13 @@ export default function Monitoring() {
                               <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.3} />
                             </AreaChart>
                           </ResponsiveContainer>
+                        ) : (
+                          <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                            <div className="text-center">
+                              <Activity className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                              <p className="text-sm">No CPU data available</p>
+                            </div>
+                          </div>
                         )}
                       </CardContent>
                     </Card>
@@ -595,7 +578,7 @@ export default function Monitoring() {
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <div>
-                          <CardTitle>Network Traffic {!hasRealNetwork && "(Simulated)"}</CardTitle>
+                          <CardTitle>Network Traffic</CardTitle>
                           <CardDescription>Inbound and outbound network traffic</CardDescription>
                         </div>
                         <CostBadge type="free" label="Free Tier" costNote="NetworkIn/NetworkOut metrics via GetMetricStatistics. Free up to 1M API requests/month." />
@@ -604,7 +587,7 @@ export default function Monitoring() {
                     <CardContent>
                       {metricsLoading && !metricsData ? (
                         <Skeleton className="h-[250px] w-full" />
-                      ) : (
+                      ) : networkChartData.length > 0 ? (
                         <ResponsiveContainer width="100%" height={250}>
                           <AreaChart data={networkChartData}>
                             <CartesianGrid strokeDasharray="3 3" />
@@ -615,6 +598,13 @@ export default function Monitoring() {
                             <Area type="monotone" dataKey="networkOut" name="Outbound (MB/s)" stackId="1" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.6} />
                           </AreaChart>
                         </ResponsiveContainer>
+                      ) : (
+                        <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                          <div className="text-center">
+                            <Activity className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                            <p className="text-sm">No network data available</p>
+                          </div>
+                        </div>
                       )}
                     </CardContent>
                   </Card>
