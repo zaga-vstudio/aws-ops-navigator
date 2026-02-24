@@ -265,46 +265,64 @@ export type Database = {
           cached_at: string | null
           cpu_metrics: Json | null
           created_at: string | null
+          db_connections_metrics: Json | null
           disk_read_metrics: Json | null
           disk_write_metrics: Json | null
           expires_at: string | null
+          free_storage_metrics: Json | null
           id: string
+          instance_id: string
           network_in_metrics: Json | null
           network_out_metrics: Json | null
+          read_latency_metrics: Json | null
+          resource_type: string
           status_check_metrics: Json | null
           time_range: Database["public"]["Enums"]["monitoring_time_range"]
           updated_at: string | null
           user_id: string
+          write_latency_metrics: Json | null
         }
         Insert: {
           cached_at?: string | null
           cpu_metrics?: Json | null
           created_at?: string | null
+          db_connections_metrics?: Json | null
           disk_read_metrics?: Json | null
           disk_write_metrics?: Json | null
           expires_at?: string | null
+          free_storage_metrics?: Json | null
           id?: string
+          instance_id?: string
           network_in_metrics?: Json | null
           network_out_metrics?: Json | null
+          read_latency_metrics?: Json | null
+          resource_type?: string
           status_check_metrics?: Json | null
           time_range?: Database["public"]["Enums"]["monitoring_time_range"]
           updated_at?: string | null
           user_id: string
+          write_latency_metrics?: Json | null
         }
         Update: {
           cached_at?: string | null
           cpu_metrics?: Json | null
           created_at?: string | null
+          db_connections_metrics?: Json | null
           disk_read_metrics?: Json | null
           disk_write_metrics?: Json | null
           expires_at?: string | null
+          free_storage_metrics?: Json | null
           id?: string
+          instance_id?: string
           network_in_metrics?: Json | null
           network_out_metrics?: Json | null
+          read_latency_metrics?: Json | null
+          resource_type?: string
           status_check_metrics?: Json | null
           time_range?: Database["public"]["Enums"]["monitoring_time_range"]
           updated_at?: string | null
           user_id?: string
+          write_latency_metrics?: Json | null
         }
         Relationships: []
       }
