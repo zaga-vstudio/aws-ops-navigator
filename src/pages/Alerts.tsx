@@ -26,7 +26,9 @@ import {
   Globe,
   GitCompare,
   Eye,
-  Check
+  Check,
+  History,
+  Clock
 } from "lucide-react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -38,11 +40,15 @@ import { NewAlertRuleDialog } from "@/components/NewAlertRuleDialog";
 import { NotificationChannelDialog } from "@/components/NotificationChannelDialog";
 import { DriftDetailsDialog } from "@/components/DriftDetailsDialog";
 import { DriftScheduleSettings } from "@/components/DriftScheduleSettings";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 
 export default function Alerts() {
   const { data, loading: awsLoading, error, refetch } = useAWSDataContext();
-  const { rules, loading: rulesLoading, actionLoading, createRule, deleteRule, toggleRule, fetchRules } = useAlertRules();
+  const { 
+    rules, loading: rulesLoading, actionLoading, 
+    history, historyLoading, thisMonthCount,
+    createRule, deleteRule, toggleRule, fetchRules, fetchHistory, acknowledgeAlert 
+  } = useAlertRules();
   const { channels, loading: prefsLoading, saving, updateChannel, toggleChannel } = useNotificationPreferences();
   const { 
     driftEvents, 
@@ -68,12 +74,14 @@ export default function Alerts() {
   });
   const [selectedDrift, setSelectedDrift] = useState<typeof driftEvents[0] | null>(null);
   const [driftDialogOpen, setDriftDialogOpen] = useState(false);
+  const [historyLimit, setHistoryLimit] = useState(50);
 
   const loading = awsLoading || rulesLoading || prefsLoading || driftLoading;
 
   const handleRefresh = () => {
     refetch();
     fetchRules();
+    fetchHistory();
   };
 
   const handleOpenChannelSettings = (channel: NotificationChannel) => {
@@ -81,12 +89,29 @@ export default function Alerts() {
     setChannelDialogOpen(true);
   };
 
-  const handleDismissAlert = (alertId: string) => {
-    setDismissedAlerts(prev => {
-      const next = new Set(prev).add(alertId);
-      localStorage.setItem('cloudhub-dismissed-alerts', JSON.stringify([...next]));
-      return next;
+  const handleDismissAlert = async (alarm: any) => {
+    // Database-backed acknowledge
+    const success = await acknowledgeAlert({
+      id: alarm.id,
+      name: alarm.name,
+      metric: alarm.metric,
+      threshold: alarm.threshold,
+      severity: alarm.severity,
     });
+    
+    if (success) {
+      setDismissedAlerts(prev => {
+        const next = new Set(prev).add(alarm.id);
+        localStorage.setItem('cloudhub-dismissed-alerts', JSON.stringify([...next]));
+        return next;
+      });
+    }
+  };
+
+  const handleLoadMoreHistory = () => {
+    const newLimit = historyLimit + 50;
+    setHistoryLimit(newLimit);
+    fetchHistory(newLimit);
   };
 
   const alarms = data?.alarms || [];
@@ -144,6 +169,48 @@ export default function Alerts() {
     if (['ReadLatency', 'WriteLatency'].includes(metric)) return 'ms';
     if (['FreeStorageSpace'].includes(metric)) return 'GB';
     return '';
+  };
+
+  const getEventTypeBadge = (eventType: string) => {
+    switch (eventType) {
+      case 'triggered':
+        return <Badge variant="destructive">Triggered</Badge>;
+      case 'resolved':
+        return <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/30">Resolved</Badge>;
+      case 'acknowledged':
+        return <Badge variant="secondary">Acknowledged</Badge>;
+      default:
+        return <Badge variant="outline">{eventType}</Badge>;
+    }
+  };
+
+  const getStateBadge = (stateValue: string | null) => {
+    if (!stateValue) return null;
+    switch (stateValue) {
+      case 'ALARM':
+        return <Badge variant="destructive" className="text-xs">ALARM</Badge>;
+      case 'OK':
+        return <Badge variant="secondary" className="text-xs">OK</Badge>;
+      default:
+        return <Badge variant="outline" className="text-xs">{stateValue}</Badge>;
+    }
+  };
+
+  const getChannelResults = (results: Record<string, any>) => {
+    if (!results || Object.keys(results).length === 0) return null;
+    return (
+      <div className="flex items-center gap-1">
+        {Object.entries(results).map(([channel, result]: [string, any]) => (
+          <span key={channel} title={`${channel}: ${result.success ? 'sent' : result.error || 'failed'}`}>
+            {result.success ? (
+              <Check className="h-3 w-3 text-emerald-500" />
+            ) : (
+              <X className="h-3 w-3 text-destructive" />
+            )}
+          </span>
+        ))}
+      </div>
+    );
   };
 
   // Combine CloudWatch alarms with user-created rules for display
@@ -261,7 +328,7 @@ export default function Alerts() {
                     <Bell className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{activeAlarms.length > 0 ? activeAlarms.length : 0}</div>
+                    <div className="text-2xl font-bold">{thisMonthCount}</div>
                     <p className="text-xs text-muted-foreground">Triggered alerts</p>
                   </CardContent>
                 </Card>
@@ -299,7 +366,7 @@ export default function Alerts() {
 
               {/* Alerts Tabs */}
               <Tabs defaultValue="active" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="active">Active Alerts</TabsTrigger>
                   <TabsTrigger value="drift" className="flex items-center gap-2">
                     Drift Detection
@@ -310,6 +377,10 @@ export default function Alerts() {
                     )}
                   </TabsTrigger>
                   <TabsTrigger value="rules">Alert Rules</TabsTrigger>
+                  <TabsTrigger value="history" className="flex items-center gap-2">
+                    <History className="h-3.5 w-3.5" />
+                    History
+                  </TabsTrigger>
                   <TabsTrigger value="notifications">Notifications</TabsTrigger>
                 </TabsList>
 
@@ -358,7 +429,8 @@ export default function Alerts() {
                                 <Button 
                                   variant="ghost" 
                                   size="sm"
-                                  onClick={() => handleDismissAlert(alarm.id)}
+                                  onClick={() => handleDismissAlert(alarm)}
+                                  title="Acknowledge alert"
                                 >
                                   <X className="h-4 w-4" />
                                 </Button>
@@ -615,6 +687,81 @@ export default function Alerts() {
                             ))}
                           </TableBody>
                         </Table>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="history" className="space-y-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Clock className="h-5 w-5" />
+                        Alert History
+                      </CardTitle>
+                      <CardDescription>Chronological record of all alert events — triggered, resolved, and acknowledged</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {historyLoading ? (
+                        <div className="space-y-4">
+                          {[1, 2, 3].map((i) => (
+                            <Skeleton key={i} className="h-12 w-full" />
+                          ))}
+                        </div>
+                      ) : history.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <History className="h-12 w-12 mx-auto mb-2" />
+                          <p>No alert history yet.</p>
+                          <p className="text-sm">Events will appear here when alerts are triggered, resolved, or acknowledged.</p>
+                        </div>
+                      ) : (
+                        <>
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Time</TableHead>
+                                <TableHead>Alert Name</TableHead>
+                                <TableHead>Metric</TableHead>
+                                <TableHead>State</TableHead>
+                                <TableHead>Severity</TableHead>
+                                <TableHead>Event</TableHead>
+                                <TableHead>Channels</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {history.map((entry) => (
+                                <TableRow key={entry.id}>
+                                  <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                                    {format(new Date(entry.created_at), 'MMM d, HH:mm')}
+                                  </TableCell>
+                                  <TableCell className="font-medium">{entry.alert_name}</TableCell>
+                                  <TableCell className="text-sm">{entry.metric}</TableCell>
+                                  <TableCell>
+                                    {getStateBadge(entry.state_value)}
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={entry.severity === 'critical' ? 'destructive' : 'outline'}>
+                                      {entry.severity}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    {getEventTypeBadge(entry.event_type)}
+                                  </TableCell>
+                                  <TableCell>
+                                    {getChannelResults(entry.notification_results)}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                          {history.length >= historyLimit && (
+                            <div className="flex justify-center mt-4">
+                              <Button variant="outline" onClick={handleLoadMoreHistory}>
+                                Load More
+                              </Button>
+                            </div>
+                          )}
+                        </>
                       )}
                     </CardContent>
                   </Card>
