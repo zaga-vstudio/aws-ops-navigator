@@ -1,89 +1,102 @@
 
 
-## Edit Existing Alert Rules — In-Place Threshold/Condition Changes
+## Diagnosis: Why Discord Alerts Are Not Being Received
 
-### Current State
+### Root Cause Found — Critical Bug in `handleUpdate`
 
-- Alert rules can only be created or deleted. No edit capability exists.
-- The Actions column in the Alert Rules table only has a delete button (trash icon).
-- `manage-alert-rules` edge function handles `create`, `delete`, and `toggle` — no `update` action.
-- `NewAlertRuleDialog` is create-only (hardcoded title "Create New Alert Rule", resets form on close, submit button says "Create Rule").
-- `useAlertRules` hook has `createRule`, `deleteRule`, `toggleRule` — no `updateRule`.
+The notification pipeline is: **CloudWatch Alarm → SNS Topic → sns-webhook edge function → dispatchNotification → Discord**.
 
-### Changes
+Evidence from investigation:
 
-**1. Edge Function: Add `update` action to `manage-alert-rules/index.ts`**
+1. **Discord webhook is configured** — `encrypted_discord_webhook` exists in `notification_preferences`.
+2. **SNS topic exists** — `arn:aws:sns:us-east-1:940482449081:CloudHub-456f568f` is stored.
+3. **Alert rule exists** — "Work", CPUUtilization > 2%, alarm name `CloudHub-456f568f-Work`.
+4. **Zero `sns-webhook` logs** — the webhook has never been called. Not once. Not even a subscription confirmation.
+5. **Zero `alert_history` records** — no alerts have ever been processed.
+6. **The alarm was recently edited** — logs show `"Updated CloudWatch alarm: CloudHub-456f568f-Work"`.
 
-New `handleUpdate` function:
-- Accepts `ruleId` plus editable fields: `threshold`, `duration`, `severity`, `comparison_operator`.
-- Name and metric are **not editable** — changing the metric would require a different CloudWatch alarm namespace/metric. The alarm name is derived from the rule name, so changing it would orphan the old alarm.
-- Fetches the existing rule from DB, validates ownership (RLS handles this).
-- For CloudWatch alarms (`type !== 'budget'`): calls `PutMetricAlarmCommand` with the existing `cloudwatch_alarm_name` but updated `Threshold`, `Period`, `ComparisonOperator`. PutMetricAlarm is idempotent — calling it with the same alarm name updates the alarm in place.
-- For budget alarms: deletes the old budget and creates a new one with updated limit (AWS Budgets API has no update-limit endpoint; `UpdateBudget` exists but is more complex — delete+recreate is simpler and the budget name stays the same).
-- Updates the DB row with new `threshold`, `duration`, `severity`, `comparison_operator`.
-- Returns the updated rule.
+**The bug**: When `handleUpdate` calls `PutMetricAlarmCommand` (lines 384-395), it does **not** include `AlarmActions` or `OKActions`. AWS `PutMetricAlarm` is a full replacement — any fields not provided are cleared. So when the alarm was edited, the SNS topic was disconnected from the alarm. Even if it was wired correctly at creation, the update stripped it.
 
-Add `'update'` case to the `switch(action)` block.
-
-**2. Hook: Add `updateRule` to `useAlertRules.tsx`**
-
-```typescript
-const updateRule = async (ruleId: string, updates: {
-  threshold: string;
-  duration: string;
-  severity: string;
-  comparison_operator: string;
-}) => { ... }
-```
-
-Calls `supabase.functions.invoke('manage-alert-rules', { body: { action: 'update', ruleId, ...updates } })`. Shows success/error toast. Refreshes rules list on success.
-
-Export `updateRule` from the hook.
-
-**3. Refactor `NewAlertRuleDialog` → `AlertRuleDialog` (edit + create)**
-
-Add an optional `editingRule` prop:
-
-```typescript
-interface AlertRuleDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onSubmit: (data: { ... }) => Promise<boolean>;
-  loading?: boolean;
-  editingRule?: {
-    id: string;
-    name: string;
-    metric: string;
-    threshold: number;
-    duration: number;
-    severity: string;
-    comparison_operator: string;
-  } | null;
+Compare with `handleCreate` (lines 219-223):
+```text
+// Wire SNS topic for alarm and OK actions
+if (topicArn) {
+  alarmParams.AlarmActions = [topicArn];
+  alarmParams.OKActions = [topicArn];
 }
 ```
 
-When `editingRule` is provided:
-- Dialog title: "Edit Alert Rule" instead of "Create New Alert Rule"
-- Pre-fill form fields from `editingRule`
-- **Disable** the name and metric fields (not editable — explained above)
-- Submit button text: "Save Changes" instead of "Create Rule"
-- On open, initialize form state from `editingRule` values
+This wiring is completely missing from `handleUpdate`.
 
-When `editingRule` is null/undefined, behavior is identical to current create flow.
+**Secondary concern**: Since `sns-webhook` has zero logs (not even a subscription confirmation), the SNS subscription may also have never confirmed. This could happen if the edge function wasn't deployed when the subscription was created, or if the confirmation POST from AWS was rejected.
 
-**4. Update `Alerts.tsx` UI**
+### Fix Plan
 
-- Add state: `editingRule` and `setEditingRule`.
-- Add an edit button (pencil icon) next to the delete button in the Actions column for user-created rules.
-- Clicking edit sets `editingRule` to the rule data and opens the dialog.
-- Pass `editingRule` to the dialog component.
-- The `onSubmit` handler checks if editing: calls `updateRule(editingRule.id, data)` instead of `createRule(data)`.
-- Import `Pencil` from lucide-react.
+**1. Fix `handleUpdate` in `manage-alert-rules/index.ts` — Preserve SNS actions**
 
-### Technical Details
+Before calling `PutMetricAlarmCommand` in `handleUpdate`, fetch the user's `sns_topic_arn` from `notification_preferences` and include `AlarmActions` and `OKActions`:
 
-- **Why not allow metric changes**: The CloudWatch alarm name includes the rule name, and the alarm is bound to a specific namespace/metric. Changing the metric would require deleting the old alarm and creating a new one with a different configuration — effectively a delete+create. Keeping name and metric locked avoids orphaned alarms.
-- **PutMetricAlarm idempotency**: AWS CloudWatch's `PutMetricAlarm` with an existing alarm name updates that alarm in place. No need to delete and recreate. This is the correct API for threshold/period/comparison changes.
-- **Budget updates**: AWS Budgets `UpdateBudget` command exists but requires sending the full budget object. We use delete+create for simplicity since the budget name stays the same and there are no subscribers to preserve (SNS placeholder).
-- **No migration needed**: No schema changes — all editable fields already exist in `alert_rules`.
+```typescript
+// Fetch SNS topic ARN so it's not stripped by the update
+const serviceClient = createClient(
+  Deno.env.get('SUPABASE_URL') ?? '',
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+);
+const { data: prefs } = await serviceClient
+  .from('notification_preferences')
+  .select('sns_topic_arn')
+  .eq('user_id', user.id)
+  .single();
+
+const alarmParams: any = {
+  AlarmName: rule.cloudwatch_alarm_name,
+  // ... existing fields ...
+};
+
+if (prefs?.sns_topic_arn) {
+  alarmParams.AlarmActions = [prefs.sns_topic_arn];
+  alarmParams.OKActions = [prefs.sns_topic_arn];
+}
+```
+
+This ensures editing an alarm never silently disconnects notifications.
+
+**2. Add a "Test Notification" edge function — `test-notification/index.ts`**
+
+A new edge function that lets users verify their notification channels work without waiting for a real CloudWatch alarm:
+
+- Accepts `{ channel?: 'discord' | 'slack' | 'webhook' | 'email' | 'all' }` (defaults to `'all'`).
+- Calls `dispatchNotification` with a synthetic test alert payload:
+  ```typescript
+  {
+    alertName: 'Test Notification',
+    metric: 'TestMetric',
+    threshold: 100,
+    currentValue: 42,
+    severity: 'info',
+  }
+  ```
+- Returns per-channel results so the user sees exactly which channels succeeded/failed and the error message for failures.
+- Add `verify_jwt = false` in config.toml and validate auth in code (same pattern as other functions).
+
+**3. Add "Test" button to notification channel UI**
+
+In `src/components/NotificationPreferencesDialog.tsx` (or wherever channels are managed):
+
+- Add a "Test" button on each configured channel card.
+- Calls the `test-notification` edge function with the specific channel type.
+- Shows a toast with the result (success or failure with error detail).
+- This lets users verify Discord/Slack/webhook configuration immediately after saving, without creating a real alarm.
+
+**4. Add SNS subscription re-confirmation logic**
+
+In the `handleCreate` flow (and the new test function), after verifying the SNS topic exists, also verify the subscription is confirmed. If not, re-subscribe. This handles cases where the initial subscription confirmation was missed.
+
+### Summary
+
+| Issue | Cause | Fix |
+|---|---|---|
+| Alarm update strips SNS actions | `handleUpdate` missing `AlarmActions`/`OKActions` | Include them by fetching `sns_topic_arn` |
+| No way to verify channels work | No test mechanism exists | New `test-notification` edge function + UI button |
+| Possible dead subscription | Confirmation may have been missed | Re-verify subscription in create/test flows |
 
