@@ -1,78 +1,89 @@
 
 
-## Cost Forecasting via AWS GetCostForecast (Revised)
-
-Incorporating all feedback: `date` columns instead of `text`, nullable forecast fields, forecast next full month only, and precise UI labeling.
+## Edit Existing Alert Rules — In-Place Threshold/Condition Changes
 
 ### Current State
 
-- `aws-dashboard-data` fetches `GetCostAndUsage` (current month) and `getHistoricalCosts` (6-month history), caches in `cost_data_cache` with 6h TTL
-- `GetCostForecast` is not imported or called anywhere
-- `CostDataWithCache` has no forecast fields
-- Cost Management page shows: current month spend, spending trend chart, service breakdown, top resources, anomalies, rightsizing recommendations
-- Overview cards grid is `grid-cols-4`: This Month, EC2 Instances, RDS Databases, S3 Buckets
+- Alert rules can only be created or deleted. No edit capability exists.
+- The Actions column in the Alert Rules table only has a delete button (trash icon).
+- `manage-alert-rules` edge function handles `create`, `delete`, and `toggle` — no `update` action.
+- `NewAlertRuleDialog` is create-only (hardcoded title "Create New Alert Rule", resets form on close, submit button says "Create Rule").
+- `useAlertRules` hook has `createRule`, `deleteRule`, `toggleRule` — no `updateRule`.
 
 ### Changes
 
-**1. Database Migration: Add forecast columns to `cost_data_cache`**
+**1. Edge Function: Add `update` action to `manage-alert-rules/index.ts`**
 
-```sql
-ALTER TABLE cost_data_cache
-  ADD COLUMN forecast_total numeric,
-  ADD COLUMN forecast_period_start date,
-  ADD COLUMN forecast_period_end date,
-  ADD COLUMN forecast_data jsonb;
-```
+New `handleUpdate` function:
+- Accepts `ruleId` plus editable fields: `threshold`, `duration`, `severity`, `comparison_operator`.
+- Name and metric are **not editable** — changing the metric would require a different CloudWatch alarm namespace/metric. The alarm name is derived from the rule name, so changing it would orphan the old alarm.
+- Fetches the existing rule from DB, validates ownership (RLS handles this).
+- For CloudWatch alarms (`type !== 'budget'`): calls `PutMetricAlarmCommand` with the existing `cloudwatch_alarm_name` but updated `Threshold`, `Period`, `ComparisonOperator`. PutMetricAlarm is idempotent — calling it with the same alarm name updates the alarm in place.
+- For budget alarms: deletes the old budget and creates a new one with updated limit (AWS Budgets API has no update-limit endpoint; `UpdateBudget` exists but is more complex — delete+recreate is simpler and the budget name stays the same).
+- Updates the DB row with new `threshold`, `duration`, `severity`, `comparison_operator`.
+- Returns the updated rule.
 
-All four columns are nullable (no defaults). When forecast fails (insufficient history, new account), they remain `NULL` — semantically cleaner than empty arrays or zero values. Using `date` type for the period columns prevents invalid values and simplifies date comparisons.
+Add `'update'` case to the `switch(action)` block.
 
-**2. Backend: `supabase/functions/aws-dashboard-data/index.ts`**
-
-- Import `GetCostForecastCommand` from `@aws-sdk/client-cost-explorer` (client already imported on line 9)
-- Add `getCostForecast(config)` function:
-  - **Forecasts next full month only** (1st to last day of next month). This is the cleanest interpretation — no blurred semantics from mixing remainder-of-current-month with next month.
-  - Metric: `UNBLENDED_COST`
-  - Granularity: `MONTHLY` (returns one data point)
-  - Returns `{ forecastTotal, forecastPeriodStart, forecastPeriodEnd }` or `null` on failure
-- Wrap in try/catch: `DataUnavailableException` (accounts with <30 days history) returns `null`, not an error
-- Call `getCostForecast` in parallel with existing `GetCostAndUsage` and `getHistoricalCosts` inside `getCostData` (line ~940)
-- Save forecast fields to `cost_data_cache` in `saveCostDataToCache`
-- Read forecast fields from cache in `getCachedCostData`
-- Add forecast fields to the response `CostDataWithCache` object
-
-**3. Frontend: `src/hooks/useAWSData.tsx`**
-
-Extend `CostDataWithCache` interface:
+**2. Hook: Add `updateRule` to `useAlertRules.tsx`**
 
 ```typescript
-forecastTotal?: number;
-forecastPeriodStart?: string;  // ISO date string from DB
-forecastPeriodEnd?: string;
+const updateRule = async (ruleId: string, updates: {
+  threshold: string;
+  duration: string;
+  severity: string;
+  comparison_operator: string;
+}) => { ... }
 ```
 
-No `forecastData` array needed since we forecast a single month only — `forecastTotal` is sufficient.
+Calls `supabase.functions.invoke('manage-alert-rules', { body: { action: 'update', ruleId, ...updates } })`. Shows success/error toast. Refreshes rules list on success.
 
-**4. Frontend: `src/pages/CostManagement.tsx`**
+Export `updateRule` from the hook.
 
-- Add a **"Projected Next Month"** overview card as the 4th card, shifting S3 Buckets to a 5th position (grid becomes `grid-cols-5` on large screens, wraps on smaller):
-  - Big number: `$forecastTotal`
-  - Label: **"Projected next month spend"** — precise, no ambiguity
-  - Trend indicator: compares `forecastTotal` to `currentCost` (current month actual)
-  - Only rendered when `forecastTotal` exists and is > 0
-  - Small info text: "Based on AWS Cost Explorer forecast"
+**3. Refactor `NewAlertRuleDialog` → `AlertRuleDialog` (edit + create)**
 
-- Extend the **Spending Trend chart**:
-  - Append the forecast month to `monthlySpendData` as a data point with a `forecast: true` flag
-  - Render forecast point with a dashed line segment (`strokeDasharray="5 5"`) using a second `<Line>` or conditional styling
-  - Tooltip differentiates "Actual: $X" vs "Forecast: $X"
-  - Visual distinction makes it clear which data is historical vs projected
+Add an optional `editingRule` prop:
+
+```typescript
+interface AlertRuleDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (data: { ... }) => Promise<boolean>;
+  loading?: boolean;
+  editingRule?: {
+    id: string;
+    name: string;
+    metric: string;
+    threshold: number;
+    duration: number;
+    severity: string;
+    comparison_operator: string;
+  } | null;
+}
+```
+
+When `editingRule` is provided:
+- Dialog title: "Edit Alert Rule" instead of "Create New Alert Rule"
+- Pre-fill form fields from `editingRule`
+- **Disable** the name and metric fields (not editable — explained above)
+- Submit button text: "Save Changes" instead of "Create Rule"
+- On open, initialize form state from `editingRule` values
+
+When `editingRule` is null/undefined, behavior is identical to current create flow.
+
+**4. Update `Alerts.tsx` UI**
+
+- Add state: `editingRule` and `setEditingRule`.
+- Add an edit button (pencil icon) next to the delete button in the Actions column for user-created rules.
+- Clicking edit sets `editingRule` to the rule data and opens the dialog.
+- Pass `editingRule` to the dialog component.
+- The `onSubmit` handler checks if editing: calls `updateRule(editingRule.id, data)` instead of `createRule(data)`.
+- Import `Pencil` from lucide-react.
 
 ### Technical Details
 
-- **Single month forecast**: `GetCostForecast` with `TimePeriod: { Start: first-of-next-month, End: first-of-month-after-next }` and `Granularity: MONTHLY`. Returns exactly one `ForecastResult` with `MeanValue`. This is the recommended approach — forecasting a single period avoids blurred semantics.
-- **Cost**: One additional Cost Explorer API call ($0.01) per cache miss, batched with existing calls. Cached for 6h alongside other cost data. Negligible impact.
-- **IAM permissions**: `ce:GetCostForecast` — typically included in the same IAM policy as `ce:GetCostAndUsage`.
-- **When Cost Explorer is disabled**: If cached forecast data exists, it's shown with the "Historical Data" badge (same pattern as existing cost data). If no cached forecast exists, the card is hidden.
-- **DataUnavailableException**: AWS requires ~30 days of billing history. New accounts get `null` forecast — card hidden, no error shown. This is logged but not surfaced to the user.
-- **`date` column type**: PostgreSQL `date` stores `YYYY-MM-DD` without timezone. The edge function writes ISO date strings (`2026-03-01`), which PostgreSQL auto-casts to `date`. Frontend receives them as strings via JSON.
+- **Why not allow metric changes**: The CloudWatch alarm name includes the rule name, and the alarm is bound to a specific namespace/metric. Changing the metric would require deleting the old alarm and creating a new one with a different configuration — effectively a delete+create. Keeping name and metric locked avoids orphaned alarms.
+- **PutMetricAlarm idempotency**: AWS CloudWatch's `PutMetricAlarm` with an existing alarm name updates that alarm in place. No need to delete and recreate. This is the correct API for threshold/period/comparison changes.
+- **Budget updates**: AWS Budgets `UpdateBudget` command exists but requires sending the full budget object. We use delete+create for simplicity since the budget name stays the same and there are no subscribers to preserve (SNS placeholder).
+- **No migration needed**: No schema changes — all editable fields already exist in `alert_rules`.
 
