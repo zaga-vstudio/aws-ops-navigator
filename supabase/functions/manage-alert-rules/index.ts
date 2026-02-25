@@ -325,6 +325,89 @@ async function handleToggle(supabaseClient: any, user: any, ruleId: string, role
   return { success: true, rule: updatedRule, message: `Alert rule ${newEnabled ? 'enabled' : 'disabled'}` };
 }
 
+async function handleUpdate(supabaseClient: any, user: any, body: any) {
+  const { ruleId, threshold, duration, severity, comparison_operator, roleName } = body;
+  if (!ruleId) throw new Error('ruleId is required');
+
+  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
+
+  const { data: rule, error: fetchError } = await supabaseClient
+    .from('alert_rules').select('*').eq('id', ruleId).single();
+  if (fetchError || !rule) throw new Error('Alert rule not found');
+
+  const config = metricMapping[rule.metric] || { namespace: 'AWS/EC2', metricName: rule.metric, type: 'cloudwatch' };
+  const newThreshold = parseFloat(threshold);
+  const newDuration = parseInt(duration) || rule.duration;
+  const newComp = comparison_operator || rule.comparison_operator;
+  const newSeverity = severity || rule.severity;
+
+  if (config.type === 'budget' && rule.cloudwatch_alarm_name) {
+    // Delete + recreate budget with new limit
+    try {
+      const { STSClient, GetCallerIdentityCommand } = await import("npm:@aws-sdk/client-sts");
+      const sts = new STSClient({ region, credentials: awsCreds });
+      const identity = await sts.send(new GetCallerIdentityCommand({}));
+      const accountId = identity.Account!;
+      const budgetsClient = new BudgetsClient({ region: 'us-east-1', credentials: awsCreds });
+
+      try {
+        await budgetsClient.send(new DeleteBudgetCommand({ AccountId: accountId, BudgetName: rule.cloudwatch_alarm_name }));
+      } catch (e) {
+        console.warn(`Could not delete old budget: ${e.message}`);
+      }
+
+      await budgetsClient.send(new CreateBudgetCommand({
+        AccountId: accountId,
+        Budget: {
+          BudgetName: rule.cloudwatch_alarm_name,
+          BudgetLimit: { Amount: String(newThreshold), Unit: 'USD' },
+          TimeUnit: 'MONTHLY',
+          BudgetType: 'COST',
+        },
+        NotificationsWithSubscribers: [{
+          Notification: {
+            NotificationType: 'ACTUAL',
+            ComparisonOperator: 'GREATER_THAN',
+            Threshold: 80,
+            ThresholdType: 'PERCENTAGE',
+          },
+          Subscribers: [{ SubscriptionType: 'SNS', Address: 'arn:aws:sns:us-east-1:placeholder' }],
+        }],
+      }));
+      console.log(`Updated AWS Budget: ${rule.cloudwatch_alarm_name}`);
+    } catch (e) {
+      console.warn(`Could not update budget: ${e.message}`);
+    }
+  } else if (rule.cloudwatch_alarm_name) {
+    // Update CloudWatch alarm in place via PutMetricAlarm
+    const cw = new CloudWatchClient({ region, credentials: awsCreds });
+    await cw.send(new PutMetricAlarmCommand({
+      AlarmName: rule.cloudwatch_alarm_name,
+      AlarmDescription: `CloudHub alert: ${rule.name} - ${rule.metric} ${newComp} ${newThreshold}`,
+      MetricName: config.metricName,
+      Namespace: config.namespace,
+      Statistic: 'Average',
+      Period: newDuration * 60,
+      EvaluationPeriods: 1,
+      Threshold: newThreshold,
+      ComparisonOperator: newComp,
+      TreatMissingData: 'notBreaching',
+    }));
+    console.log(`Updated CloudWatch alarm: ${rule.cloudwatch_alarm_name}`);
+  }
+
+  const { data: updatedRule, error: updateError } = await supabaseClient
+    .from('alert_rules')
+    .update({ threshold: newThreshold, duration: newDuration, severity: newSeverity, comparison_operator: newComp })
+    .eq('id', ruleId)
+    .select()
+    .single();
+
+  if (updateError) throw updateError;
+
+  return { success: true, rule: updatedRule, message: 'Alert rule updated successfully' };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -347,6 +430,9 @@ serve(async (req) => {
         break;
       case 'toggle':
         result = await handleToggle(supabaseClient, user, ruleId, roleName);
+        break;
+      case 'update':
+        result = await handleUpdate(supabaseClient, user, body);
         break;
       default:
         throw new Error(`Unknown action: ${action}`);

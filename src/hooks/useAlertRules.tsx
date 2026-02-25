@@ -244,6 +244,48 @@ export function useAlertRules() {
     }
   };
 
+  const updateRule = async (ruleId: string, updates: {
+    threshold: string;
+    duration: string;
+    severity: string;
+    comparison_operator: string;
+  }) => {
+    try {
+      setActionLoading('update');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const response = await supabase.functions.invoke('manage-alert-rules', {
+        body: {
+          action: 'update',
+          ruleId,
+          ...updates,
+        },
+      });
+
+      if (response.error) throw response.error;
+      if (!response.data.success) throw new Error(response.data.error);
+
+      toast({
+        title: 'Alert Rule Updated',
+        description: 'The alert rule has been updated successfully.',
+      });
+
+      await fetchRules();
+      return true;
+    } catch (error: any) {
+      console.error('Error updating alert rule:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update alert rule',
+        variant: 'destructive',
+      });
+      return false;
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return {
     rules,
     loading,
@@ -255,6 +297,7 @@ export function useAlertRules() {
     fetchHistory,
     fetchThisMonthCount,
     createRule,
+    updateRule,
     deleteRule,
     toggleRule,
     acknowledgeAlert,
