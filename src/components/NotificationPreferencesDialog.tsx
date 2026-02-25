@@ -6,7 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 
 interface NotificationPreferencesDialogProps {
   open: boolean;
@@ -27,6 +27,12 @@ export function NotificationPreferencesDialog({
   const [notifyApproval, setNotifyApproval] = useState(true);
   const [notifyCompliance, setNotifyCompliance] = useState(true);
   const [notifySecurity, setNotifySecurity] = useState(true);
+  const [testingChannel, setTestingChannel] = useState<string | null>(null);
+
+  // Track which channels are configured (have encrypted values stored)
+  const [hasWebhook, setHasWebhook] = useState(false);
+  const [hasSlack, setHasSlack] = useState(false);
+  const [hasDiscord, setHasDiscord] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -50,10 +56,12 @@ export function NotificationPreferencesDialog({
       }
 
       if (data) {
-        // Webhook values are now encrypted server-side; show masked state
         setWebhookUrl(data.encrypted_webhook_url ? '••••••••' : '');
         setSlackWebhook(data.encrypted_slack_webhook ? '••••••••' : '');
         setDiscordWebhook(data.encrypted_discord_webhook ? '••••••••' : '');
+        setHasWebhook(!!data.encrypted_webhook_url);
+        setHasSlack(!!data.encrypted_slack_webhook);
+        setHasDiscord(!!data.encrypted_discord_webhook);
         setEmailEnabled(data.email_enabled ?? true);
         setNotifyApproval(data.notify_on_approval_needed ?? true);
         setNotifyCompliance(data.notify_on_compliance_issue ?? true);
@@ -63,6 +71,39 @@ export function NotificationPreferencesDialog({
       console.error('Error fetching preferences:', error);
     } finally {
       setFetching(false);
+    }
+  };
+
+  const handleTestChannel = async (channel: 'discord' | 'slack' | 'webhook' | 'email') => {
+    setTestingChannel(channel);
+    try {
+      const { data, error } = await supabase.functions.invoke('test-notification', {
+        body: { channel },
+      });
+
+      if (error) throw error;
+
+      const channelResult = data?.results?.[channel];
+      if (channelResult?.success) {
+        toast({
+          title: "Test Sent",
+          description: `Test notification sent to ${channel} successfully!`,
+        });
+      } else {
+        toast({
+          title: "Test Failed",
+          description: channelResult?.error || data?.error || `Failed to send test to ${channel}`,
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || `Failed to test ${channel}`,
+        variant: "destructive",
+      });
+    } finally {
+      setTestingChannel(null);
     }
   };
 
@@ -103,6 +144,23 @@ export function NotificationPreferencesDialog({
     }
   };
 
+  const TestButton = ({ channel, configured }: { channel: 'discord' | 'slack' | 'webhook' | 'email'; configured: boolean }) => (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={!configured || testingChannel !== null}
+      onClick={() => handleTestChannel(channel)}
+      className="ml-2 shrink-0"
+    >
+      {testingChannel === channel ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : (
+        <Send className="h-3 w-3" />
+      )}
+      <span className="ml-1">Test</span>
+    </Button>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -123,7 +181,10 @@ export function NotificationPreferencesDialog({
               <h4 className="font-medium">Webhook Integrations</h4>
               
               <div className="space-y-2">
-                <Label htmlFor="webhookUrl">Generic Webhook URL</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="webhookUrl">Generic Webhook URL</Label>
+                  <TestButton channel="webhook" configured={hasWebhook} />
+                </div>
                 <Input
                   id="webhookUrl"
                   placeholder="https://your-webhook-url.com/endpoint"
@@ -136,7 +197,10 @@ export function NotificationPreferencesDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="slackWebhook">Slack Webhook URL</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="slackWebhook">Slack Webhook URL</Label>
+                  <TestButton channel="slack" configured={hasSlack} />
+                </div>
                 <Input
                   id="slackWebhook"
                   placeholder="https://hooks.slack.com/services/..."
@@ -146,7 +210,10 @@ export function NotificationPreferencesDialog({
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="discordWebhook">Discord Webhook URL</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="discordWebhook">Discord Webhook URL</Label>
+                  <TestButton channel="discord" configured={hasDiscord} />
+                </div>
                 <Input
                   id="discordWebhook"
                   placeholder="https://discord.com/api/webhooks/..."
@@ -166,10 +233,13 @@ export function NotificationPreferencesDialog({
                     Receive notifications via email
                   </p>
                 </div>
-                <Switch
-                  checked={emailEnabled}
-                  onCheckedChange={setEmailEnabled}
-                />
+                <div className="flex items-center gap-2">
+                  <TestButton channel="email" configured={emailEnabled} />
+                  <Switch
+                    checked={emailEnabled}
+                    onCheckedChange={setEmailEnabled}
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-between">

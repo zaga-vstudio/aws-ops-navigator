@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.manage-sns-topic]
 verify_jwt = false
+
+[functions.test-notification]
+verify_jwt = false
