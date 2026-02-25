@@ -380,8 +380,19 @@ async function handleUpdate(supabaseClient: any, user: any, body: any) {
     }
   } else if (rule.cloudwatch_alarm_name) {
     // Update CloudWatch alarm in place via PutMetricAlarm
+    // CRITICAL: Fetch SNS topic ARN so PutMetricAlarm doesn't strip AlarmActions
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    const { data: prefs } = await serviceClient
+      .from('notification_preferences')
+      .select('sns_topic_arn')
+      .eq('user_id', user.id)
+      .single();
+
     const cw = new CloudWatchClient({ region, credentials: awsCreds });
-    await cw.send(new PutMetricAlarmCommand({
+    const alarmParams: any = {
       AlarmName: rule.cloudwatch_alarm_name,
       AlarmDescription: `CloudHub alert: ${rule.name} - ${rule.metric} ${newComp} ${newThreshold}`,
       MetricName: config.metricName,
@@ -392,8 +403,16 @@ async function handleUpdate(supabaseClient: any, user: any, body: any) {
       Threshold: newThreshold,
       ComparisonOperator: newComp,
       TreatMissingData: 'notBreaching',
-    }));
-    console.log(`Updated CloudWatch alarm: ${rule.cloudwatch_alarm_name}`);
+    };
+
+    // Preserve SNS topic wiring
+    if (prefs?.sns_topic_arn) {
+      alarmParams.AlarmActions = [prefs.sns_topic_arn];
+      alarmParams.OKActions = [prefs.sns_topic_arn];
+    }
+
+    await cw.send(new PutMetricAlarmCommand(alarmParams));
+    console.log(`Updated CloudWatch alarm: ${rule.cloudwatch_alarm_name} (SNS actions preserved: ${!!prefs?.sns_topic_arn})`);
   }
 
   const { data: updatedRule, error: updateError } = await supabaseClient
