@@ -88,10 +88,21 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
       throw new Error('Could not determine AWS account ID. Ensure sts:GetCallerIdentity permission is granted.');
     }
 
+    // Fetch user's SNS topic ARN for budget notifications
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    const { data: prefs } = await serviceClient
+      .from('notification_preferences')
+      .select('sns_topic_arn')
+      .eq('user_id', user.id)
+      .single();
+
     const budgetName = alarmName;
     const thresholdNum = parseFloat(threshold);
 
-    await budgetsClient.send(new CreateBudgetCommand({
+    const budgetParams: any = {
       AccountId: accountId,
       Budget: {
         BudgetName: budgetName,
@@ -99,16 +110,22 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
         TimeUnit: 'MONTHLY',
         BudgetType: 'COST',
       },
-      NotificationsWithSubscribers: [{
+    };
+
+    // Only add notification subscribers if we have a valid SNS topic
+    if (prefs?.sns_topic_arn) {
+      budgetParams.NotificationsWithSubscribers = [{
         Notification: {
           NotificationType: 'ACTUAL',
           ComparisonOperator: 'GREATER_THAN',
           Threshold: 80,
           ThresholdType: 'PERCENTAGE',
         },
-        Subscribers: [{ SubscriptionType: 'SNS', Address: 'arn:aws:sns:us-east-1:placeholder' }],
-      }],
-    }));
+        Subscribers: [{ SubscriptionType: 'SNS', Address: prefs.sns_topic_arn }],
+      }];
+    }
+
+    await budgetsClient.send(new CreateBudgetCommand(budgetParams));
 
     console.log(`Created AWS Budget: ${budgetName}`);
 
@@ -356,7 +373,18 @@ async function handleUpdate(supabaseClient: any, user: any, body: any) {
         console.warn(`Could not delete old budget: ${e.message}`);
       }
 
-      await budgetsClient.send(new CreateBudgetCommand({
+      // Fetch SNS topic for budget notifications
+      const serviceClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      const { data: prefs } = await serviceClient
+        .from('notification_preferences')
+        .select('sns_topic_arn')
+        .eq('user_id', user.id)
+        .single();
+
+      const budgetParams: any = {
         AccountId: accountId,
         Budget: {
           BudgetName: rule.cloudwatch_alarm_name,
@@ -364,16 +392,21 @@ async function handleUpdate(supabaseClient: any, user: any, body: any) {
           TimeUnit: 'MONTHLY',
           BudgetType: 'COST',
         },
-        NotificationsWithSubscribers: [{
+      };
+
+      if (prefs?.sns_topic_arn) {
+        budgetParams.NotificationsWithSubscribers = [{
           Notification: {
             NotificationType: 'ACTUAL',
             ComparisonOperator: 'GREATER_THAN',
             Threshold: 80,
             ThresholdType: 'PERCENTAGE',
           },
-          Subscribers: [{ SubscriptionType: 'SNS', Address: 'arn:aws:sns:us-east-1:placeholder' }],
-        }],
-      }));
+          Subscribers: [{ SubscriptionType: 'SNS', Address: prefs.sns_topic_arn }],
+        }];
+      }
+
+      await budgetsClient.send(new CreateBudgetCommand(budgetParams));
       console.log(`Updated AWS Budget: ${rule.cloudwatch_alarm_name}`);
     } catch (e) {
       console.warn(`Could not update budget: ${e.message}`);
