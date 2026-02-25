@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,16 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Loader2, HelpCircle, CheckCircle, AlertTriangle, Cpu, HardDrive, DollarSign, Gauge, Shield, ArrowRight } from "lucide-react";
+
+interface EditingRule {
+  id: string;
+  name: string;
+  metric: string;
+  threshold: number;
+  duration: number;
+  severity: string;
+  comparison_operator: string;
+}
 
 interface NewAlertRuleDialogProps {
   open: boolean;
@@ -20,6 +30,7 @@ interface NewAlertRuleDialogProps {
     comparison_operator: string;
   }) => Promise<boolean>;
   loading?: boolean;
+  editingRule?: EditingRule | null;
 }
 
 interface MetricDefinition {
@@ -114,15 +125,29 @@ function IAMPermissionsDiagram({ permissions }: { permissions: string[] }) {
   );
 }
 
-export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: NewAlertRuleDialogProps) {
-  const [formData, setFormData] = useState({
-    name: "",
-    metric: "",
-    threshold: "",
-    duration: "5",
-    severity: "warning",
-    comparison_operator: "GreaterThanThreshold",
+export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading, editingRule }: NewAlertRuleDialogProps) {
+  const isEditing = !!editingRule;
+
+  const getInitialFormData = () => ({
+    name: editingRule?.name || "",
+    metric: editingRule?.metric || "",
+    threshold: editingRule ? String(editingRule.threshold) : "",
+    duration: editingRule ? String(editingRule.duration) : "5",
+    severity: editingRule?.severity || "warning",
+    comparison_operator: editingRule?.comparison_operator || "GreaterThanThreshold",
   });
+
+  const [formData, setFormData] = useState(getInitialFormData);
+
+  // Re-initialize form when editingRule changes
+  const prevEditingIdRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const currentId = editingRule?.id ?? null;
+    if (prevEditingIdRef.current !== currentId) {
+      prevEditingIdRef.current = currentId;
+      setFormData(getInitialFormData());
+    }
+  }, [editingRule]);
 
   const selectedMetric = useMemo(
     () => METRICS.find(m => m.value === formData.metric),
@@ -146,7 +171,9 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
     const success = await onSubmit(formData);
     if (success) {
       onOpenChange(false);
-      setFormData({ name: "", metric: "", threshold: "", duration: "5", severity: "warning", comparison_operator: "GreaterThanThreshold" });
+      if (!isEditing) {
+        setFormData({ name: "", metric: "", threshold: "", duration: "5", severity: "warning", comparison_operator: "GreaterThanThreshold" });
+      }
     }
   };
 
@@ -154,9 +181,11 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[540px]">
         <DialogHeader>
-          <DialogTitle>Create New Alert Rule</DialogTitle>
+          <DialogTitle>{isEditing ? "Edit Alert Rule" : "Create New Alert Rule"}</DialogTitle>
           <DialogDescription>
-            Configure a CloudWatch alarm or AWS Budget to monitor your resources.
+            {isEditing
+              ? "Update the threshold, comparison, and severity for this alert rule."
+              : "Configure a CloudWatch alarm or AWS Budget to monitor your resources."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -170,14 +199,14 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 required
-                disabled={loading}
+                disabled={loading || isEditing}
               />
             </div>
 
             {/* Metric with grouped categories */}
             <div className="grid gap-2">
               <Label htmlFor="metric">Metric</Label>
-              <Select value={formData.metric} onValueChange={handleMetricChange} required disabled={loading}>
+              <Select value={formData.metric} onValueChange={handleMetricChange} required disabled={loading || isEditing}>
                 <SelectTrigger id="metric" className={selectedCategory ? `border-l-2 ${selectedCategory.itemAccent.split(' ')[1]}` : ''}>
                   <SelectValue placeholder="Select metric" />
                 </SelectTrigger>
@@ -313,7 +342,7 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading }: Ne
             </Button>
             <Button type="submit" disabled={loading || !formData.name || !formData.metric || !formData.threshold}>
               {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Create Rule
+              {isEditing ? "Save Changes" : "Create Rule"}
             </Button>
           </DialogFooter>
         </form>

@@ -21,6 +21,7 @@ import {
   Volume2,
   Mail,
   Trash2,
+  Pencil,
   Loader2,
   MessageSquare,
   Globe,
@@ -47,7 +48,7 @@ export default function Alerts() {
   const { 
     rules, loading: rulesLoading, actionLoading, 
     history, historyLoading, thisMonthCount,
-    createRule, deleteRule, toggleRule, fetchRules, fetchHistory, acknowledgeAlert 
+    createRule, updateRule, deleteRule, toggleRule, fetchRules, fetchHistory, acknowledgeAlert 
   } = useAlertRules();
   const { channels, loading: prefsLoading, saving, updateChannel, toggleChannel } = useNotificationPreferences();
   const { 
@@ -62,6 +63,10 @@ export default function Alerts() {
   } = useDriftDetection();
   
   const [newRuleDialogOpen, setNewRuleDialogOpen] = useState(false);
+  const [editingRule, setEditingRule] = useState<{
+    id: string; name: string; metric: string; threshold: number;
+    duration: number; severity: string; comparison_operator: string;
+  } | null>(null);
   const [channelDialogOpen, setChannelDialogOpen] = useState(false);
   const [selectedChannel, setSelectedChannel] = useState<NotificationChannel | null>(null);
   const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(() => {
@@ -667,20 +672,43 @@ export default function Alerts() {
                                     <span className="text-muted-foreground text-sm">AWS</span>
                                   )}
                                 </TableCell>
-                                <TableCell>
+                                 <TableCell>
                                   {rule.isUserCreated && (
-                                    <Button 
-                                      variant="ghost" 
-                                      size="sm"
-                                      onClick={() => deleteRule(rule.id)}
-                                      disabled={actionLoading === rule.id}
-                                    >
-                                      {actionLoading === rule.id ? (
-                                        <Loader2 className="h-4 w-4 animate-spin" />
-                                      ) : (
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                      )}
-                                    </Button>
+                                    <div className="flex items-center gap-1">
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm"
+                                        onClick={() => {
+                                          setEditingRule({
+                                            id: rule.id,
+                                            name: rule.name,
+                                            metric: rule.metric,
+                                            threshold: rule.threshold,
+                                            duration: rule.duration,
+                                            severity: rule.severity,
+                                            comparison_operator: rule.comparison_operator,
+                                          });
+                                          setNewRuleDialogOpen(true);
+                                        }}
+                                        disabled={actionLoading === rule.id}
+                                        title="Edit rule"
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm"
+                                        onClick={() => deleteRule(rule.id)}
+                                        disabled={actionLoading === rule.id}
+                                        title="Delete rule"
+                                      >
+                                        {actionLoading === rule.id ? (
+                                          <Loader2 className="h-4 w-4 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="h-4 w-4 text-destructive" />
+                                        )}
+                                      </Button>
+                                    </div>
                                   )}
                                 </TableCell>
                               </TableRow>
@@ -816,9 +844,23 @@ export default function Alerts() {
       </div>
       <NewAlertRuleDialog 
         open={newRuleDialogOpen} 
-        onOpenChange={setNewRuleDialogOpen}
-        onSubmit={createRule}
-        loading={actionLoading === 'create'}
+        onOpenChange={(open) => {
+          setNewRuleDialogOpen(open);
+          if (!open) setEditingRule(null);
+        }}
+        onSubmit={async (data) => {
+          if (editingRule) {
+            return await updateRule(editingRule.id, {
+              threshold: data.threshold,
+              duration: data.duration,
+              severity: data.severity,
+              comparison_operator: data.comparison_operator,
+            });
+          }
+          return await createRule(data);
+        }}
+        loading={actionLoading === 'create' || actionLoading === 'update'}
+        editingRule={editingRule}
       />
       <NotificationChannelDialog
         open={channelDialogOpen}
