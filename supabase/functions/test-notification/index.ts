@@ -1,11 +1,117 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { dispatchNotification } from "../_shared/dispatch-notification.ts";
+import {
+  SNSClient,
+  ListSubscriptionsByTopicCommand,
+  SubscribeCommand,
+} from "npm:@aws-sdk/client-sns";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
+
+async function healSnsSubscription(userId: string) {
+  try {
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // Get user's SNS topic ARN
+    const { data: prefs } = await serviceClient
+      .from('notification_preferences')
+      .select('sns_topic_arn')
+      .eq('user_id', userId)
+      .single();
+
+    if (!prefs?.sns_topic_arn) {
+      console.log('No SNS topic ARN configured, skipping health check');
+      return;
+    }
+
+    console.log(`Checking SNS subscriptions for topic: ${prefs.sns_topic_arn}`);
+
+    // Get AWS credentials
+    const { data: creds } = await serviceClient.rpc('get_user_aws_credentials', {
+      user_id_param: userId,
+    });
+
+    if (!creds || creds.length === 0) {
+      console.log('No AWS credentials found, skipping SNS health check');
+      return;
+    }
+
+    const { access_key_id, secret_access_key, region } = creds[0];
+
+    // Extract region from topic ARN (arn:aws:sns:REGION:ACCOUNT:NAME)
+    const arnParts = prefs.sns_topic_arn.split(':');
+    const topicRegion = arnParts[3] || region || 'us-east-1';
+
+    const snsClient = new SNSClient({
+      region: topicRegion,
+      credentials: {
+        accessKeyId: access_key_id,
+        secretAccessKey: secret_access_key,
+      },
+    });
+
+    // List subscriptions for this topic
+    const listResult = await snsClient.send(
+      new ListSubscriptionsByTopicCommand({ TopicArn: prefs.sns_topic_arn })
+    );
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const webhookEndpoint = `${supabaseUrl}/functions/v1/sns-webhook`;
+
+    console.log(`Webhook endpoint: ${webhookEndpoint}`);
+    console.log(`Found ${listResult.Subscriptions?.length || 0} subscriptions`);
+
+    let hasPending = false;
+    let hasConfirmed = false;
+
+    for (const sub of listResult.Subscriptions || []) {
+      if (sub.Endpoint === webhookEndpoint) {
+        if (sub.SubscriptionArn === 'PendingConfirmation') {
+          hasPending = true;
+          console.log('Found PendingConfirmation subscription for sns-webhook');
+        } else {
+          hasConfirmed = true;
+          console.log(`Found confirmed subscription: ${sub.SubscriptionArn}`);
+        }
+      }
+    }
+
+    if (hasPending && !hasConfirmed) {
+      console.log('Re-subscribing sns-webhook endpoint to heal pending subscription...');
+      const subscribeResult = await snsClient.send(
+        new SubscribeCommand({
+          TopicArn: prefs.sns_topic_arn,
+          Protocol: 'https',
+          Endpoint: webhookEndpoint,
+          ReturnSubscriptionArn: true,
+        })
+      );
+      console.log(`Re-subscribe result: ${subscribeResult.SubscriptionArn}`);
+    } else if (!hasPending && !hasConfirmed) {
+      console.log('No subscription found for sns-webhook, creating new one...');
+      const subscribeResult = await snsClient.send(
+        new SubscribeCommand({
+          TopicArn: prefs.sns_topic_arn,
+          Protocol: 'https',
+          Endpoint: webhookEndpoint,
+          ReturnSubscriptionArn: true,
+        })
+      );
+      console.log(`New subscribe result: ${subscribeResult.SubscriptionArn}`);
+    } else {
+      console.log('SNS subscription is healthy (confirmed)');
+    }
+  } catch (error) {
+    console.error('SNS health check error (non-fatal):', error.message);
+  }
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -34,9 +140,12 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const channel = body.channel || 'all'; // 'discord' | 'slack' | 'webhook' | 'email' | 'all'
+    const channel = body.channel || 'all';
 
     console.log(`Test notification requested by ${user.id} for channel: ${channel}`);
+
+    // Heal SNS subscription as a side effect
+    await healSnsSubscription(user.id);
 
     const testAlert = {
       alertName: '🧪 Test Notification',
@@ -48,7 +157,6 @@ serve(async (req) => {
 
     const results = await dispatchNotification(user.id, user.email || null, testAlert);
 
-    // If a specific channel was requested, filter results
     if (channel !== 'all') {
       const channelResult = results[channel];
       if (!channelResult) {

@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Mail, Smartphone, Volume2, Settings, MessageSquare } from "lucide-react";
+import { Loader2, Mail, Smartphone, Volume2, Settings, MessageSquare, Send } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface NotificationChannelDialogProps {
   open: boolean;
@@ -29,6 +31,8 @@ export function NotificationChannelDialog({
 }: NotificationChannelDialogProps) {
   const [enabled, setEnabled] = useState(false);
   const [configValue, setConfigValue] = useState("");
+  const [testing, setTesting] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (channel) {
@@ -43,6 +47,26 @@ export function NotificationChannelDialog({
     const success = await onSave(channel?.type || "", { enabled, value: configValue });
     if (success) {
       onOpenChange(false);
+    }
+  };
+
+  const handleTest = async () => {
+    if (!channel) return;
+    setTesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('test-notification', {
+        body: { channel: channel.type },
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast({ title: 'Test Sent', description: `Test notification sent to ${channel.name}` });
+      } else {
+        toast({ title: 'Test Failed', description: data?.error || data?.message || 'Could not send test notification', variant: 'destructive' });
+      }
+    } catch (err: any) {
+      toast({ title: 'Test Failed', description: err.message || 'Failed to send test notification', variant: 'destructive' });
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -141,7 +165,17 @@ export function NotificationChannelDialog({
             )}
           </div>
           
-          <DialogFooter>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button 
+              type="button" 
+              variant="secondary" 
+              onClick={handleTest} 
+              disabled={loading || testing || !channel?.enabled}
+              className="sm:mr-auto"
+            >
+              {testing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              Send Test
+            </Button>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel
             </Button>
