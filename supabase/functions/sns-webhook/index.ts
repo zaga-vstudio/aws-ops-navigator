@@ -65,6 +65,26 @@ function extractSPKIFromCert(certDer: Uint8Array): Uint8Array {
   throw new Error('Could not find SubjectPublicKeyInfo in certificate');
 }
 
+// --- SNS String-to-Sign Builder ---
+
+function buildStringToSign(message: Record<string, any>, messageType: string): string {
+  const fields: string[] = [];
+  if (messageType === 'Notification') {
+    fields.push('Message', 'MessageId');
+    if (message.Subject) fields.push('Subject');
+    fields.push('Timestamp', 'TopicArn', 'Type');
+  } else {
+    fields.push('Message', 'MessageId', 'SubscribeURL', 'Timestamp', 'Token', 'TopicArn', 'Type');
+  }
+  let str = '';
+  for (const field of fields) {
+    if (message[field] !== undefined) {
+      str += field + '\n' + message[field] + '\n';
+    }
+  }
+  return str;
+}
+
 // --- SNS Signature Validation ---
 
 function validateCertUrl(url: string): boolean {
