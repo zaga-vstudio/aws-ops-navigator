@@ -1,63 +1,42 @@
 
 
-## Problem: SNS Signature Verification Fails
+## Problem
 
-The `sns-webhook` logs show the exact error:
+The `sns-webhook` edge function crashes with `ReferenceError: buildStringToSign is not defined` (line 114). The recent ASN.1/SPKI fix was deployed but the `buildStringToSign` function — which constructs the canonical string that AWS SNS signs — was never added to the file. Every incoming SNS notification (including your CPU > 1% alarm) hits this error and returns 403.
 
-```
-ASN.1 error: unexpected ASN.1 DER tag: expected OBJECT IDENTIFIER, got CONTEXT-SPECIFIC [0] (constructed)
-```
+## Fix
 
-The code tries to import a full **X.509 certificate** as an **SPKI key** — these are different formats. The PEM from AWS is a certificate (`-----BEGIN CERTIFICATE-----`), not a bare public key (`-----BEGIN PUBLIC KEY-----`). Deno's `crypto.subtle.importKey('spki', ...)` only accepts SPKI-encoded public keys, not full X.509 certificates.
+Add the missing `buildStringToSign` function to `supabase/functions/sns-webhook/index.ts`. This function builds the canonical string-to-sign per the [AWS SNS signature spec](https://docs.aws.amazon.com/sns/latest/dg/sns-verify-signature-of-message.html):
 
-The test notification works because it calls `dispatchNotification` directly (bypasses SNS entirely). Real alerts go through CloudWatch → SNS → `sns-webhook`, which hits this broken signature check and returns 403.
+- For `Notification` messages: `Message`, `MessageId`, `Subject` (if present), `Timestamp`, `TopicArn`, `Type`
+- For `SubscriptionConfirmation` / `UnsubscribeConfirmation`: `Message`, `MessageId`, `SubscribeURL`, `Timestamp`, `Token`, `TopicArn`, `Type`
 
-## Fix: Extract SPKI Public Key from X.509 Certificate
+Each field is added as `FieldName\nFieldValue\n`.
 
-The X.509 DER certificate contains the SubjectPublicKeyInfo (SPKI) at a known ASN.1 offset. We need to parse the certificate to extract just the public key portion before importing it.
+### Changes
 
-**In `supabase/functions/sns-webhook/index.ts`**, replace the `verifySnsSignature` function's key import logic:
+**`supabase/functions/sns-webhook/index.ts`** — Insert the `buildStringToSign` function before `verifySnsSignature` (around line 80):
 
-1. Parse the PEM certificate body to DER bytes (existing code, works fine)
-2. Instead of passing the full certificate DER to `importKey('spki', ...)`, walk the ASN.1 structure to find the SubjectPublicKeyInfo sequence (the 7th element of the TBSCertificate SEQUENCE)
-3. Import only that extracted SPKI portion
-
-The ASN.1 extraction approach:
-- A SEQUENCE tag (0x30) wraps the certificate
-- Inside is TBSCertificate (another SEQUENCE)
-- TBSCertificate fields: version, serialNumber, signature, issuer, validity, subject, **subjectPublicKeyInfo** (index 6)
-- Extract that subfield's raw bytes and pass to `importKey('spki', ...)`
-
-This is a well-known pattern for Deno/Web Crypto which lacks native X.509 parsing.
-
-## Changes
-
-**`supabase/functions/sns-webhook/index.ts`**:
-- Add an `extractSPKIFromCert(certDer)` helper that parses ASN.1 to find SubjectPublicKeyInfo
-- Update `verifySnsSignature` to call this helper before `importKey`
-- Redeploy the function
-
-No other files need changes. The rest of the pipeline (subscription confirmation handler, dispatch logic) is correct.
-
-## Technical Detail: ASN.1 Parser
-
-```text
-X.509 Certificate structure:
-  SEQUENCE {
-    TBSCertificate SEQUENCE {
-      [0] version (CONTEXT-SPECIFIC, optional)
-      INTEGER serialNumber
-      SEQUENCE signatureAlgorithm
-      SEQUENCE issuer
-      SEQUENCE validity
-      SEQUENCE subject
-      SEQUENCE subjectPublicKeyInfo  ← extract this
-      ...
-    }
-    SEQUENCE signatureAlgorithm
-    BIT STRING signature
+```typescript
+function buildStringToSign(message: Record<string, any>, messageType: string): string {
+  const fields: string[] = [];
+  if (messageType === 'Notification') {
+    fields.push('Message', 'MessageId');
+    if (message.Subject) fields.push('Subject');
+    fields.push('Timestamp', 'TopicArn', 'Type');
+  } else {
+    // SubscriptionConfirmation or UnsubscribeConfirmation
+    fields.push('Message', 'MessageId', 'SubscribeURL', 'Timestamp', 'Token', 'TopicArn', 'Type');
   }
+  let str = '';
+  for (const field of fields) {
+    if (message[field] !== undefined) {
+      str += field + '\n' + message[field] + '\n';
+    }
+  }
+  return str;
+}
 ```
 
-We parse just enough ASN.1 to skip to field index 6 (accounting for the optional version tag [0]), extract those bytes, and pass them to `crypto.subtle.importKey('spki', ...)`.
+Then redeploy the `sns-webhook` function.
 
