@@ -861,6 +861,10 @@ export default function Alerts() {
         }}
         loading={actionLoading === 'create' || actionLoading === 'update'}
         editingRule={editingRule}
+        resources={[
+          ...(data?.ec2Instances || []).map(i => ({ id: i.id, name: i.name, type: 'ec2' as const })),
+          ...(data?.rdsDatabases || []).map(d => ({ id: d.id, name: d.name, type: 'rds' as const })),
+        ]}
       />
       <NotificationChannelDialog
         open={channelDialogOpen}

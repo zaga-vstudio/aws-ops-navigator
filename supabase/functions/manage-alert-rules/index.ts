@@ -62,8 +62,19 @@ async function getResolvedAWSCreds(supabaseClient: any, user: any, roleName?: st
   return { awsCreds, region: creds.region || 'us-east-1' };
 }
 
+function getDimensions(namespace: string, resourceId?: string): { Name: string; Value: string }[] | undefined {
+  if (!resourceId) return undefined;
+  switch (namespace) {
+    case 'AWS/EC2': return [{ Name: 'InstanceId', Value: resourceId }];
+    case 'AWS/RDS': return [{ Name: 'DBInstanceIdentifier', Value: resourceId }];
+    case 'AWS/EBS': return [{ Name: 'VolumeId', Value: resourceId }];
+    case 'CWAgent': return [{ Name: 'InstanceId', Value: resourceId }];
+    default: return undefined;
+  }
+}
+
 async function handleCreate(supabaseClient: any, user: any, body: any) {
-  const { name, metric, threshold, duration, severity, comparison_operator, roleName } = body;
+  const { name, metric, threshold, duration, severity, comparison_operator, roleName, resourceId } = body;
   const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
   const config = metricMapping[metric] || { namespace: 'AWS/EC2', metricName: metric, type: 'cloudwatch' };
   const comp = comparison_operator || 'GreaterThanThreshold';
@@ -220,6 +231,7 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
     credentials: awsCreds,
   });
 
+  const dimensions = getDimensions(config.namespace, resourceId);
   const alarmParams: any = {
     AlarmName: alarmName,
     AlarmDescription: `CloudHub alert: ${name} - ${metric} ${comp} ${threshold}`,
@@ -232,6 +244,10 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
     ComparisonOperator: comp,
     TreatMissingData: 'notBreaching',
   };
+
+  if (dimensions) {
+    alarmParams.Dimensions = dimensions;
+  }
 
   // Wire SNS topic for alarm and OK actions
   if (topicArn) {
@@ -250,6 +266,7 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
       duration: duration || 5, severity: severity || 'warning',
       enabled: true, cloudwatch_alarm_name: alarmName,
       comparison_operator: comp,
+      resource_id: resourceId || null,
     })
     .select().single();
 
@@ -343,7 +360,7 @@ async function handleToggle(supabaseClient: any, user: any, ruleId: string, role
 }
 
 async function handleUpdate(supabaseClient: any, user: any, body: any) {
-  const { ruleId, threshold, duration, severity, comparison_operator, roleName } = body;
+  const { ruleId, threshold, duration, severity, comparison_operator, roleName, resourceId } = body;
   if (!ruleId) throw new Error('ruleId is required');
 
   const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
@@ -425,6 +442,8 @@ async function handleUpdate(supabaseClient: any, user: any, body: any) {
       .single();
 
     const cw = new CloudWatchClient({ region, credentials: awsCreds });
+    const effectiveResourceId = resourceId || rule.resource_id;
+    const updateDimensions = getDimensions(config.namespace, effectiveResourceId);
     const alarmParams: any = {
       AlarmName: rule.cloudwatch_alarm_name,
       AlarmDescription: `CloudHub alert: ${rule.name} - ${rule.metric} ${newComp} ${newThreshold}`,
@@ -437,6 +456,10 @@ async function handleUpdate(supabaseClient: any, user: any, body: any) {
       ComparisonOperator: newComp,
       TreatMissingData: 'notBreaching',
     };
+
+    if (updateDimensions) {
+      alarmParams.Dimensions = updateDimensions;
+    }
 
     // Preserve SNS topic wiring
     if (prefs?.sns_topic_arn) {

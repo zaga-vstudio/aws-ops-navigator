@@ -140,6 +140,7 @@ export function useAlertRules() {
     duration: string;
     severity: string;
     comparison_operator: string;
+    resourceId?: string;
   }) => {
     try {
       setActionLoading('create');
