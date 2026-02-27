@@ -4,11 +4,9 @@ import {
   Bell, 
   Settings, 
   User, 
-  Search,
   Plus,
   Cloud
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { LaunchResourceDropdown } from "@/components/LaunchResourceDropdown";
 import { NotificationsDropdown } from "@/components/NotificationsDropdown";
 import { UserDropdown } from "@/components/UserDropdown";
@@ -23,15 +21,6 @@ export const Header = () => {
       <div className="flex items-center gap-3">
       </div>
 
-      <div className="flex-1 flex items-center justify-center max-w-md mx-4 lg:mx-8">
-        <div className="relative w-full">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search resources, logs, metrics..."
-            className="pl-10 bg-muted/50 border-border/50"
-          />
-        </div>
-      </div>
 
       <div className="flex items-center gap-2">
         <RoleSwitcher />
