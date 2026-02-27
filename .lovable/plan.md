@@ -1,59 +1,63 @@
 
 
-## Plan: Add Test Button to Alerts Page + Fix SNS Subscription for Real Alerts
+## Problem: SNS Signature Verification Fails
 
-### Two Issues
+The `sns-webhook` logs show the exact error:
 
-1. **Test button is on the wrong page** — it's in `NotificationPreferencesDialog` (Security page), not in `NotificationChannelDialog` (Alerts page).
-
-2. **Real CloudWatch alerts still don't reach Discord** — The `sns-webhook` edge function has **zero logs ever**. This means the SNS subscription from AWS to the webhook endpoint was never confirmed. When `manage-sns-topic` called `SubscribeCommand`, AWS sent a `SubscriptionConfirmation` POST to the webhook. If the function wasn't deployed at that moment, the confirmation was lost and the subscription remains in `PendingConfirmation` state forever. No amount of CloudWatch alarm firing will trigger a notification through a pending subscription.
-
-### Changes
-
-**1. Add "Send Test" button to `NotificationChannelDialog.tsx`**
-
-Add a test button in the dialog footer that calls `supabase.functions.invoke('test-notification', { body: { channel: channel.type } })`. Shows loading state and toast with success/failure. Import `Send` from lucide-react and `supabase` client.
-
-**2. Add SNS re-subscription logic to `test-notification/index.ts`**
-
-Before dispatching the test notification, the function will:
-- Fetch the user's `sns_topic_arn` from `notification_preferences`
-- If a topic ARN exists, use the SNS SDK to list subscriptions for that topic (`ListSubscriptionsByTopicCommand`)
-- Check if any subscription with the `sns-webhook` endpoint is in `PendingConfirmation` state
-- If so, re-subscribe by calling `SubscribeCommand` again — AWS will re-send the `SubscriptionConfirmation` POST to the (now deployed) `sns-webhook` function, which will confirm it
-- Log the subscription status for debugging
-
-This approach reuses the existing `test-notification` function so clicking "Send Test" on any channel also heals the SNS subscription as a side effect.
-
-**3. Re-deploy `sns-webhook` and `test-notification`**
-
-Both functions must be deployed so that:
-- `test-notification` can trigger the re-subscription
-- `sns-webhook` can receive and confirm the `SubscriptionConfirmation` POST from AWS
-
-### Technical Details
-
-The SNS re-subscription flow in `test-notification`:
-
-```text
-test-notification called
-  → fetch notification_preferences.sns_topic_arn
-  → if topic ARN exists:
-      → get AWS credentials via resolve-credentials
-      → ListSubscriptionsByTopic(topicArn)
-      → for each subscription where Endpoint matches sns-webhook URL:
-          → if SubscriptionArn === 'PendingConfirmation':
-              → Subscribe(topicArn, 'https', webhookEndpoint)
-              → log "Re-subscribed SNS endpoint"
-  → proceed with dispatchNotification (existing logic)
+```
+ASN.1 error: unexpected ASN.1 DER tag: expected OBJECT IDENTIFIER, got CONTEXT-SPECIFIC [0] (constructed)
 ```
 
-The `sns-webhook` function already handles `SubscriptionConfirmation` messages correctly (lines 139-153) — it fetches the `SubscribeURL` to confirm. So once the re-subscription triggers a new confirmation POST, it will be confirmed automatically.
+The code tries to import a full **X.509 certificate** as an **SPKI key** — these are different formats. The PEM from AWS is a certificate (`-----BEGIN CERTIFICATE-----`), not a bare public key (`-----BEGIN PUBLIC KEY-----`). Deno's `crypto.subtle.importKey('spki', ...)` only accepts SPKI-encoded public keys, not full X.509 certificates.
 
-### Files Modified
+The test notification works because it calls `dispatchNotification` directly (bypasses SNS entirely). Real alerts go through CloudWatch → SNS → `sns-webhook`, which hits this broken signature check and returns 403.
 
-| File | Change |
-|---|---|
-| `src/components/NotificationChannelDialog.tsx` | Add "Send Test" button with loading/toast |
-| `supabase/functions/test-notification/index.ts` | Add SNS subscription health check before dispatching |
+## Fix: Extract SPKI Public Key from X.509 Certificate
+
+The X.509 DER certificate contains the SubjectPublicKeyInfo (SPKI) at a known ASN.1 offset. We need to parse the certificate to extract just the public key portion before importing it.
+
+**In `supabase/functions/sns-webhook/index.ts`**, replace the `verifySnsSignature` function's key import logic:
+
+1. Parse the PEM certificate body to DER bytes (existing code, works fine)
+2. Instead of passing the full certificate DER to `importKey('spki', ...)`, walk the ASN.1 structure to find the SubjectPublicKeyInfo sequence (the 7th element of the TBSCertificate SEQUENCE)
+3. Import only that extracted SPKI portion
+
+The ASN.1 extraction approach:
+- A SEQUENCE tag (0x30) wraps the certificate
+- Inside is TBSCertificate (another SEQUENCE)
+- TBSCertificate fields: version, serialNumber, signature, issuer, validity, subject, **subjectPublicKeyInfo** (index 6)
+- Extract that subfield's raw bytes and pass to `importKey('spki', ...)`
+
+This is a well-known pattern for Deno/Web Crypto which lacks native X.509 parsing.
+
+## Changes
+
+**`supabase/functions/sns-webhook/index.ts`**:
+- Add an `extractSPKIFromCert(certDer)` helper that parses ASN.1 to find SubjectPublicKeyInfo
+- Update `verifySnsSignature` to call this helper before `importKey`
+- Redeploy the function
+
+No other files need changes. The rest of the pipeline (subscription confirmation handler, dispatch logic) is correct.
+
+## Technical Detail: ASN.1 Parser
+
+```text
+X.509 Certificate structure:
+  SEQUENCE {
+    TBSCertificate SEQUENCE {
+      [0] version (CONTEXT-SPECIFIC, optional)
+      INTEGER serialNumber
+      SEQUENCE signatureAlgorithm
+      SEQUENCE issuer
+      SEQUENCE validity
+      SEQUENCE subject
+      SEQUENCE subjectPublicKeyInfo  ← extract this
+      ...
+    }
+    SEQUENCE signatureAlgorithm
+    BIT STRING signature
+  }
+```
+
+We parse just enough ASN.1 to skip to field index 6 (accounting for the optional version tag [0]), extract those bytes, and pass them to `crypto.subtle.importKey('spki', ...)`.
 
