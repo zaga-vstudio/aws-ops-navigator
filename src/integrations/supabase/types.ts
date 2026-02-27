@@ -81,6 +81,7 @@ export type Database = {
           id: string
           metric: string
           name: string
+          resource_id: string | null
           severity: Database["public"]["Enums"]["severity_level"]
           threshold: number
           updated_at: string
@@ -96,6 +97,7 @@ export type Database = {
           id?: string
           metric: string
           name: string
+          resource_id?: string | null
           severity?: Database["public"]["Enums"]["severity_level"]
           threshold: number
           updated_at?: string
@@ -111,6 +113,7 @@ export type Database = {
           id?: string
           metric?: string
           name?: string
+          resource_id?: string | null
           severity?: Database["public"]["Enums"]["severity_level"]
           threshold?: number
           updated_at?: string

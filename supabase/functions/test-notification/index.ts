@@ -12,7 +12,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
-async function healSnsSubscription(userId: string) {
+async function healSnsSubscription(userId: string, userClient: any) {
   try {
     const serviceClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -34,7 +34,7 @@ async function healSnsSubscription(userId: string) {
     console.log(`Checking SNS subscriptions for topic: ${prefs.sns_topic_arn}`);
 
     // Get AWS credentials
-    const { data: creds } = await serviceClient.rpc('get_user_aws_credentials', {
+    const { data: creds } = await userClient.rpc('get_user_aws_credentials', {
       user_id_param: userId,
     });
 
@@ -145,7 +145,7 @@ serve(async (req) => {
     console.log(`Test notification requested by ${user.id} for channel: ${channel}`);
 
     // Heal SNS subscription as a side effect
-    await healSnsSubscription(user.id);
+    await healSnsSubscription(user.id, supabaseClient);
 
     const testAlert = {
       alertName: '🧪 Test Notification',

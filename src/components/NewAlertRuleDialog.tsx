@@ -16,6 +16,13 @@ interface EditingRule {
   duration: number;
   severity: string;
   comparison_operator: string;
+  resource_id?: string | null;
+}
+
+interface ResourceOption {
+  id: string;
+  name: string;
+  type: 'ec2' | 'rds' | 'ebs';
 }
 
 interface NewAlertRuleDialogProps {
@@ -28,9 +35,11 @@ interface NewAlertRuleDialogProps {
     duration: string;
     severity: string;
     comparison_operator: string;
+    resourceId?: string;
   }) => Promise<boolean>;
   loading?: boolean;
   editingRule?: EditingRule | null;
+  resources?: ResourceOption[];
 }
 
 interface MetricDefinition {
@@ -125,7 +134,7 @@ function IAMPermissionsDiagram({ permissions }: { permissions: string[] }) {
   );
 }
 
-export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading, editingRule }: NewAlertRuleDialogProps) {
+export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading, editingRule, resources = [] }: NewAlertRuleDialogProps) {
   const isEditing = !!editingRule;
 
   const getInitialFormData = () => ({
@@ -135,6 +144,7 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading, edit
     duration: editingRule ? String(editingRule.duration) : "5",
     severity: editingRule?.severity || "warning",
     comparison_operator: editingRule?.comparison_operator || "GreaterThanThreshold",
+    resourceId: editingRule?.resource_id || "",
   });
 
   const [formData, setFormData] = useState(getInitialFormData);
@@ -157,22 +167,41 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading, edit
   const selectedCategory = selectedMetric ? METRIC_CATEGORIES[selectedMetric.category] : null;
   const isBudgetMetric = selectedMetric?.category === "cost";
 
+  // Determine which resource type is needed for the selected metric
+  const requiredResourceType = useMemo(() => {
+    if (!selectedMetric) return null;
+    const { value } = selectedMetric;
+    if (['CPUUtilization', 'NetworkIn', 'NetworkOut', 'MemoryUtilization', 'DiskUtilization'].includes(value)) return 'ec2';
+    if (['DatabaseConnections', 'ReadLatency', 'WriteLatency', 'FreeStorageSpace'].includes(value)) return 'rds';
+    if (['VolumeReadOps', 'VolumeWriteOps'].includes(value)) return 'ebs';
+    return null;
+  }, [selectedMetric]);
+
+  const filteredResources = useMemo(() => {
+    if (!requiredResourceType) return [];
+    return resources.filter(r => r.type === requiredResourceType);
+  }, [requiredResourceType, resources]);
+
   const handleMetricChange = (value: string) => {
     const metric = METRICS.find(m => m.value === value);
     setFormData({
       ...formData,
       metric: value,
       comparison_operator: metric?.defaultComparison || "GreaterThanThreshold",
+      resourceId: "",
     });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = await onSubmit(formData);
+    const success = await onSubmit({
+      ...formData,
+      resourceId: formData.resourceId || undefined,
+    });
     if (success) {
       onOpenChange(false);
       if (!isEditing) {
-        setFormData({ name: "", metric: "", threshold: "", duration: "5", severity: "warning", comparison_operator: "GreaterThanThreshold" });
+        setFormData({ name: "", metric: "", threshold: "", duration: "5", severity: "warning", comparison_operator: "GreaterThanThreshold", resourceId: "" });
       }
     }
   };
@@ -247,7 +276,36 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading, edit
               )}
             </div>
 
-            {/* Threshold with dynamic label */}
+            {/* Resource Selector - shown for non-budget CloudWatch metrics */}
+            {requiredResourceType && !isEditing && (
+              <div className="grid gap-2">
+                <Label htmlFor="resourceId">
+                  {requiredResourceType === 'ec2' ? 'EC2 Instance' : requiredResourceType === 'rds' ? 'RDS Database' : 'EBS Volume'}
+                </Label>
+                <Select
+                  value={formData.resourceId}
+                  onValueChange={(v) => setFormData({ ...formData, resourceId: v })}
+                  required
+                  disabled={loading}
+                >
+                  <SelectTrigger id="resourceId">
+                    <SelectValue placeholder={`Select ${requiredResourceType.toUpperCase()} resource`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredResources.length === 0 ? (
+                      <SelectItem value="_none" disabled>No {requiredResourceType.toUpperCase()} resources found</SelectItem>
+                    ) : (
+                      filteredResources.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name ? `${r.name} (${r.id})` : r.id}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="grid gap-2">
               <Label htmlFor="threshold">{selectedMetric?.unitLabel || "Threshold"}</Label>
               <Input
@@ -340,7 +398,7 @@ export function NewAlertRuleDialog({ open, onOpenChange, onSubmit, loading, edit
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || !formData.name || !formData.metric || !formData.threshold}>
+            <Button type="submit" disabled={loading || !formData.name || !formData.metric || !formData.threshold || (requiredResourceType && !isEditing && !formData.resourceId)}>
               {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {isEditing ? "Save Changes" : "Create Rule"}
             </Button>
