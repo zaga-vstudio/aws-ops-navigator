@@ -751,12 +751,13 @@ async function getComplianceChecks(config: AWSConfig): Promise<ComplianceCheck[]
   }
 }
 
-async function getCachedCostData(supabase: any, userId: string, ignoreExpiration: boolean = false): Promise<CostDataWithCache | null> {
+async function getCachedCostData(supabase: any, userId: string, ignoreExpiration: boolean = false, region: string = 'us-east-1'): Promise<CostDataWithCache | null> {
   try {
     const { data, error } = await supabase
       .from('cost_data_cache')
       .select('*')
       .eq('user_id', userId)
+      .eq('aws_region', region)
       .single();
 
     if (error || !data) {
@@ -801,7 +802,8 @@ async function getCachedCostData(supabase: any, userId: string, ignoreExpiration
 async function saveCostDataToCache(
   supabase: any, 
   userId: string, 
-  costData: { serviceBreakdown: ServiceCost[]; anomalies: CostAnomaly[]; historicalCosts: HistoricalCostPoint[]; totalCost: number; forecastTotal?: number; forecastPeriodStart?: string; forecastPeriodEnd?: string }
+  costData: { serviceBreakdown: ServiceCost[]; anomalies: CostAnomaly[]; historicalCosts: HistoricalCostPoint[]; totalCost: number; forecastTotal?: number; forecastPeriodStart?: string; forecastPeriodEnd?: string },
+  region: string = 'us-east-1'
 ): Promise<void> {
   try {
     const now = new Date();
@@ -810,6 +812,7 @@ async function saveCostDataToCache(
 
     const upsertData: Record<string, any> = {
       user_id: userId,
+      aws_region: region,
       service_breakdown: costData.serviceBreakdown,
       anomalies: costData.anomalies,
       historical_costs: costData.historicalCosts,
@@ -827,7 +830,7 @@ async function saveCostDataToCache(
 
     const { error } = await supabase
       .from('cost_data_cache')
-      .upsert(upsertData, { onConflict: 'user_id' });
+      .upsert(upsertData, { onConflict: 'user_id, aws_region' });
 
     if (error) {
       console.error('Error saving cost data to cache:', error);
@@ -932,7 +935,8 @@ async function getCostForecast(config: AWSConfig): Promise<{ forecastTotal: numb
 }
 
 async function getCostData(config: AWSConfig, supabase: any, userId: string, forceRefresh: boolean = false): Promise<CostDataWithCache> {
-  console.log(`Fetching AWS cost data (forceRefresh: ${forceRefresh})`);
+  const region = config.aws_region || 'us-east-1';
+  console.log(`Fetching AWS cost data (forceRefresh: ${forceRefresh}, region: ${region})`);
   
   const { data: prefs } = await supabase
     .from('notification_preferences')
@@ -945,7 +949,7 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
   if (!costExplorerEnabled) {
     console.log('Cost Explorer is disabled - checking for historical cached data');
     
-    const historicalData = await getCachedCostData(supabase, userId, true);
+    const historicalData = await getCachedCostData(supabase, userId, true, region);
     
     if (historicalData) {
       console.log('Returning historical cached cost data');
@@ -969,7 +973,7 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
   }
   
   if (!forceRefresh) {
-    const cachedData = await getCachedCostData(supabase, userId);
+    const cachedData = await getCachedCostData(supabase, userId, false, region);
     if (cachedData) {
       return cachedData;
     }
@@ -1086,7 +1090,7 @@ async function getCostData(config: AWSConfig, supabase: any, userId: string, for
       forecastTotal: forecastResult?.forecastTotal,
       forecastPeriodStart: forecastResult?.forecastPeriodStart,
       forecastPeriodEnd: forecastResult?.forecastPeriodEnd,
-    });
+    }, region);
 
     return {
       serviceBreakdown,
