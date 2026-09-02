@@ -19,7 +19,8 @@
 ## Qué voy a implementar en la Fase 1
 
 ### Base de datos (una migración)
-- `clients`: `id`, `owner_id` (auth.users), `name`, `contact_email`, `aws_account_id`, `role_arn`, `external_id` (uuid, default gen_random_uuid()), `default_region`, `policy_scope` ('security_audit' | 'view_only'), `connection_status` ('pending' | 'connected' | 'failed'), `last_verified_at`, `notes`, timestamps. RLS: solo el `owner_id` ve/edita sus clientes. GRANTs a `authenticated` y `service_role`.
+- `clients`: `id`, `owner_id` (auth.users), `name`, `contact_email`, `aws_account_id`, `role_arn`, `external_id` (uuid, default gen_random_uuid()), `default_region`, `policy_scope` ('full_readonly' = SecurityAudit + ViewOnlyAccess, por defecto | 'security_only' = solo SecurityAudit), `connection_status` ('pending' | 'connected' | 'failed'), `last_verified_at`, `notes`, timestamps. RLS: solo el `owner_id` ve/edita sus clientes. GRANTs a `authenticated` y `service_role`.
+- `auditor_identity` (una fila por owner): `owner_id`, `auditor_role_arn` (el `Clodaro-Auditor` de mi cuenta), `aws_account_id`, `last_verified_at`. Es el principal fijo que va en la trust policy de todos los clientes.
 - `assume_role_audit` (append-only): `id`, `client_id`, `actor_user_id`, `actor_email`, `role_arn`, `external_id_used`, `region`, `operation` (qué función/acción), `outcome` ('success' | 'denied' | 'error'), `error_message`, `session_expiry`, `created_at`. RLS: el owner puede **leer** las filas de sus clientes; sin políticas de UPDATE/DELETE (append-only real); inserta solo `service_role` desde las Edge Functions.
 - **Aislamiento de cachés:** añadir `client_id uuid NULL` a `cost_data_cache`, cachés de monitorización y tablas de resultados/alertas, y rehacer los índices únicos para incluir `client_id` (NULL = tu cuenta propia). Sin esto hay fuga entre clientes.
 
