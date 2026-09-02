@@ -25,8 +25,8 @@
 - **Aislamiento de cachés:** añadir `client_id uuid NULL` a `cost_data_cache`, cachés de monitorización y tablas de resultados/alertas, y rehacer los índices únicos para incluir `client_id` (NULL = tu cuenta propia). Sin esto hay fuga entre clientes.
 
 ### Edge Functions
-- `_shared/resolve-credentials.ts`: nueva rama `clientId`. Busca el cliente por `(id, owner_id)` server-side, valida el ARN (regex ARN válido + `aws_account_id` coincidente + cuenta ≠ mi cuenta), hace `AssumeRole` con el `external_id` del cliente, sesión de 3600s, session tags (`ClodaroActor`, `ClodaroClient`) para atribución en el CloudTrail *del cliente*, y escribe una fila en `assume_role_audit` en éxito y en fallo. Nunca acepta un ARN enviado por el frontend.
-- `manage-clients` (nueva): `create`, `update`, `delete`, `rotate_external_id`, `test_connection` (AssumeRole real + `sts:GetCallerIdentity` con la sesión asumida + comprobación de que las policies esperadas están adjuntas si el rol lo permite) y actualización de `connection_status` / `last_verified_at`.
+- `_shared/resolve-credentials.ts`: nueva rama `clientId` con cadena de dos saltos. (a) Con mis claves asume `auditor_identity.auditor_role_arn` (`Clodaro-Auditor`); (b) con esa sesión asume el rol del cliente usando su `external_id`, sesión de 3600s, session tags (`ClodaroActor`, `ClodaroClient`) para atribución en el CloudTrail *del cliente*. Valida el ARN del cliente server-side (regex + `aws_account_id` coincidente + cuenta ≠ mi cuenta) y escribe una fila en `assume_role_audit` en éxito y en fallo. Nunca acepta un ARN enviado por el frontend.
+- `manage-clients` (nueva): `create`, `update`, `delete`, `rotate_external_id`, `verify_auditor` (comprueba que puedo asumir `Clodaro-Auditor`) y `test_connection` (cadena completa + `sts:GetCallerIdentity` con la sesión del cliente + comprobación de las policies adjuntas si el rol lo permite), con actualización de `connection_status` / `last_verified_at`.
 - Las funciones existentes aceptan `clientId` opcional en el body y lo pasan a `resolveCredentials` (cambio mecánico, mismo patrón que `roleName`).
 
 ### Frontend
