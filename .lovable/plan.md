@@ -50,13 +50,14 @@
 | `src/pages/Clients.tsx`, `src/components/clients/*` | wizard + lista + log de accesos |
 | `src/components/Header.tsx`, `src/App.tsx` | selector de cliente + ruta |
 | `src/hooks/useAWSData.tsx`, `src/contexts/AWSDataContext.tsx` | enviar `clientId`, invalidar al cambiar de cliente |
-| `README.md` | por qué `SecurityAudit` y no una policy custom |
+| `README.md` | por qué managed policies (SecurityAudit + ViewOnlyAccess) y no una custom, y el modelo `Clodaro-Auditor` |
 
 ## Orden de ejecución (validamos entre bloques)
-1. Migración (clientes + auditoría + `client_id` en cachés).
-2. `resolve-credentials` cross-account + `manage-clients` + test de conexión.
+1. Migración (`clients`, `auditor_identity`, `assume_role_audit`, `client_id` en cachés). **Al terminar te muestro el esquema final resultante — tablas, columnas, índices únicos y políticas RLS — y no sigo hasta que lo valides**, porque es la pieza más difícil de deshacer.
+2. `Clodaro-Auditor` (identidad auditora fija) + `resolve-credentials` con cadena de dos saltos + `manage-clients` + test de conexión.
 3. Wizard y página de clientes + selector en el header.
 4. Propagar `clientId` en el resto de Edge Functions y hooks; revisión de aislamiento query por query.
 5. README interno del modelo de seguridad.
+
 
 Fases 2, 3 y 4 (checks CIS, informe PDF, pulido) quedan fuera de esta plan y se planifican al cerrar la Fase 1.
