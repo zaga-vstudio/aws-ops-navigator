@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           alert_name: string
           alert_rule_id: string | null
+          client_id: string | null
           cloudwatch_alarm_name: string | null
           created_at: string
           current_value: number | null
@@ -33,6 +34,7 @@ export type Database = {
         Insert: {
           alert_name: string
           alert_rule_id?: string | null
+          client_id?: string | null
           cloudwatch_alarm_name?: string | null
           created_at?: string
           current_value?: number | null
@@ -48,6 +50,7 @@ export type Database = {
         Update: {
           alert_name?: string
           alert_rule_id?: string | null
+          client_id?: string | null
           cloudwatch_alarm_name?: string | null
           created_at?: string
           current_value?: number | null
@@ -68,10 +71,18 @@ export type Database = {
             referencedRelation: "alert_rules"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "alert_history_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
         ]
       }
       alert_rules: {
         Row: {
+          client_id: string | null
           cloudwatch_alarm_name: string | null
           comparison_operator: string
           created_at: string
@@ -88,6 +99,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          client_id?: string | null
           cloudwatch_alarm_name?: string | null
           comparison_operator?: string
           created_at?: string
@@ -104,6 +116,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          client_id?: string | null
           cloudwatch_alarm_name?: string | null
           comparison_operator?: string
           created_at?: string
@@ -118,6 +131,109 @@ export type Database = {
           threshold?: number
           updated_at?: string
           user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_rules_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      assume_role_audit: {
+        Row: {
+          actor_email: string | null
+          actor_user_id: string
+          auditor_role_arn: string | null
+          client_id: string | null
+          client_name_snapshot: string | null
+          created_at: string
+          error_message: string | null
+          external_id_used: string | null
+          id: string
+          operation: string
+          outcome: Database["public"]["Enums"]["assume_role_outcome"]
+          region: string | null
+          role_arn: string | null
+          session_expiry: string | null
+        }
+        Insert: {
+          actor_email?: string | null
+          actor_user_id: string
+          auditor_role_arn?: string | null
+          client_id?: string | null
+          client_name_snapshot?: string | null
+          created_at?: string
+          error_message?: string | null
+          external_id_used?: string | null
+          id?: string
+          operation: string
+          outcome: Database["public"]["Enums"]["assume_role_outcome"]
+          region?: string | null
+          role_arn?: string | null
+          session_expiry?: string | null
+        }
+        Update: {
+          actor_email?: string | null
+          actor_user_id?: string
+          auditor_role_arn?: string | null
+          client_id?: string | null
+          client_name_snapshot?: string | null
+          created_at?: string
+          error_message?: string | null
+          external_id_used?: string | null
+          id?: string
+          operation?: string
+          outcome?: Database["public"]["Enums"]["assume_role_outcome"]
+          region?: string | null
+          role_arn?: string | null
+          session_expiry?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assume_role_audit_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      auditor_identity: {
+        Row: {
+          auditor_role_arn: string
+          aws_account_id: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          last_verified_at: string | null
+          owner_id: string
+          updated_at: string
+          verified: boolean
+        }
+        Insert: {
+          auditor_role_arn: string
+          aws_account_id?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          last_verified_at?: string | null
+          owner_id: string
+          updated_at?: string
+          verified?: boolean
+        }
+        Update: {
+          auditor_role_arn?: string
+          aws_account_id?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          last_verified_at?: string | null
+          owner_id?: string
+          updated_at?: string
+          verified?: boolean
         }
         Relationships: []
       }
@@ -157,6 +273,60 @@ export type Database = {
         }
         Relationships: []
       }
+      clients: {
+        Row: {
+          aws_account_id: string | null
+          connection_status: Database["public"]["Enums"]["client_connection_status"]
+          contact_email: string | null
+          created_at: string
+          default_region: string
+          external_id: string
+          id: string
+          last_error: string | null
+          last_verified_at: string | null
+          name: string
+          notes: string | null
+          owner_id: string
+          policy_scope: Database["public"]["Enums"]["client_policy_scope"]
+          role_arn: string | null
+          updated_at: string
+        }
+        Insert: {
+          aws_account_id?: string | null
+          connection_status?: Database["public"]["Enums"]["client_connection_status"]
+          contact_email?: string | null
+          created_at?: string
+          default_region?: string
+          external_id?: string
+          id?: string
+          last_error?: string | null
+          last_verified_at?: string | null
+          name: string
+          notes?: string | null
+          owner_id: string
+          policy_scope?: Database["public"]["Enums"]["client_policy_scope"]
+          role_arn?: string | null
+          updated_at?: string
+        }
+        Update: {
+          aws_account_id?: string | null
+          connection_status?: Database["public"]["Enums"]["client_connection_status"]
+          contact_email?: string | null
+          created_at?: string
+          default_region?: string
+          external_id?: string
+          id?: string
+          last_error?: string | null
+          last_verified_at?: string | null
+          name?: string
+          notes?: string | null
+          owner_id?: string
+          policy_scope?: Database["public"]["Enums"]["client_policy_scope"]
+          role_arn?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cloudhub_roles: {
         Row: {
           created_at: string
@@ -192,6 +362,7 @@ export type Database = {
       }
       compliance_remediation_log: {
         Row: {
+          client_id: string | null
           compliance_check_id: string
           created_at: string
           details: Json | null
@@ -202,6 +373,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          client_id?: string | null
           compliance_check_id: string
           created_at?: string
           details?: Json | null
@@ -212,6 +384,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          client_id?: string | null
           compliance_check_id?: string
           created_at?: string
           details?: Json | null
@@ -221,13 +394,22 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "compliance_remediation_log_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cost_data_cache: {
         Row: {
           anomalies: Json | null
           aws_region: string
           cached_at: string | null
+          client_id: string | null
           created_at: string | null
           expires_at: string | null
           forecast_data: Json | null
@@ -246,6 +428,7 @@ export type Database = {
           anomalies?: Json | null
           aws_region?: string
           cached_at?: string | null
+          client_id?: string | null
           created_at?: string | null
           expires_at?: string | null
           forecast_data?: Json | null
@@ -264,6 +447,7 @@ export type Database = {
           anomalies?: Json | null
           aws_region?: string
           cached_at?: string | null
+          client_id?: string | null
           created_at?: string | null
           expires_at?: string | null
           forecast_data?: Json | null
@@ -278,13 +462,22 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cost_data_cache_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       drift_events: {
         Row: {
           acknowledged: boolean
           acknowledged_at: string | null
           changes: Json
+          client_id: string | null
           current_hash: string
           deleted_at: string | null
           detected_at: string
@@ -301,6 +494,7 @@ export type Database = {
           acknowledged?: boolean
           acknowledged_at?: string | null
           changes: Json
+          client_id?: string | null
           current_hash: string
           deleted_at?: string | null
           detected_at?: string
@@ -317,6 +511,7 @@ export type Database = {
           acknowledged?: boolean
           acknowledged_at?: string | null
           changes?: Json
+          client_id?: string | null
           current_hash?: string
           deleted_at?: string | null
           detected_at?: string
@@ -329,11 +524,20 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "drift_events_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       monitoring_data_cache: {
         Row: {
           cached_at: string | null
+          client_id: string | null
           cpu_metrics: Json | null
           created_at: string | null
           db_connections_metrics: Json | null
@@ -355,6 +559,7 @@ export type Database = {
         }
         Insert: {
           cached_at?: string | null
+          client_id?: string | null
           cpu_metrics?: Json | null
           created_at?: string | null
           db_connections_metrics?: Json | null
@@ -376,6 +581,7 @@ export type Database = {
         }
         Update: {
           cached_at?: string | null
+          client_id?: string | null
           cpu_metrics?: Json | null
           created_at?: string | null
           db_connections_metrics?: Json | null
@@ -395,7 +601,15 @@ export type Database = {
           user_id?: string
           write_latency_metrics?: Json | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "monitoring_data_cache_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notification_preferences: {
         Row: {
@@ -510,6 +724,7 @@ export type Database = {
       }
       resource_snapshots: {
         Row: {
+          client_id: string | null
           configuration: Json
           created_at: string
           id: string
@@ -521,6 +736,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          client_id?: string | null
           configuration: Json
           created_at?: string
           id?: string
@@ -532,6 +748,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          client_id?: string | null
           configuration?: Json
           created_at?: string
           id?: string
@@ -542,7 +759,15 @@ export type Database = {
           source?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "resource_snapshots_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       role_audit_log: {
         Row: {
@@ -580,6 +805,7 @@ export type Database = {
           approved_by: string | null
           change_details: Json
           change_type: Database["public"]["Enums"]["security_change_type"]
+          client_id: string | null
           created_at: string
           deleted_at: string | null
           executed_at: string | null
@@ -595,6 +821,7 @@ export type Database = {
           approved_by?: string | null
           change_details: Json
           change_type: Database["public"]["Enums"]["security_change_type"]
+          client_id?: string | null
           created_at?: string
           deleted_at?: string | null
           executed_at?: string | null
@@ -610,6 +837,7 @@ export type Database = {
           approved_by?: string | null
           change_details?: Json
           change_type?: Database["public"]["Enums"]["security_change_type"]
+          client_id?: string | null
           created_at?: string
           deleted_at?: string | null
           executed_at?: string | null
@@ -620,7 +848,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "security_change_approvals_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       security_dashboard_configs: {
         Row: {
@@ -758,6 +994,9 @@ export type Database = {
         | "rejected"
         | "executed"
         | "failed"
+      assume_role_outcome: "success" | "denied" | "error"
+      client_connection_status: "pending" | "connected" | "failed"
+      client_policy_scope: "full_readonly" | "security_only"
       drift_scan_frequency_enum: "daily" | "weekly" | "monthly"
       monitoring_time_range: "1h" | "6h" | "24h" | "7d"
       remediation_status: "pending" | "success" | "failed"
@@ -902,6 +1141,9 @@ export const Constants = {
         "executed",
         "failed",
       ],
+      assume_role_outcome: ["success", "denied", "error"],
+      client_connection_status: ["pending", "connected", "failed"],
+      client_policy_scope: ["full_readonly", "security_only"],
       drift_scan_frequency_enum: ["daily", "weekly", "monthly"],
       monitoring_time_range: ["1h", "6h", "24h", "7d"],
       remediation_status: ["pending", "success", "failed"],
