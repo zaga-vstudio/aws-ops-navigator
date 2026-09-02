@@ -32,10 +32,11 @@
 ### Frontend
 - `ClientContext` + selector de cliente en el header (junto al Role Switcher), que inyecta `clientId` en todas las llamadas a Edge Functions vía `useAWSData` y hooks relacionados.
 - Página `/clients`: lista de clientes con estado de conexión, y wizard de onboarding en 4 pasos, en español y no técnico:
-  1. Datos del cliente (nombre, email, Account ID, región principal).
-  2. Trust policy JSON ya rellenada con mi Account ID y su External ID + botón copiar.
-  3. Instrucciones paso a paso para crear el rol en la consola AWS y adjuntar `SecurityAudit` (+ `ViewOnlyAccess` opcional), y pegar el Role ARN resultante.
+  1. Datos del cliente (nombre, email, Account ID, región principal) y alcance (**recomendado: lectura completa** = SecurityAudit + ViewOnlyAccess; alternativa: solo seguridad).
+  2. Trust policy JSON ya rellenada con el ARN de `Clodaro-Auditor` y su External ID + botón copiar.
+  3. Instrucciones paso a paso para crear el rol en la consola AWS y adjuntar `SecurityAudit` y `ViewOnlyAccess` (o solo la primera si eligió "solo seguridad"), y pegar el Role ARN resultante.
   4. Botón **Probar conexión** → llama a `test_connection`; solo al pasar en verde el cliente queda `connected`.
+- Pantalla de ajustes "Identidad auditora": ARN de `Clodaro-Auditor`, instrucciones para crearlo en mi cuenta y botón de verificación. Bloquea el wizard si no está verificada.
 - Pestaña "Accesos" por cliente que muestra el `assume_role_audit` (quién, cuándo, qué operación, resultado) — la evidencia que le enseñas al cliente.
 
 ### Archivos que voy a tocar
