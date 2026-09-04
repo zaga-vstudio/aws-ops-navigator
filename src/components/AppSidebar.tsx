@@ -16,6 +16,7 @@ import {
   Settings,
   Activity,
   Globe,
+  Users,
   ChevronRight,
   LogOut
 } from "lucide-react";
@@ -40,6 +41,12 @@ const menuItems = [
     title: "Dashboard",
     icon: LayoutDashboard,
     href: "/dashboard",
+    notificationSource: null,
+  },
+  {
+    title: "Clients",
+    icon: Users,
+    href: "/clients",
     notificationSource: null,
   },
   {

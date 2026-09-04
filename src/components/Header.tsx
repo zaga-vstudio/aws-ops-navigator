@@ -11,6 +11,7 @@ import { LaunchResourceDropdown } from "@/components/LaunchResourceDropdown";
 import { NotificationsDropdown } from "@/components/NotificationsDropdown";
 import { UserDropdown } from "@/components/UserDropdown";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import { ClientSwitcher } from "@/components/ClientSwitcher";
 import { useNavigate } from "react-router-dom";
 
 export const Header = () => {
@@ -23,7 +24,9 @@ export const Header = () => {
 
 
       <div className="flex items-center gap-2">
+        <ClientSwitcher />
         <RoleSwitcher />
+        
         
         <Button 
           size="sm" 
