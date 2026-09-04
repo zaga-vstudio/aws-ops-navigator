@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { AWSDataProvider } from "@/contexts/AWSDataContext";
 import { ActiveRoleProvider } from "@/contexts/ActiveRoleContext";
+import { ClientProvider } from "@/contexts/ClientContext";
 import { ThemeProvider } from "next-themes";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Homepage from "./pages/Homepage";
@@ -22,17 +23,20 @@ import Alerts from "./pages/Alerts";
 import ActivityLog from "./pages/ActivityLog";
 import Settings from "./pages/Settings";
 import AWSSetup from "./pages/AWSSetup";
+import Clients from "./pages/Clients";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
 const ProtectedAWSLayout = () => (
   <ProtectedRoute>
-    <ActiveRoleProvider>
-      <AWSDataProvider>
-        <Outlet />
-      </AWSDataProvider>
-    </ActiveRoleProvider>
+    <ClientProvider>
+      <ActiveRoleProvider>
+        <AWSDataProvider>
+          <Outlet />
+        </AWSDataProvider>
+      </ActiveRoleProvider>
+    </ClientProvider>
   </ProtectedRoute>
 );
 
@@ -60,6 +64,7 @@ const App = () => (
                 <Route path="/logs" element={<ActivityLog />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/aws-setup" element={<AWSSetup />} />
+                <Route path="/clients" element={<Clients />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
