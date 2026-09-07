@@ -409,7 +409,7 @@ Deno.serve(async (req) => {
         });
       }
 
-      await supabase
+      const snapUpdate = supabase
         .from('resource_snapshots')
         .update({ 
           snapshot_hash: driftEvent.current_hash,
@@ -418,8 +418,10 @@ Deno.serve(async (req) => {
         })
         .eq('user_id', user.id)
         .eq('resource_type', driftEvent.resource_type)
-        .eq('resource_id', driftEvent.resource_id)
-        .eq('client_id', driftEvent.client_id ?? null);
+        .eq('resource_id', driftEvent.resource_id);
+      await (driftEvent.client_id
+        ? snapUpdate.eq('client_id', driftEvent.client_id)
+        : snapUpdate.is('client_id', null));
 
       await supabase
         .from('drift_events')
