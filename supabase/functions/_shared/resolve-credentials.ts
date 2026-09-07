@@ -15,6 +15,10 @@ export interface ResolvedCredentials {
   credentials: AWSCredentials;
   isAssumed: boolean;
   expiry?: string;
+  /** Effective region — set when credentials belong to an external client account. */
+  region?: string;
+  /** Client display name — set only for cross-account client sessions. */
+  clientName?: string;
 }
 
 /**
