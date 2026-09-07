@@ -157,6 +157,7 @@ export function useAlertRules() {
       const response = await supabase.functions.invoke('manage-alert-rules', {
         body: {
           action: 'create',
+          clientId: activeClientId,
           ...ruleData,
         },
       });
@@ -194,6 +195,7 @@ export function useAlertRules() {
         body: {
           action: 'delete',
           ruleId,
+          clientId: activeClientId,
         },
       });
 
@@ -228,6 +230,7 @@ export function useAlertRules() {
         body: {
           action: 'toggle',
           ruleId,
+          clientId: activeClientId,
         },
       });
 
@@ -267,6 +270,7 @@ export function useAlertRules() {
         body: {
           action: 'update',
           ruleId,
+          clientId: activeClientId,
           ...updates,
         },
       });
