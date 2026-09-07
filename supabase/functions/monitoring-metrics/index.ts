@@ -61,16 +61,20 @@ function getTimeRangeParams(timeRange: string, resourceType: 'ec2' | 'rds'): { s
   }
 }
 
-async function getCachedMetrics(supabase: any, userId: string, timeRange: string, instanceId: string, resourceType: string): Promise<MonitoringResult | null> {
+async function getCachedMetrics(supabase: any, userId: string, timeRange: string, instanceId: string, resourceType: string, clientId: string | null = null): Promise<MonitoringResult | null> {
   try {
-    const { data, error } = await supabase
+    const baseQuery = supabase
       .from('monitoring_data_cache')
       .select('*')
       .eq('user_id', userId)
       .eq('time_range', timeRange)
       .eq('instance_id', instanceId)
-      .eq('resource_type', resourceType)
-      .single();
+      .eq('resource_type', resourceType);
+
+    const { data, error } = await (clientId
+      ? baseQuery.eq('client_id', clientId)
+      : baseQuery.is('client_id', null)
+    ).maybeSingle();
 
     if (error || !data) return null;
 
@@ -102,15 +106,14 @@ async function getCachedMetrics(supabase: any, userId: string, timeRange: string
   }
 }
 
-async function saveCachedMetrics(supabase: any, userId: string, timeRange: string, instanceId: string, resourceType: string, data: MonitoringResult, cacheTTLMinutes: number): Promise<void> {
+async function saveCachedMetrics(supabase: any, userId: string, timeRange: string, instanceId: string, resourceType: string, data: MonitoringResult, cacheTTLMinutes: number, clientId: string | null = null): Promise<void> {
   try {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + cacheTTLMinutes * 60 * 1000);
 
-    await supabase
-      .from('monitoring_data_cache')
-      .upsert({
+    const row: Record<string, any> = {
         user_id: userId,
+        client_id: clientId,
         time_range: timeRange,
         instance_id: instanceId,
         resource_type: resourceType,
@@ -126,7 +129,26 @@ async function saveCachedMetrics(supabase: any, userId: string, timeRange: strin
         write_latency_metrics: data.writeLatency || [],
         cached_at: now.toISOString(),
         expires_at: expiresAt.toISOString(),
-      }, { onConflict: 'user_id,time_range,instance_id,resource_type' });
+    };
+
+    // Unique index is expression-based (COALESCE(client_id, ...)) — resolve manually.
+    const lookup = supabase
+      .from('monitoring_data_cache')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('time_range', timeRange)
+      .eq('instance_id', instanceId)
+      .eq('resource_type', resourceType);
+    const { data: existing } = await (clientId
+      ? lookup.eq('client_id', clientId)
+      : lookup.is('client_id', null)
+    ).maybeSingle();
+
+    if (existing) {
+      await supabase.from('monitoring_data_cache').update(row).eq('id', existing.id);
+    } else {
+      await supabase.from('monitoring_data_cache').insert(row);
+    }
 
     console.log(`Cached monitoring data for ${resourceType}:${instanceId} (${timeRange}, TTL: ${cacheTTLMinutes}m)`);
   } catch (err: any) {
@@ -203,6 +225,7 @@ serve(async (req) => {
     let forceRefresh = false;
     let includePaidMetrics = false;
     let roleName: string | undefined;
+    let clientId: string | undefined;
     let instanceId: string | undefined;
     let resourceType: 'ec2' | 'rds' = 'ec2';
 
@@ -213,6 +236,7 @@ serve(async (req) => {
         forceRefresh = body.forceRefresh === true;
         includePaidMetrics = body.includePaidMetrics === true;
         roleName = body.roleName;
+        clientId = typeof body.clientId === 'string' ? body.clientId : undefined;
         instanceId = body.instanceId;
         if (body.resourceType === 'rds') resourceType = 'rds';
       }
@@ -242,13 +266,15 @@ serve(async (req) => {
     }
 
     const awsCredsRaw = creds[0];
-    const region = awsCredsRaw.region || 'us-east-1';
+    const ownRegion = awsCredsRaw.region || 'us-east-1';
 
-    const { credentials: awsCreds } = await resolveCredentials(
+    const resolved = await resolveCredentials(
       supabaseClient, user.id, user.email || '',
       { accessKeyId: awsCredsRaw.access_key_id, secretAccessKey: awsCredsRaw.secret_access_key },
-      region, roleName
+      ownRegion, roleName, clientId
     );
+    const awsCreds = resolved.credentials;
+    const region = resolved.region || ownRegion;
 
     // Create EC2 client (needed for validation even if resourceType is rds)
     const { EC2Client } = await import("npm:@aws-sdk/client-ec2@3.451.0");
@@ -267,7 +293,7 @@ serve(async (req) => {
 
     // Check cache
     if (!forceRefresh) {
-      const cached = await getCachedMetrics(supabaseClient, user.id, timeRange, resolvedId, resourceType);
+      const cached = await getCachedMetrics(supabaseClient, user.id, timeRange, resolvedId, resourceType, clientId ?? null);
       if (cached) {
         return new Response(JSON.stringify(cached), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -365,7 +391,7 @@ serve(async (req) => {
       };
     }
 
-    await saveCachedMetrics(supabaseClient, user.id, timeRange, resolvedId, resourceType, result, cacheTTLMinutes);
+    await saveCachedMetrics(supabaseClient, user.id, timeRange, resolvedId, resourceType, result, cacheTTLMinutes, clientId ?? null);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

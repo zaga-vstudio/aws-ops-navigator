@@ -43,10 +43,12 @@ serve(async (req) => {
 
     // Parse body for roleName (optional)
     let roleName: string | undefined;
+    let clientId: string | undefined;
     try {
       if (req.method === 'POST') {
         const body = await req.json();
         roleName = body.roleName;
+        clientId = typeof body.clientId === 'string' ? body.clientId : undefined;
       }
     } catch { /* no body */ }
 
@@ -59,13 +61,15 @@ serve(async (req) => {
     }
 
     const { access_key_id, secret_access_key, region } = credentials[0];
-    const awsRegion = region || 'us-east-1';
+    const ownRegion = region || 'us-east-1';
 
-    const { credentials: awsCreds } = await resolveCredentials(
+    const resolved = await resolveCredentials(
       supabaseClient, user.id, user.email || '',
       { accessKeyId: access_key_id, secretAccessKey: secret_access_key },
-      awsRegion, roleName
+      ownRegion, roleName, clientId
     );
+    const awsCreds = resolved.credentials;
+    const awsRegion = resolved.region || ownRegion;
 
     const ec2Client = new EC2Client({
       region: awsRegion,

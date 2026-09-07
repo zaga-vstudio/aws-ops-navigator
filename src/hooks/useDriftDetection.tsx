@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { useClientContext } from "@/contexts/ClientContext";
 
 export interface DriftEvent {
   id: string;
@@ -21,6 +22,12 @@ export function useDriftDetection() {
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [lastScan, setLastScan] = useState<Date | null>(null);
+  const { activeClient } = useClientContext();
+  const activeClientId = activeClient?.id ?? null;
+  const scopeClient = useCallback(
+    (q: any) => (activeClientId ? q.eq('client_id', activeClientId) : q.is('client_id', null)),
+    [activeClientId]
+  );
 
   const fetchDriftEvents = useCallback(async () => {
     setLoading(true);
@@ -31,9 +38,9 @@ export function useDriftDetection() {
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await scopeClient(supabase
         .from('drift_events')
-        .select('*')
+        .select('*'))
         .order('detected_at', { ascending: false });
 
       if (error) throw error;
@@ -53,7 +60,7 @@ export function useDriftDetection() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [scopeClient]);
 
   const scanForDrift = useCallback(async () => {
     setScanning(true);
@@ -65,7 +72,7 @@ export function useDriftDetection() {
       }
 
       const { data, error } = await supabase.functions.invoke('detect-drift', {
-        body: { action: 'scan' }
+        body: { action: 'scan', clientId: activeClientId }
       });
 
       if (error) throw error;
@@ -102,7 +109,7 @@ export function useDriftDetection() {
   const acknowledgeDrift = useCallback(async (driftId: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('detect-drift', {
-        body: { action: 'acknowledge', driftId }
+        body: { action: 'acknowledge', driftId, clientId: activeClientId }
       });
 
       if (error) throw error;
@@ -125,7 +132,7 @@ export function useDriftDetection() {
   const acceptDrift = useCallback(async (driftId: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('detect-drift', {
-        body: { action: 'accept', driftId }
+        body: { action: 'accept', driftId, clientId: activeClientId }
       });
 
       if (error) throw error;

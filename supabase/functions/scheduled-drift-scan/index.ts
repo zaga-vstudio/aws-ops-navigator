@@ -370,7 +370,8 @@ async function sendDriftNotifications(
   return results;
 }
 
-async function scanUserForDrift(supabase: any, userId: string, userEmail: string, preferences: any, roleName?: string) {
+async function scanUserForDrift(supabase: any, userId: string, userEmail: string, preferences: any, roleName?: string, clientId?: string) {
+  const scopeClient = (q: any) => (clientId ? q.eq('client_id', clientId) : q.is('client_id', null));
   console.log(`Scanning drift for user ${userId}`);
   
   // Get AWS credentials
@@ -380,13 +381,15 @@ async function scanUserForDrift(supabase: any, userId: string, userEmail: string
     return { success: false, error: 'No AWS credentials' };
   }
 
-  const region = creds[0].region || 'us-east-1';
+  const ownRegion = creds[0].region || 'us-east-1';
 
-  const { credentials: awsCreds } = await resolveCredentials(
+  const resolved = await resolveCredentials(
     supabase, userId, userEmail,
     { accessKeyId: creds[0].access_key_id, secretAccessKey: creds[0].secret_access_key },
-    region, roleName
+    ownRegion, roleName, clientId
   );
+  const awsCreds = resolved.credentials;
+  const region = resolved.region || ownRegion;
 
   const awsConfig: AWSConfig = {
     accessKeyId: awsCreds.accessKeyId,
@@ -419,10 +422,10 @@ async function scanUserForDrift(supabase: any, userId: string, userEmail: string
   const newDriftEvents: any[] = [];
 
   // Get existing snapshots
-  const { data: existingSnapshots } = await supabase
+  const { data: existingSnapshots } = await scopeClient(supabase
     .from('resource_snapshots')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId));
 
   const snapshotMap = new Map(
     (existingSnapshots || []).map((s: any) => [`${s.resource_type}:${s.resource_id}`, s])
@@ -442,19 +445,20 @@ async function scanUserForDrift(supabase: any, userId: string, userEmail: string
           const severity = determineSeverity(resource.resourceType, changes);
           
           // Check if we already have an unacknowledged drift event for this
-          const { data: existingDrift } = await supabase
+          const { data: existingDrift } = await scopeClient(supabase
             .from('drift_events')
             .select('id')
             .eq('user_id', userId)
             .eq('resource_id', resource.resourceId)
-            .eq('acknowledged', false)
-            .single();
+            .eq('acknowledged', false))
+            .maybeSingle();
 
           if (!existingDrift) {
             const { data: driftEvent, error: driftError } = await supabase
               .from('drift_events')
               .insert({
                 user_id: userId,
+                client_id: clientId ?? null,
                 resource_type: resource.resourceType,
                 resource_id: resource.resourceId,
                 resource_name: resource.resourceName,
@@ -474,18 +478,30 @@ async function scanUserForDrift(supabase: any, userId: string, userEmail: string
       }
     } else {
       // New resource - create initial snapshot
-      await supabase
+      // Expression-based unique index (COALESCE(client_id, ...)) — resolve manually.
+      const { data: existingSnap } = await scopeClient(supabase
         .from('resource_snapshots')
-        .upsert({
-          user_id: userId,
-          resource_type: resource.resourceType,
-          resource_id: resource.resourceId,
-          snapshot_hash: currentHash,
-          configuration: resource.configuration,
-          source: 'scheduled_scan',
-        }, {
-          onConflict: 'user_id,resource_type,resource_id'
-        });
+        .select('id')
+        .eq('user_id', userId)
+        .eq('resource_type', resource.resourceType)
+        .eq('resource_id', resource.resourceId))
+        .maybeSingle();
+
+      const snapRow = {
+        user_id: userId,
+        client_id: clientId ?? null,
+        resource_type: resource.resourceType,
+        resource_id: resource.resourceId,
+        snapshot_hash: currentHash,
+        configuration: resource.configuration,
+        source: 'scheduled_scan',
+      };
+
+      if (existingSnap) {
+        await supabase.from('resource_snapshots').update(snapRow).eq('id', existingSnap.id);
+      } else {
+        await supabase.from('resource_snapshots').insert(snapRow);
+      }
     }
   }
 
@@ -575,7 +591,7 @@ Deno.serve(async (req) => {
         .eq('user_id', user.id)
         .single();
 
-      const result = await scanUserForDrift(supabase, user.id, user.email || '', prefs || {}, body.roleName);
+      const result = await scanUserForDrift(supabase, user.id, user.email || '', prefs || {}, body.roleName, typeof body.clientId === 'string' ? body.clientId : undefined);
 
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

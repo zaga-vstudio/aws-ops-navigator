@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, CheckCircle2, AlertTriangle, Info } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 interface RemediationDialogProps {
   open: boolean;
@@ -44,7 +45,7 @@ export function RemediationDialog({
         throw new Error('No active session');
       }
 
-      const response = await supabase.functions.invoke('compliance-remediation', {
+      const response = await invokeAWSFunction('compliance-remediation', {
         body: {
           complianceCheckId: complianceCheck.id,
           remediationType: remediation.type,

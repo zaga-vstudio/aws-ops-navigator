@@ -15,6 +15,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { VPC, Subnet, SecurityGroup } from "@/hooks/useAWSData";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 interface LaunchEC2DialogProps {
   open: boolean;
@@ -253,7 +254,7 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess, vpcs = [], subn
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      const { data, error } = await supabase.functions.invoke('manage-ec2-instances', {
+      const { data, error } = await invokeAWSFunction('manage-ec2-instances', {
         body: { action: 'listKeyPairs' },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
@@ -302,7 +303,7 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess, vpcs = [], subn
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No active session');
 
-      const { data, error } = await supabase.functions.invoke('manage-ec2-instances', {
+      const { data, error } = await invokeAWSFunction('manage-ec2-instances', {
         body: {
           action: 'searchAMIs',
           params: { searchTerm: marketplaceSearch },
@@ -367,7 +368,7 @@ export function LaunchEC2Dialog({ open, onOpenChange, onSuccess, vpcs = [], subn
 
       const osOption = allOSOptions.find(os => os.id === selectedOS);
       
-      const { data, error } = await supabase.functions.invoke('manage-ec2-instances', {
+      const { data, error } = await invokeAWSFunction('manage-ec2-instances', {
           body: {
             action: 'launch',
             params: {

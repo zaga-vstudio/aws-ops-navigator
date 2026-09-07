@@ -55,6 +55,7 @@ serve(async (req) => {
 
     const body: RDSActionRequest = await req.json();
     const { action, roleName } = body;
+    const clientId: string | undefined = typeof body.clientId === 'string' ? body.clientId : undefined;
 
     console.log(`User ${user.id} requesting RDS action: ${action}`);
 
@@ -66,13 +67,15 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    const { access_key_id, secret_access_key, region } = credentials[0];
+    const { access_key_id, secret_access_key, region: ownRegion } = credentials[0];
 
-    const { credentials: awsCreds } = await resolveCredentials(
+    const resolved = await resolveCredentials(
       supabaseClient, user.id, user.email || '',
       { accessKeyId: access_key_id, secretAccessKey: secret_access_key },
-      region || 'us-east-1', roleName
+      ownRegion || 'us-east-1', roleName, clientId
     );
+    const awsCreds = resolved.credentials;
+    const region = resolved.region || ownRegion || 'us-east-1';
 
     const rdsClient = new RDSClient({
       region: region || 'us-east-1',

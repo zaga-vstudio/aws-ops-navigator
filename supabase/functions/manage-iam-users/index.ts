@@ -14,6 +14,7 @@ interface IAMUserRequest {
   accessKeyId?: string;
   reason: string;
   roleName?: string;
+  clientId?: string;
 }
 
 serve(async (req) => {
@@ -54,11 +55,13 @@ serve(async (req) => {
 
     const creds = credentials[0];
 
-    const { credentials: awsCreds } = await resolveCredentials(
+    const ownRegion = creds.region || 'us-east-1';
+    const resolved = await resolveCredentials(
       supabase, user.id, user.email || '',
       { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
-      creds.region || 'us-east-1', requestData.roleName
+      ownRegion, requestData.roleName, requestData.clientId
     );
+    const awsCreds = resolved.credentials;
 
     const iamClient = new IAMClient({
       region: 'us-east-1', // IAM is global

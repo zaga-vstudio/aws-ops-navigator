@@ -34,6 +34,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { CreateRDSDialog } from "@/components/CreateRDSDialog";
 import { ManageRDSSecurityGroupsDialog } from "@/components/ManageRDSSecurityGroupsDialog";
 import type { RDSDatabase } from "@/hooks/useAWSData";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 const getStatusColor = (status: string) => {
   switch (status.toLowerCase()) {
@@ -90,7 +91,7 @@ const RDSDatabases = () => {
     setActionLoading(`${action}-${dbIdentifier}`);
 
     try {
-      const { data, error } = await supabase.functions.invoke('manage-rds-instances', {
+      const { data, error } = await invokeAWSFunction('manage-rds-instances', {
         body: { action, dbInstanceIdentifier: dbIdentifier },
       });
 

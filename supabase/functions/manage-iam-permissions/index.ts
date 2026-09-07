@@ -245,6 +245,7 @@ serve(async (req) => {
 
     const body = await req.json();
     const { action, userName, permissions, region: reqRegion, roleName } = body;
+    const clientId: string | undefined = typeof body.clientId === 'string' ? body.clientId : undefined;
     console.log("manage-iam-permissions request:", { action, userName });
 
     // Get AWS credentials
@@ -263,13 +264,15 @@ serve(async (req) => {
     }
 
     const creds = credentials[0];
-    const awsRegion = reqRegion || creds.region || "us-east-1";
+    const ownRegion = reqRegion || creds.region || "us-east-1";
 
-    const { credentials: awsCreds } = await resolveCredentials(
+    const resolved = await resolveCredentials(
       supabase, user.id, user.email || '',
       { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
-      awsRegion, roleName
+      ownRegion, roleName, clientId
     );
+    const awsCreds = resolved.credentials;
+    const awsRegion = resolved.region || ownRegion;
 
     const iamClient = new IAMClient({
       region: "us-east-1", // IAM is global

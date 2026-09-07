@@ -52,14 +52,15 @@ async function getAWSCredentials(supabaseClient: any, userId: string) {
   return credentials[0];
 }
 
-async function getResolvedAWSCreds(supabaseClient: any, user: any, roleName?: string) {
+async function getResolvedAWSCreds(supabaseClient: any, user: any, roleName?: string, clientId?: string) {
   const creds = await getAWSCredentials(supabaseClient, user.id);
-  const { credentials: awsCreds } = await resolveCredentials(
+  const ownRegion = creds.region || 'us-east-1';
+  const resolved = await resolveCredentials(
     supabaseClient, user.id, user.email || '',
     { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
-    creds.region || 'us-east-1', roleName
+    ownRegion, roleName, clientId
   );
-  return { awsCreds, region: creds.region || 'us-east-1' };
+  return { awsCreds: resolved.credentials, region: resolved.region || ownRegion };
 }
 
 function getDimensions(namespace: string, resourceId?: string): { Name: string; Value: string }[] | undefined {
@@ -75,7 +76,8 @@ function getDimensions(namespace: string, resourceId?: string): { Name: string; 
 
 async function handleCreate(supabaseClient: any, user: any, body: any) {
   const { name, metric, threshold, duration, severity, comparison_operator, roleName, resourceId } = body;
-  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
+  const clientId: string | null = typeof body.clientId === 'string' ? body.clientId : null;
+  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName, clientId ?? undefined);
   const config = metricMapping[metric] || { namespace: 'AWS/EC2', metricName: metric, type: 'cloudwatch' };
   const comp = comparison_operator || 'GreaterThanThreshold';
   const alarmName = `CloudHub-${user.id.substring(0, 8)}-${name.replace(/\s+/g, '-')}`;
@@ -146,7 +148,7 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
         user_id: user.id, name, metric, threshold: thresholdNum,
         duration: duration || 5, severity: severity || 'warning',
         enabled: true, cloudwatch_alarm_name: budgetName,
-        comparison_operator: comp,
+        comparison_operator: comp, client_id: clientId,
       })
       .select().single();
 
@@ -267,6 +269,7 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
       enabled: true, cloudwatch_alarm_name: alarmName,
       comparison_operator: comp,
       resource_id: resourceId || null,
+      client_id: clientId,
     })
     .select().single();
 
@@ -278,8 +281,8 @@ async function handleCreate(supabaseClient: any, user: any, body: any) {
   return { success: true, rule, message: 'Alert rule created successfully' };
 }
 
-async function handleDelete(supabaseClient: any, user: any, ruleId: string, roleName?: string) {
-  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
+async function handleDelete(supabaseClient: any, user: any, ruleId: string, roleName?: string, clientId?: string) {
+  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName, clientId);
   const { data: rule, error: fetchError } = await supabaseClient
     .from('alert_rules').select('*').eq('id', ruleId).single();
 
@@ -326,8 +329,8 @@ async function handleDelete(supabaseClient: any, user: any, ruleId: string, role
   return { success: true, message: 'Alert rule deleted successfully' };
 }
 
-async function handleToggle(supabaseClient: any, user: any, ruleId: string, roleName?: string) {
-  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
+async function handleToggle(supabaseClient: any, user: any, ruleId: string, roleName?: string, clientId?: string) {
+  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName, clientId);
   const { data: rule, error: fetchError } = await supabaseClient
     .from('alert_rules').select('*').eq('id', ruleId).single();
 
@@ -363,7 +366,10 @@ async function handleUpdate(supabaseClient: any, user: any, body: any) {
   const { ruleId, threshold, duration, severity, comparison_operator, roleName, resourceId } = body;
   if (!ruleId) throw new Error('ruleId is required');
 
-  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
+  const { awsCreds, region } = await getResolvedAWSCreds(
+    supabaseClient, user, roleName,
+    typeof body.clientId === 'string' ? body.clientId : undefined
+  );
 
   const { data: rule, error: fetchError } = await supabaseClient
     .from('alert_rules').select('*').eq('id', ruleId).single();
@@ -492,6 +498,7 @@ serve(async (req) => {
     const { supabaseClient, user } = await getAuthenticatedUser(req);
     const body = await req.json();
     const { action, ruleId, roleName } = body;
+    const clientId: string | undefined = typeof body.clientId === 'string' ? body.clientId : undefined;
     console.log(`Managing alert rule: action=${action}, ruleId=${ruleId}, name=${body.name}`);
 
     let result: any;
@@ -501,10 +508,10 @@ serve(async (req) => {
         result = await handleCreate(supabaseClient, user, body);
         break;
       case 'delete':
-        result = await handleDelete(supabaseClient, user, ruleId, roleName);
+        result = await handleDelete(supabaseClient, user, ruleId, roleName, clientId);
         break;
       case 'toggle':
-        result = await handleToggle(supabaseClient, user, ruleId, roleName);
+        result = await handleToggle(supabaseClient, user, ruleId, roleName, clientId);
         break;
       case 'update':
         result = await handleUpdate(supabaseClient, user, body);

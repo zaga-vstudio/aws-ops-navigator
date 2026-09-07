@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 const formSchema = z.object({
   groupName: z
@@ -50,7 +51,7 @@ export function CreateSecurityGroupDialog({ open, onOpenChange, vpcs, onSuccess 
   const onSubmit = async (values: FormValues) => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("create-security-group", {
+      const { data, error } = await invokeAWSFunction("create-security-group", {
         body: values,
       });
 

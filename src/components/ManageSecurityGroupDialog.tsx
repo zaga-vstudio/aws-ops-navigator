@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, Shield, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 const COMMON_PROTOCOLS = [
   { label: "SSH", protocol: "tcp", fromPort: "22", toPort: "22" },
@@ -162,7 +163,7 @@ export function ManageSecurityGroupDialog({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No active session');
 
-      const response = await supabase.functions.invoke('manage-security-groups', {
+      const response = await invokeAWSFunction('manage-security-groups', {
         body: submitData,
       });
 

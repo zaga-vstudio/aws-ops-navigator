@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useClientContext } from '@/contexts/ClientContext';
 import { useToast } from '@/hooks/use-toast';
 
 interface AWSError {
@@ -210,6 +211,8 @@ export interface AWSData {
 }
 
 export const useAWSData = () => {
+  const { activeClient } = useClientContext();
+  const activeClientId = activeClient?.id ?? null;
   const [data, setData] = useState<AWSData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<AWSError | null>(null);
@@ -379,7 +382,7 @@ export const useAWSData = () => {
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
-          body: { forceRefreshCost },
+          body: { forceRefreshCost, clientId: activeClientId },
         }
       );
 
@@ -419,7 +422,7 @@ export const useAWSData = () => {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [toast, retryCount]);
+  }, [toast, retryCount, activeClientId]);
 
   const refetch = () => {
     fetchAWSData({});
@@ -460,6 +463,15 @@ export const useAWSData = () => {
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refetch whenever the active client changes (null = own AWS account)
+  const prevClientRef = useRef<string | null>(activeClientId);
+  useEffect(() => {
+    if (prevClientRef.current === activeClientId) return;
+    prevClientRef.current = activeClientId;
+    setData(null);
+    fetchAWSData();
+  }, [activeClientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     data,

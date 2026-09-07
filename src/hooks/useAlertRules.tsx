@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useClientContext } from '@/contexts/ClientContext';
 import { useToast } from '@/hooks/use-toast';
 
 export interface AlertRule {
@@ -41,13 +42,19 @@ export function useAlertRules() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [thisMonthCount, setThisMonthCount] = useState(0);
   const { toast } = useToast();
+  const { activeClient } = useClientContext();
+  const activeClientId = activeClient?.id ?? null;
+  const scopeClient = useCallback(
+    (q: any) => (activeClientId ? q.eq('client_id', activeClientId) : q.is('client_id', null)),
+    [activeClientId]
+  );
 
   const fetchRules = useCallback(async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await scopeClient(supabase
         .from('alert_rules')
-        .select('*')
+        .select('*'))
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -62,14 +69,14 @@ export function useAlertRules() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, scopeClient]);
 
   const fetchHistory = useCallback(async (limit = 50) => {
     try {
       setHistoryLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await scopeClient(supabase
         .from('alert_history')
-        .select('*')
+        .select('*'))
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -80,17 +87,17 @@ export function useAlertRules() {
     } finally {
       setHistoryLoading(false);
     }
-  }, []);
+  }, [scopeClient]);
 
   const fetchThisMonthCount = useCallback(async () => {
     try {
       const now = new Date();
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const { count, error } = await supabase
+      const { count, error } = await scopeClient(supabase
         .from('alert_history')
         .select('*', { count: 'exact', head: true })
         .gte('created_at', startOfMonth)
-        .eq('event_type', 'triggered');
+        .eq('event_type', 'triggered'));
 
       if (!error) {
         setThisMonthCount(count || 0);
@@ -98,7 +105,7 @@ export function useAlertRules() {
     } catch {
       // non-critical
     }
-  }, []);
+  }, [scopeClient]);
 
   useEffect(() => {
     fetchRules();
@@ -150,6 +157,7 @@ export function useAlertRules() {
       const response = await supabase.functions.invoke('manage-alert-rules', {
         body: {
           action: 'create',
+          clientId: activeClientId,
           ...ruleData,
         },
       });
@@ -187,6 +195,7 @@ export function useAlertRules() {
         body: {
           action: 'delete',
           ruleId,
+          clientId: activeClientId,
         },
       });
 
@@ -221,6 +230,7 @@ export function useAlertRules() {
         body: {
           action: 'toggle',
           ruleId,
+          clientId: activeClientId,
         },
       });
 
@@ -260,6 +270,7 @@ export function useAlertRules() {
         body: {
           action: 'update',
           ruleId,
+          clientId: activeClientId,
           ...updates,
         },
       });

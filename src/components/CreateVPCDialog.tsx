@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, Network } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 interface CreateVPCDialogProps {
   open: boolean;
@@ -69,7 +70,7 @@ export function CreateVPCDialog({ open, onOpenChange, onSuccess }: CreateVPCDial
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('manage-vpcs', {
+      const { data, error } = await invokeAWSFunction('manage-vpcs', {
         body: {
           action: 'create-vpc',
           cidrBlock,

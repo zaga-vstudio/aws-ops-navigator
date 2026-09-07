@@ -9,6 +9,7 @@ import { Loader2, Globe, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { VPC } from "@/hooks/useAWSData";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 interface Props {
   open: boolean;
@@ -84,7 +85,7 @@ export function CreateSubnetDialog({ open, onOpenChange, vpc, onSuccess }: Props
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('manage-vpcs', {
+      const { data, error } = await invokeAWSFunction('manage-vpcs', {
         body: {
           action: 'create-subnet',
           vpcId: vpc.id,

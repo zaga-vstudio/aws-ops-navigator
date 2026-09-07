@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { VPC } from "@/hooks/useAWSData";
 import type { FlowLog } from "@/hooks/useVPCAdvancedData";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 interface FlowLogExplorerProps {
   vpcs: VPC[];
@@ -56,7 +57,7 @@ export function FlowLogExplorer({ vpcs, flowLogs, loading, safetyMode, onRefresh
     setActionLoading(pendingAction.vpcId);
 
     try {
-      const { data, error } = await supabase.functions.invoke('manage-flow-logs', {
+      const { data, error } = await invokeAWSFunction('manage-flow-logs', {
         body: pendingAction.type === 'enable'
           ? { action: 'enable', vpcId: pendingAction.vpcId }
           : { action: 'disable', flowLogIds: pendingAction.flowLogIds },

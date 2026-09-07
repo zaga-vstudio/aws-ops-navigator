@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useClientContext } from '@/contexts/ClientContext';
 
 export interface RouteTableAssociation {
   id: string;
@@ -88,6 +89,8 @@ export const useVPCAdvancedData = () => {
   const [data, setData] = useState<VPCAdvancedData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { activeClient } = useClientContext();
+  const activeClientId = activeClient?.id ?? null;
 
   const fetchData = useCallback(async () => {
     try {
@@ -102,7 +105,7 @@ export const useVPCAdvancedData = () => {
         {
           method: 'POST',
           headers: { Authorization: `Bearer ${session.access_token}` },
-          body: {},
+          body: { clientId: activeClientId },
         }
       );
 
@@ -115,7 +118,7 @@ export const useVPCAdvancedData = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeClientId]);
 
   useEffect(() => {
     fetchData();

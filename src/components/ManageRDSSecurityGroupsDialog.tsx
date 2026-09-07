@@ -14,6 +14,7 @@ import { Loader2, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { SecurityGroup, RDSDatabase } from "@/hooks/useAWSData";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 interface ManageRDSSecurityGroupsDialogProps {
   open: boolean;
@@ -53,7 +54,7 @@ export function ManageRDSSecurityGroupsDialog({
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("manage-rds-instances", {
+      const { data, error } = await invokeAWSFunction("manage-rds-instances", {
         body: {
           action: "modify-security-groups",
           dbInstanceIdentifier: database.id,

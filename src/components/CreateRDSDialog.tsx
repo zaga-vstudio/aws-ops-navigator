@@ -22,6 +22,7 @@ import { Loader2, Database, Network, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { VPC, Subnet, SecurityGroup } from "@/hooks/useAWSData";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 interface CreateRDSDialogProps {
   open: boolean;
@@ -123,7 +124,7 @@ export function CreateRDSDialog({ open, onOpenChange, onSuccess, vpcs = [], subn
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('manage-rds-instances', {
+      const { data, error } = await invokeAWSFunction('manage-rds-instances', {
         body: {
           action: 'create',
           dbInstanceIdentifier: dbIdentifier,

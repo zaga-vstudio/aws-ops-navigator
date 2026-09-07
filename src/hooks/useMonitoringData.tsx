@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useClientContext } from '@/contexts/ClientContext';
 
 export interface MetricDataPoint {
   timestamp: string;
@@ -30,6 +31,8 @@ export const useMonitoringData = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { activeClient } = useClientContext();
+  const activeClientId = activeClient?.id ?? null;
 
   const fetchMetrics = useCallback(async (
     timeRange: string = '24h',
@@ -53,7 +56,7 @@ export const useMonitoringData = () => {
         {
           method: 'POST',
           headers: { Authorization: `Bearer ${session.access_token}` },
-          body: { timeRange, forceRefresh, includePaidMetrics, instanceId, resourceType },
+          body: { timeRange, forceRefresh, includePaidMetrics, instanceId, resourceType, clientId: activeClientId },
         }
       );
 
@@ -68,7 +71,7 @@ export const useMonitoringData = () => {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, activeClientId]);
 
   return { data, loading, error, fetchMetrics };
 };
