@@ -27,7 +27,7 @@ serve(async (req) => {
       });
     }
 
-    const { groupName, description, vpcId, roleName } = await req.json();
+    const { groupName, description, vpcId, roleName, clientId } = await req.json();
 
     if (!groupName || !description || !vpcId) {
       return new Response(JSON.stringify({ error: 'groupName, description, and vpcId are required' }), {
@@ -46,11 +46,14 @@ serve(async (req) => {
     }
 
     const creds = credentials[0];
-    const { credentials: awsCreds } = await resolveCredentials(
+    const ownRegion = creds.region || 'us-east-1';
+    const resolved = await resolveCredentials(
       supabase, user.id, user.email || '',
       { accessKeyId: creds.access_key_id, secretAccessKey: creds.secret_access_key },
-      creds.region || 'us-east-1', roleName
+      ownRegion, roleName, typeof clientId === 'string' ? clientId : undefined
     );
+    const awsCreds = resolved.credentials;
+    const effectiveRegion = resolved.region || ownRegion;
 
     const ec2Client = new EC2Client({
       region: creds.region || 'us-east-1',

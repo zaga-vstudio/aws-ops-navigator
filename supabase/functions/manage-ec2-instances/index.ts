@@ -398,15 +398,18 @@ serve(async (req) => {
 
     const body = await req.json();
     const { action, instanceId, params, roleName } = body;
+    const clientId: string | undefined = typeof body.clientId === 'string' ? body.clientId : undefined;
 
     const rawCreds = credData[0];
-    const region = rawCreds.region || 'us-east-1';
+    const ownRegion = rawCreds.region || 'us-east-1';
 
-    const { credentials: awsCreds } = await resolveCredentials(
+    const resolved = await resolveCredentials(
       supabaseClient, user.id, user.email || '',
       { accessKeyId: rawCreds.access_key_id, secretAccessKey: rawCreds.secret_access_key },
-      region, roleName
+      ownRegion, roleName, clientId
     );
+    const awsCreds = resolved.credentials;
+    const region = resolved.region || ownRegion;
 
     // Build AWSConfig with resolved credentials
     const awsConfig: AWSConfig = {
