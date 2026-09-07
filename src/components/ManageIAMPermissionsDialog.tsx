@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
+import { invokeAWSFunction } from "@/lib/invokeAWS";
   Shield,
   Server,
   Database,
@@ -140,13 +141,13 @@ export function ManageIAMPermissionsDialog({
     setLoading(true);
     try {
       // Load existing inline policies
-      const { data: polData, error: polErr } = await supabase.functions.invoke("manage-iam-permissions", {
+      const { data: polData, error: polErr } = await invokeAWSFunction("manage-iam-permissions", {
         body: { action: "listPolicies", userName: user.userName },
       });
       if (polErr) console.error("listPolicies error:", polErr);
 
       // Load managed policies for conflict detection
-      const { data: mpData, error: mpErr } = await supabase.functions.invoke("manage-iam-permissions", {
+      const { data: mpData, error: mpErr } = await invokeAWSFunction("manage-iam-permissions", {
         body: { action: "listManagedPolicies", userName: user.userName },
       });
       if (mpErr) console.error("listManagedPolicies error:", mpErr);
@@ -320,7 +321,7 @@ export function ManageIAMPermissionsDialog({
         resourceArns: p.resourceArns,
       }));
 
-      const { data, error } = await supabase.functions.invoke("manage-iam-permissions", {
+      const { data, error } = await invokeAWSFunction("manage-iam-permissions", {
         body: { action: "applyPermissions", userName: user.userName, permissions: permissionsPayload },
       });
 

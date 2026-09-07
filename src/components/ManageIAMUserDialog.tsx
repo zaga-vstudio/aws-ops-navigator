@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { z } from "zod";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 // Validation schemas for IAM operations
 const iamUserNameSchema = z.string()
@@ -78,7 +79,7 @@ export function ManageIAMUserDialog({
         throw new Error('No active session');
       }
 
-      const response = await supabase.functions.invoke('manage-iam-users', {
+      const response = await invokeAWSFunction('manage-iam-users', {
         body: {
           action,
           userName: finalUserName,

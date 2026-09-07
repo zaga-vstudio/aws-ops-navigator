@@ -18,6 +18,7 @@ import { CreateNACLRuleDialog } from "./CreateNACLRuleDialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { NACL, NACLEntry } from "@/hooks/useVPCAdvancedData";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 interface NACLRulesManagerProps {
   nacls: NACL[];
@@ -50,7 +51,7 @@ export function NACLRulesManager({ nacls, loading, onRefresh }: NACLRulesManager
   const callEdgeFunction = async (body: Record<string, unknown>) => {
     setActionLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('manage-nacl-rules', { body });
+      const { data, error } = await invokeAWSFunction('manage-nacl-rules', { body });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       return data;

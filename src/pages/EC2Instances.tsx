@@ -29,6 +29,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import {
+import { invokeAWSFunction } from "@/lib/invokeAWS";
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -165,7 +166,7 @@ const EC2Instances = () => {
         throw new Error('No active session');
       }
 
-      const { data, error } = await supabase.functions.invoke('manage-ec2-instances', {
+      const { data, error } = await invokeAWSFunction('manage-ec2-instances', {
         body: { action, instanceId },
         headers: {
           Authorization: `Bearer ${session.access_token}`,

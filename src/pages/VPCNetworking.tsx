@@ -42,6 +42,7 @@ import { CreateSecurityGroupDialog } from "@/components/CreateSecurityGroupDialo
 import { SecurityGroupDetailsDialog } from "@/components/SecurityGroupDetailsDialog";
 import { ManageSecurityGroupDialog } from "@/components/ManageSecurityGroupDialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 const VPCNetworking = () => {
   const { user, loading: authLoading } = useAuth();
@@ -95,7 +96,7 @@ const VPCNetworking = () => {
     const vpcName = selectedVPCForDeletion.name;
     setActionLoading(`delete-${vpcId}`);
     try {
-      const { data, error } = await supabase.functions.invoke('manage-vpcs', {
+      const { data, error } = await invokeAWSFunction('manage-vpcs', {
         body: { action: 'delete-vpc', vpcId },
       });
       if (error) throw error;
@@ -117,7 +118,7 @@ const VPCNetworking = () => {
     const subnetName = selectedSubnetForDeletion.name;
     setActionLoading(`delete-subnet-${subnetId}`);
     try {
-      const { data, error } = await supabase.functions.invoke('manage-vpcs', {
+      const { data, error } = await invokeAWSFunction('manage-vpcs', {
         body: { action: 'delete-subnet', subnetId },
       });
       if (error) throw error;

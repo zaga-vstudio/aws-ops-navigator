@@ -25,6 +25,7 @@ import { CostBadge } from "./CostBadge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import type { EC2Instance } from "@/hooks/useAWSData";
+import { invokeAWSFunction } from "@/lib/invokeAWS";
 
 interface ConnectivityTroubleshooterProps {
   ec2Instances: EC2Instance[];
@@ -62,7 +63,7 @@ export function ConnectivityTroubleshooter({ ec2Instances, safetyMode }: Connect
     setResult(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke('reachability-analyzer', {
+      const { data, error } = await invokeAWSFunction('reachability-analyzer', {
         body: {
           action: 'analyze',
           sourceId,
