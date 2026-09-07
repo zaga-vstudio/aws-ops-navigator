@@ -209,6 +209,7 @@ serve(async (req) => {
         .from('compliance_remediation_log')
         .insert({
           user_id: user.id,
+          client_id: requestData.clientId ?? null,
           compliance_check_id: requestData.complianceCheckId,
           remediation_type: requestData.remediationType,
           status: requestData.autoFix ? 'completed' : 'manual_steps_provided',
@@ -260,6 +261,7 @@ serve(async (req) => {
         .from('compliance_remediation_log')
         .insert({
           user_id: user.id,
+          client_id: requestData.clientId ?? null,
           compliance_check_id: requestData.complianceCheckId,
           remediation_type: requestData.remediationType,
           status: 'failed',
