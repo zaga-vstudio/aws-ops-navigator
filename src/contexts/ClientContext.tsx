@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { setActiveClientIdRef } from "@/lib/activeClientStore";
 
 export interface ActiveClientSummary {
   id: string;
@@ -47,6 +48,10 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     if (client) localStorage.setItem(STORAGE_KEY, client.id);
     else localStorage.removeItem(STORAGE_KEY);
   }, []);
+
+  useEffect(() => {
+    setActiveClientIdRef(activeClientId);
+  }, [activeClientId]);
 
   const activeClient = useMemo(
     () => clients.find((c) => c.id === activeClientId) ?? null,
