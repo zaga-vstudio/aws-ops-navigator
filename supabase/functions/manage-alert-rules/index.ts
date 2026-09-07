@@ -366,7 +366,10 @@ async function handleUpdate(supabaseClient: any, user: any, body: any) {
   const { ruleId, threshold, duration, severity, comparison_operator, roleName, resourceId } = body;
   if (!ruleId) throw new Error('ruleId is required');
 
-  const { awsCreds, region } = await getResolvedAWSCreds(supabaseClient, user, roleName);
+  const { awsCreds, region } = await getResolvedAWSCreds(
+    supabaseClient, user, roleName,
+    typeof body.clientId === 'string' ? body.clientId : undefined
+  );
 
   const { data: rule, error: fetchError } = await supabaseClient
     .from('alert_rules').select('*').eq('id', ruleId).single();
