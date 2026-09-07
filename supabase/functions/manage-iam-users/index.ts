@@ -62,7 +62,6 @@ serve(async (req) => {
       ownRegion, requestData.roleName, requestData.clientId
     );
     const awsCreds = resolved.credentials;
-    const effectiveRegion = resolved.region || ownRegion;
 
     const iamClient = new IAMClient({
       region: 'us-east-1', // IAM is global

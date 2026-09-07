@@ -56,7 +56,7 @@ serve(async (req) => {
     const effectiveRegion = resolved.region || ownRegion;
 
     const ec2Client = new EC2Client({
-      region: creds.region || 'us-east-1',
+      region: effectiveRegion,
       credentials: awsCreds,
     });
 
