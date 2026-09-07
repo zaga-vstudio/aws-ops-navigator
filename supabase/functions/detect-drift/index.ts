@@ -216,6 +216,8 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'scan';
     const roleName = body.roleName;
+    const clientId: string | null = typeof body.clientId === 'string' ? body.clientId : null;
+    const scopeClient = (q: any) => (clientId ? q.eq('client_id', clientId) : q.is('client_id', null));
 
     // Get AWS credentials
     const { data: creds, error: credsError } = await supabase.rpc('get_user_aws_credentials', { user_id_param: user.id });
@@ -226,13 +228,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    const region = creds[0].region || 'us-east-1';
+    const ownRegion = creds[0].region || 'us-east-1';
 
-    const { credentials: awsCreds } = await resolveCredentials(
+    const resolved = await resolveCredentials(
       supabase, user.id, user.email || '',
       { accessKeyId: creds[0].access_key_id, secretAccessKey: creds[0].secret_access_key },
-      region, roleName
+      ownRegion, roleName, clientId ?? undefined
     );
+    const awsCreds = resolved.credentials;
+    const region = resolved.region || ownRegion;
 
     const clientConfig = {
       region,
@@ -255,10 +259,10 @@ Deno.serve(async (req) => {
       const driftEvents: any[] = [];
 
       // Get existing snapshots
-      const { data: existingSnapshots } = await supabase
+      const { data: existingSnapshots } = await scopeClient(supabase
         .from('resource_snapshots')
         .select('*')
-        .eq('user_id', user.id);
+        .eq('user_id', user.id));
 
       const snapshotMap = new Map(
         (existingSnapshots || []).map(s => [`${s.resource_type}:${s.resource_id}`, s])
@@ -277,13 +281,13 @@ Deno.serve(async (req) => {
             if (changes.length > 0) {
               const severity = determineSeverity(resource.resourceType, changes);
               
-              const { data: existingDrift } = await supabase
+              const { data: existingDrift } = await scopeClient(supabase
                 .from('drift_events')
                 .select('id')
                 .eq('user_id', user.id)
                 .eq('resource_id', resource.resourceId)
-                .eq('acknowledged', false)
-                .single();
+                .eq('acknowledged', false))
+                .maybeSingle();
 
               if (!existingDrift) {
                 const { data: driftEvent, error: driftError } = await supabase
@@ -297,6 +301,7 @@ Deno.serve(async (req) => {
                     current_hash: currentHash,
                     changes: changes,
                     severity: severity,
+                    client_id: clientId,
                   })
                   .select()
                   .single();
@@ -308,25 +313,37 @@ Deno.serve(async (req) => {
             }
           }
         } else {
-          await supabase
+          // Expression-based unique index (COALESCE(client_id, ...)) — resolve manually.
+          const { data: existingSnap } = await scopeClient(supabase
             .from('resource_snapshots')
-            .upsert({
-              user_id: user.id,
-              resource_type: resource.resourceType,
-              resource_id: resource.resourceId,
-              snapshot_hash: currentHash,
-              configuration: resource.configuration,
-              source: 'initial',
-            }, {
-              onConflict: 'user_id,resource_type,resource_id'
-            });
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('resource_type', resource.resourceType)
+            .eq('resource_id', resource.resourceId))
+            .maybeSingle();
+
+          const snapRow = {
+            user_id: user.id,
+            client_id: clientId,
+            resource_type: resource.resourceType,
+            resource_id: resource.resourceId,
+            snapshot_hash: currentHash,
+            configuration: resource.configuration,
+            source: 'initial',
+          };
+
+          if (existingSnap) {
+            await supabase.from('resource_snapshots').update(snapRow).eq('id', existingSnap.id);
+          } else {
+            await supabase.from('resource_snapshots').insert(snapRow);
+          }
         }
       }
 
-      const { data: allDriftEvents } = await supabase
+      const { data: allDriftEvents } = await scopeClient(supabase
         .from('drift_events')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', user.id))
         .order('detected_at', { ascending: false });
 
       return new Response(JSON.stringify({
@@ -401,7 +418,8 @@ Deno.serve(async (req) => {
         })
         .eq('user_id', user.id)
         .eq('resource_type', driftEvent.resource_type)
-        .eq('resource_id', driftEvent.resource_id);
+        .eq('resource_id', driftEvent.resource_id)
+        .eq('client_id', driftEvent.client_id ?? null);
 
       await supabase
         .from('drift_events')
