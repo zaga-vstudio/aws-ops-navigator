@@ -24,6 +24,7 @@ import ActivityLog from "./pages/ActivityLog";
 import Settings from "./pages/Settings";
 import AWSSetup from "./pages/AWSSetup";
 import Clients from "./pages/Clients";
+import CISAudit from "./pages/CISAudit";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -65,6 +66,7 @@ const App = () => (
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/aws-setup" element={<AWSSetup />} />
                 <Route path="/clients" element={<Clients />} />
+                <Route path="/cis" element={<CISAudit />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
