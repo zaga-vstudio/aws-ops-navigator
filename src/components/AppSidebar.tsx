@@ -17,6 +17,7 @@ import {
   Activity,
   Globe,
   Users,
+  ShieldCheck,
   ChevronRight,
   LogOut
 } from "lucide-react";
@@ -65,6 +66,12 @@ const menuItems = [
     title: "VPC Networks",
     icon: Network,
     href: "/vpc",
+    notificationSource: null,
+  },
+  {
+    title: "CIS Audit",
+    icon: ShieldCheck,
+    href: "/cis",
     notificationSource: null,
   },
   {

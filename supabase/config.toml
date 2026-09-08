@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.manage-clients]
 verify_jwt = true
+
+[functions.run-cis-audit]
+verify_jwt = true
