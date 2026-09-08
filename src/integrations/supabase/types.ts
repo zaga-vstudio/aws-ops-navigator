@@ -273,6 +273,71 @@ export type Database = {
         }
         Relationships: []
       }
+      cis_audit_runs: {
+        Row: {
+          aws_account_id: string | null
+          benchmark: string
+          client_id: string | null
+          client_name_snapshot: string | null
+          created_at: string
+          error_count: number
+          errors: Json | null
+          failed_count: number
+          id: string
+          not_applicable_count: number
+          passed_count: number
+          region: string
+          results: Json
+          score: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          aws_account_id?: string | null
+          benchmark?: string
+          client_id?: string | null
+          client_name_snapshot?: string | null
+          created_at?: string
+          error_count?: number
+          errors?: Json | null
+          failed_count?: number
+          id?: string
+          not_applicable_count?: number
+          passed_count?: number
+          region: string
+          results?: Json
+          score?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          aws_account_id?: string | null
+          benchmark?: string
+          client_id?: string | null
+          client_name_snapshot?: string | null
+          created_at?: string
+          error_count?: number
+          errors?: Json | null
+          failed_count?: number
+          id?: string
+          not_applicable_count?: number
+          passed_count?: number
+          region?: string
+          results?: Json
+          score?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cis_audit_runs_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       clients: {
         Row: {
           aws_account_id: string | null
