@@ -219,7 +219,13 @@ serve(async (req) => {
         });
       }
 
-      const fullRoleName = `CloudHub-Project-${role.role_name}`;
+      // Derive the real IAM role name from the stored ARN so roles created under
+      // the legacy prefix can still be cleaned up.
+      const arnRoleName = (role.role_arn as string | null)?.split("/").pop() || "";
+      const fullRoleName =
+        arnRoleName.startsWith(ROLE_PREFIX) || arnRoleName.startsWith(LEGACY_ROLE_PREFIX)
+          ? arnRoleName
+          : `${ROLE_PREFIX}${role.role_name}`;
       let awsDeleteDetails: any = { deleteFromAWS };
 
       if (deleteFromAWS) {
