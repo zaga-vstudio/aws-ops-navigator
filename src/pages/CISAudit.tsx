@@ -302,6 +302,12 @@ export default function CISAudit() {
                                               ))}
                                             </ul>
                                           )}
+                                          {check.status === "FAIL" && cisImpact(check.id) && (
+                                            <p className="text-xs mt-2 text-foreground">
+                                              <span className="font-medium">Qué implica: </span>
+                                              {cisImpact(check.id)}
+                                            </p>
+                                          )}
                                           {check.status === "FAIL" && (
                                             <p className="text-xs mt-2">
                                               <span className="font-medium">Remediación: </span>
