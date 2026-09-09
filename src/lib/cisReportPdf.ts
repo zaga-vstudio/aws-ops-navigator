@@ -147,6 +147,10 @@ export function generateCISReportPdf(run: CISAuditRun) {
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 30;
 
   // ----- Puntuación -----
+  if (y + 260 > doc.internal.pageSize.getHeight()) {
+    doc.addPage();
+    y = 60;
+  }
   const scoreColor = run.score >= 80 ? COLORS.pass : run.score >= 50 ? COLORS.warn : COLORS.fail;
   doc.setDrawColor(...COLORS.line);
   doc.setFillColor(248, 249, 251);
