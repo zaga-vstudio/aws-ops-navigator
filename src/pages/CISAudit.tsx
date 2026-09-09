@@ -22,6 +22,7 @@ import {
 import { useCISAudit, CISAuditRun, CISCheckResult, CISSeverity, CISStatus } from "@/hooks/useCISAudit";
 import { useClientContext } from "@/contexts/ClientContext";
 import { generateCISReportPdf } from "@/lib/cisReportPdf";
+import { CIS_UNCOVERED_AREAS, cisImpact, cisRegionNotice, cisScopeTitle } from "@/lib/cisScope";
 
 const SEVERITY_LABEL: Record<CISSeverity, string> = {
   critical: "Crítica",
