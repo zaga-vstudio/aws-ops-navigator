@@ -1,6 +1,12 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { CISAuditRun, CISCheckResult, CISSeverity, CISStatus } from "@/hooks/useCISAudit";
+import {
+  CIS_TOTAL_CONTROLS,
+  CIS_UNCOVERED_AREAS,
+  cisImpact,
+  cisRegionNotice,
+} from "@/lib/cisScope";
 
 const STATUS_LABEL: Record<CISStatus, string> = {
   PASS: "Correcto",
