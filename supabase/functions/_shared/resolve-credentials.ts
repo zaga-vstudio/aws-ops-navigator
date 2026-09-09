@@ -21,9 +21,13 @@ export interface ResolvedCredentials {
   clientName?: string;
 }
 
+const ROLE_PREFIX = "Clodaro-Project-";
+const LEGACY_ROLE_PREFIX = "CloudHub-Project-";
+
 /**
  * Validates that a role ARN matches the expected format, account ID, and role name exactly.
- * Prevents bypass via prefix/suffix tricks (e.g. "evil-CloudHub-Project-x").
+ * Prevents bypass via prefix/suffix tricks (e.g. "evil-Clodaro-Project-x").
+ * Accepts the legacy prefix so roles created before the rename keep working.
  */
 function validateRoleArn(
   roleArn: string,
@@ -43,8 +47,11 @@ function validateRoleArn(
     throw new Error("Role ARN account ID mismatch");
   }
 
-  const expectedFullRoleName = `CloudHub-Project-${expectedRoleName}`;
-  if (rolePath !== expectedFullRoleName) {
+  const allowed = [
+    `${ROLE_PREFIX}${expectedRoleName}`,
+    `${LEGACY_ROLE_PREFIX}${expectedRoleName}`,
+  ];
+  if (!allowed.includes(rolePath)) {
     throw new Error("Role ARN does not match expected role name");
   }
 }
