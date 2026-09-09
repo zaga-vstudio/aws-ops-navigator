@@ -22,6 +22,7 @@ import {
 import { useCISAudit, CISAuditRun, CISCheckResult, CISSeverity, CISStatus } from "@/hooks/useCISAudit";
 import { useClientContext } from "@/contexts/ClientContext";
 import { generateCISReportPdf } from "@/lib/cisReportPdf";
+import { CIS_UNCOVERED_AREAS, cisImpact, cisRegionNotice, cisScopeTitle } from "@/lib/cisScope";
 
 const SEVERITY_LABEL: Record<CISSeverity, string> = {
   critical: "Crítica",
@@ -245,12 +246,23 @@ export default function CISAudit() {
                   <TabsContent value="results" className="mt-4">
                     <Card>
                       <CardHeader>
-                        <CardTitle className="text-base">{selected.benchmark}</CardTitle>
+                        <CardTitle className="text-base">
+                          {cisScopeTitle(selected.results.length, selected.benchmark)}
+                        </CardTitle>
                         <CardDescription>
                           Detalle por sección de los controles evaluados
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
+                        <div className="mb-4 rounded-lg border border-warning/30 bg-warning/5 p-3 text-xs text-muted-foreground space-y-2">
+                          <p>{cisRegionNotice(selected.region)}</p>
+                          <p>
+                            <span className="font-medium text-foreground">
+                              Áreas del benchmark no cubiertas todavía:{" "}
+                            </span>
+                            {CIS_UNCOVERED_AREAS.join(" · ")}
+                          </p>
+                        </div>
                         <Accordion type="multiple" defaultValue={sections.map(([s]) => s)}>
                           {sections.map(([section, checks]) => (
                             <AccordionItem key={section} value={section}>
@@ -289,6 +301,12 @@ export default function CISAudit() {
                                                 <li key={i}>· {e}</li>
                                               ))}
                                             </ul>
+                                          )}
+                                          {check.status === "FAIL" && cisImpact(check.id) && (
+                                            <p className="text-xs mt-2 text-foreground">
+                                              <span className="font-medium">Qué implica: </span>
+                                              {cisImpact(check.id)}
+                                            </p>
                                           )}
                                           {check.status === "FAIL" && (
                                             <p className="text-xs mt-2">

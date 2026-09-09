@@ -1,6 +1,12 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { CISAuditRun, CISCheckResult, CISSeverity, CISStatus } from "@/hooks/useCISAudit";
+import {
+  CIS_TOTAL_CONTROLS,
+  CIS_UNCOVERED_AREAS,
+  cisImpact,
+  cisRegionNotice,
+} from "@/lib/cisScope";
 
 const STATUS_LABEL: Record<CISStatus, string> = {
   PASS: "Correcto",
@@ -73,14 +79,22 @@ export function generateCISReportPdf(run: CISAuditRun) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(26);
   doc.setTextColor(255, 255, 255);
-  doc.text("Informe de auditoría CIS", 40, 78);
+  doc.text("Informe de auditoría de seguridad AWS", 40, 74);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(12);
-  doc.text(run.benchmark, 40, 104);
+  doc.setFontSize(10.5);
+  const evaluated = run.results.length;
+  doc.text(
+    doc.splitTextToSize(
+      `Subconjunto priorizado de ${evaluated} controles del ${run.benchmark} (benchmark completo: ~${CIS_TOTAL_CONTROLS} controles)`,
+      pageWidth - 80,
+    ),
+    40,
+    100,
+  );
   doc.setFontSize(10);
-  doc.text("Clodaro · Auditoría de infraestructura AWS", 40, 140);
+  doc.text("Clodaro · Auditoría de infraestructura AWS", 40, 150);
 
-  let y = 220;
+  let y = 200;
   doc.setTextColor(...COLORS.ink);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
@@ -95,17 +109,48 @@ export function generateCISReportPdf(run: CISAuditRun) {
     body: [
       ["Cliente auditado", subject],
       ["Cuenta AWS", run.aws_account_id || "No disponible"],
-      ["Región analizada", run.region],
+      ["Región analizada", `${run.region} (única región auditada)`],
       ["Fecha de ejecución", formatDate(run.created_at)],
-      ["Controles evaluados", `${run.passed_count + run.failed_count}`],
+      ["Controles evaluados", `${evaluated} de ~${CIS_TOTAL_CONTROLS} del benchmark completo`],
+      ["Controles con veredicto", `${run.passed_count + run.failed_count}`],
       ["Controles no aplicables", `${run.not_applicable_count}`],
       ["Controles sin datos", `${run.error_count}`],
     ],
   });
 
-  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 36;
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 18;
+
+  // Aviso de alcance por región
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(...COLORS.muted);
+  const regionLines = doc.splitTextToSize(cisRegionNotice(run.region), pageWidth - 90);
+  doc.setFillColor(250, 247, 238);
+  doc.setDrawColor(...COLORS.line);
+  doc.roundedRect(40, y, pageWidth - 80, regionLines.length * 12 + 20, 6, 6, "FD");
+  doc.text(regionLines, 52, y + 22);
+  y += regionLines.length * 12 + 38;
+
+  // Áreas del benchmark no cubiertas
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(...COLORS.ink);
+  doc.text("Áreas del benchmark no cubiertas en esta versión", 40, y);
+  y += 6;
+  autoTable(doc, {
+    startY: y,
+    theme: "plain",
+    styles: { fontSize: 9, cellPadding: 4, textColor: COLORS.muted },
+    body: CIS_UNCOVERED_AREAS.map((a) => [`·  ${a}`]),
+  });
+
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 30;
 
   // ----- Puntuación -----
+  if (y + 260 > doc.internal.pageSize.getHeight()) {
+    doc.addPage();
+    y = 60;
+  }
   const scoreColor = run.score >= 80 ? COLORS.pass : run.score >= 50 ? COLORS.warn : COLORS.fail;
   doc.setDrawColor(...COLORS.line);
   doc.setFillColor(248, 249, 251);
@@ -163,19 +208,21 @@ export function generateCISReportPdf(run: CISAuditRun) {
 
     autoTable(doc, {
       startY: 80,
-      head: [["Control", "Severidad", "Hallazgo", "Remediación recomendada"]],
+      head: [["Control", "Sev.", "Hallazgo", "Qué implica para el negocio", "Remediación"]],
       body: sorted.map((r) => [
         `${r.id}\n${r.title}`,
         SEVERITY_LABEL[r.severity],
         r.evidence.length > 0 ? `${r.summary}\n\n${r.evidence.slice(0, 6).join("\n")}` : r.summary,
+        cisImpact(r.id) ?? "—",
         r.remediation,
       ]),
-      styles: { fontSize: 9, cellPadding: 6, valign: "top", overflow: "linebreak" },
+      styles: { fontSize: 8.5, cellPadding: 5, valign: "top", overflow: "linebreak" },
       headStyles: { fillColor: COLORS.ink, textColor: 255 },
       columnStyles: {
-        0: { cellWidth: 120, fontStyle: "bold" },
-        1: { cellWidth: 60 },
-        2: { cellWidth: 175 },
+        0: { cellWidth: 96, fontStyle: "bold" },
+        1: { cellWidth: 42 },
+        2: { cellWidth: 128 },
+        3: { cellWidth: 118 },
       },
     });
   }
