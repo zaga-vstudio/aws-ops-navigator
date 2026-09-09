@@ -160,17 +160,20 @@ export function ManageIAMPermissionsDialog({
         setManagedPolicyWarning(conflicts);
       }
 
-      // Parse existing CloudHub policies back into state
+      // Parse existing Clodaro policies back into state (legacy names still supported)
       if (polData?.policies) {
         setPerms((prev) => {
           const updated = { ...prev };
           for (const [polName, doc] of Object.entries(polData.policies) as [string, any][]) {
             for (const svc of Object.keys(SERVICE_ACTIONS)) {
-              const expectedName =
+              const suffix =
                 svc === "security_groups"
-                  ? `CloudHub-Scoped-SECURITYGROUPS-${user.userName}`
-                  : `CloudHub-Scoped-${svc.toUpperCase()}-${user.userName}`;
-              if (polName === expectedName && doc?.Statement) {
+                  ? `SECURITYGROUPS-${user.userName}`
+                  : `${svc.toUpperCase()}-${user.userName}`;
+              const matches =
+                polName === `Clodaro-Scoped-${suffix}` ||
+                polName === `CloudHub-Scoped-${suffix}`;
+              if (matches && doc?.Statement) {
                 const hasRead = doc.Statement.some((s: any) =>
                   s.Action?.some((a: string) => SERVICE_ACTIONS[svc].read.includes(a))
                 );

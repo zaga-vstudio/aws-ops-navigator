@@ -206,12 +206,21 @@ function buildPolicyDocument(
   };
 }
 
+const POLICY_PREFIX = "Clodaro-Scoped-";
+const LEGACY_POLICY_PREFIX = "CloudHub-Scoped-";
+
+function policyLabel(service: string) {
+  return service === "security_groups"
+    ? "SecurityGroups"
+    : service.charAt(0).toUpperCase() + service.slice(1).toUpperCase();
+}
+
 function policyName(service: string, userName: string) {
-  const serviceLabel =
-    service === "security_groups"
-      ? "SecurityGroups"
-      : service.charAt(0).toUpperCase() + service.slice(1).toUpperCase();
-  return `CloudHub-Scoped-${serviceLabel}-${userName}`;
+  return `${POLICY_PREFIX}${policyLabel(service)}-${userName}`;
+}
+
+function legacyPolicyName(service: string, userName: string) {
+  return `${LEGACY_POLICY_PREFIX}${policyLabel(service)}-${userName}`;
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
@@ -296,7 +305,7 @@ serve(async (req) => {
 
       const policies: Record<string, any> = {};
       for (const name of policyNames) {
-        if (name.startsWith("CloudHub-Scoped-")) {
+        if (name.startsWith(POLICY_PREFIX) || name.startsWith(LEGACY_POLICY_PREFIX)) {
           const getCmd = new GetUserPolicyCommand({
             UserName: userName,
             PolicyName: name,
@@ -403,6 +412,19 @@ serve(async (req) => {
 
       for (const perm of permissions as ServicePermission[]) {
         const polName = policyName(perm.service, userName);
+        const legacyName = legacyPolicyName(perm.service, userName);
+
+        // Always clear the legacy-named policy so permissions are not duplicated
+        try {
+          await iamClient.send(
+            new DeleteUserPolicyCommand({
+              UserName: userName,
+              PolicyName: legacyName,
+            })
+          );
+        } catch (e: any) {
+          if (e.name !== "NoSuchEntityException") throw e;
+        }
 
         if (!perm.read && !perm.write) {
           // Remove policy

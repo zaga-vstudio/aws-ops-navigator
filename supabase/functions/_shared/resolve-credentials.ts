@@ -21,9 +21,13 @@ export interface ResolvedCredentials {
   clientName?: string;
 }
 
+const ROLE_PREFIX = "Clodaro-Project-";
+const LEGACY_ROLE_PREFIX = "CloudHub-Project-";
+
 /**
  * Validates that a role ARN matches the expected format, account ID, and role name exactly.
- * Prevents bypass via prefix/suffix tricks (e.g. "evil-CloudHub-Project-x").
+ * Prevents bypass via prefix/suffix tricks (e.g. "evil-Clodaro-Project-x").
+ * Accepts the legacy prefix so roles created before the rename keep working.
  */
 function validateRoleArn(
   roleArn: string,
@@ -43,8 +47,11 @@ function validateRoleArn(
     throw new Error("Role ARN account ID mismatch");
   }
 
-  const expectedFullRoleName = `CloudHub-Project-${expectedRoleName}`;
-  if (rolePath !== expectedFullRoleName) {
+  const allowed = [
+    `${ROLE_PREFIX}${expectedRoleName}`,
+    `${LEGACY_ROLE_PREFIX}${expectedRoleName}`,
+  ];
+  if (!allowed.includes(rolePath)) {
     throw new Error("Role ARN does not match expected role name");
   }
 }
@@ -313,20 +320,29 @@ export async function resolveCredentials(
   // 3. Hardened ARN validation — strict regex + account + exact role name
   validateRoleArn(role.role_arn, roleName, accountId);
 
-  // 4. AssumeRole with session tags for CloudTrail attribution
-  const assumed = await stsClient.send(
-    new AssumeRoleCommand({
-      RoleArn: role.role_arn,
-      RoleSessionName: `cloudhub-${userId.slice(0, 8)}-${Date.now()}`,
-      DurationSeconds: role.max_session_duration_seconds || 900,
-      ExternalId: `cloudhub-${userId}`,
-      Tags: [
-        { Key: "CloudHubUser", Value: userId },
-        { Key: "CloudHubUserEmail", Value: userEmail || "unknown" },
-        { Key: "CloudHubRole", Value: roleName },
-      ],
-    })
-  );
+  // 4. AssumeRole with session tags for CloudTrail attribution.
+  //    Roles created before the rename trust the legacy external ID, so retry once.
+  const assumeWith = (externalId: string) =>
+    stsClient.send(
+      new AssumeRoleCommand({
+        RoleArn: role.role_arn,
+        RoleSessionName: `clodaro-${userId.slice(0, 8)}-${Date.now()}`,
+        DurationSeconds: role.max_session_duration_seconds || 900,
+        ExternalId: externalId,
+        Tags: [
+          { Key: "ClodaroUser", Value: userId },
+          { Key: "ClodaroUserEmail", Value: userEmail || "unknown" },
+          { Key: "ClodaroRole", Value: roleName },
+        ],
+      })
+    );
+
+  let assumed;
+  try {
+    assumed = await assumeWith(`clodaro-${userId}`);
+  } catch (_e) {
+    assumed = await assumeWith(`cloudhub-${userId}`);
+  }
 
   if (
     !assumed.Credentials?.AccessKeyId ||

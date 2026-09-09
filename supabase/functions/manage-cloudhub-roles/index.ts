@@ -45,6 +45,8 @@ const SERVICE_ACTIONS: Record<string, { read: string[]; write: string[] }> = {
 };
 
 const ROLE_NAME_RE = /^[a-zA-Z0-9_-]+$/;
+const ROLE_PREFIX = "Clodaro-Project-";
+const LEGACY_ROLE_PREFIX = "CloudHub-Project-";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -103,7 +105,7 @@ serve(async (req) => {
       }
 
       const duration = Math.max(3600, Math.min(43200, maxSessionDuration || 3600));
-      const fullRoleName = `CloudHub-Project-${roleName}`;
+      const fullRoleName = `${ROLE_PREFIX}${roleName}`;
 
       // Get admin identity
       const identity = await stsClient.send(new GetCallerIdentityCommand({}));
@@ -118,16 +120,16 @@ serve(async (req) => {
           Principal: { AWS: adminArn },
           Action: "sts:AssumeRole",
           Condition: {
-            StringEquals: { "sts:ExternalId": `cloudhub-${user.id}` },
+            StringEquals: { "sts:ExternalId": `clodaro-${user.id}` },
           },
         }],
       };
 
       // Tags
       const tags = [
-        { Key: "ManagedBy", Value: "CloudHub" },
-        { Key: "CloudHubUserId", Value: user.id },
-        { Key: "CloudHubUserEmail", Value: user.email || "unknown" },
+        { Key: "ManagedBy", Value: "Clodaro" },
+        { Key: "ClodaroUserId", Value: user.id },
+        { Key: "ClodaroUserEmail", Value: user.email || "unknown" },
         { Key: "Environment", Value: "production" },
       ];
 
@@ -135,7 +137,7 @@ serve(async (req) => {
       const createResult = await iamClient.send(new CreateRoleCommand({
         RoleName: fullRoleName,
         AssumeRolePolicyDocument: JSON.stringify(trustPolicy),
-        Description: description || `CloudHub managed role: ${roleName}`,
+        Description: description || `Clodaro managed role: ${roleName}`,
         MaxSessionDuration: duration,
         Tags: tags,
       }));
@@ -160,7 +162,7 @@ serve(async (req) => {
             Statement: [{ Effect: "Allow", Action: actions, Resource: "*" }],
           };
 
-          const polName = `CloudHub-Scoped-${perm.service}-${roleName}`;
+          const polName = `Clodaro-Scoped-${perm.service}-${roleName}`;
           await iamClient.send(new PutRolePolicyCommand({
             RoleName: fullRoleName,
             PolicyName: polName,
@@ -217,7 +219,13 @@ serve(async (req) => {
         });
       }
 
-      const fullRoleName = `CloudHub-Project-${role.role_name}`;
+      // Derive the real IAM role name from the stored ARN so roles created under
+      // the legacy prefix can still be cleaned up.
+      const arnRoleName = (role.role_arn as string | null)?.split("/").pop() || "";
+      const fullRoleName =
+        arnRoleName.startsWith(ROLE_PREFIX) || arnRoleName.startsWith(LEGACY_ROLE_PREFIX)
+          ? arnRoleName
+          : `${ROLE_PREFIX}${role.role_name}`;
       let awsDeleteDetails: any = { deleteFromAWS };
 
       if (deleteFromAWS) {
