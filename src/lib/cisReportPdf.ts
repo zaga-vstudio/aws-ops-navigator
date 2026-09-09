@@ -169,19 +169,21 @@ export function generateCISReportPdf(run: CISAuditRun) {
 
     autoTable(doc, {
       startY: 80,
-      head: [["Control", "Severidad", "Hallazgo", "Remediación recomendada"]],
+      head: [["Control", "Sev.", "Hallazgo", "Qué implica para el negocio", "Remediación"]],
       body: sorted.map((r) => [
         `${r.id}\n${r.title}`,
         SEVERITY_LABEL[r.severity],
         r.evidence.length > 0 ? `${r.summary}\n\n${r.evidence.slice(0, 6).join("\n")}` : r.summary,
+        cisImpact(r.id) ?? "—",
         r.remediation,
       ]),
-      styles: { fontSize: 9, cellPadding: 6, valign: "top", overflow: "linebreak" },
+      styles: { fontSize: 8.5, cellPadding: 5, valign: "top", overflow: "linebreak" },
       headStyles: { fillColor: COLORS.ink, textColor: 255 },
       columnStyles: {
-        0: { cellWidth: 120, fontStyle: "bold" },
-        1: { cellWidth: 60 },
-        2: { cellWidth: 175 },
+        0: { cellWidth: 96, fontStyle: "bold" },
+        1: { cellWidth: 42 },
+        2: { cellWidth: 128 },
+        3: { cellWidth: 118 },
       },
     });
   }
